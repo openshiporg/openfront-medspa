@@ -1,0 +1,266 @@
+{
+  "medspaInfo": {
+    "key": "juniper-vale-demo-med-spa",
+    "name": "Juniper Vale Med Spa — Demo",
+    "address": "400 Juniper Avenue, Suite 210",
+    "city": "Brooklyn",
+    "state": "NY",
+    "zipCode": "11201",
+    "phone": "+1 (212) 555-0147",
+    "email": "hello@juniper-vale.example",
+    "timezone": "America/New_York",
+    "hours": {
+      "monday": { "closed": true },
+      "tuesday": { "open": "10:00", "close": "17:00", "closed": false },
+      "wednesday": { "open": "10:00", "close": "17:00", "closed": false },
+      "thursday": { "open": "10:00", "close": "17:00", "closed": false },
+      "friday": { "open": "10:00", "close": "16:00", "closed": false },
+      "saturday": { "open": "10:00", "close": "14:00", "closed": false },
+      "sunday": { "closed": true }
+    }
+  },
+  "resources": [
+    {
+      "key": "demo-consultation-room",
+      "name": "Consultation room",
+      "type": "room",
+      "capacity": 1,
+      "isActive": true,
+      "isPublic": true,
+      "readinessStatus": "available",
+      "notes": "Fictional room used only to exercise the demo consultation-request schedule. It is not represented as a clinical treatment environment."
+    },
+    {
+      "key": "treatment-room-placeholder",
+      "name": "Treatment Room — Configuration Required",
+      "type": "room",
+      "capacity": 1,
+      "isActive": false,
+      "isPublic": false,
+      "readinessStatus": "acceptance_testing",
+      "notes": "Private inactive placeholder. Readiness, emergency requirements, and clinical release remain unconfigured."
+    },
+    {
+      "key": "energy-device-placeholder",
+      "name": "Energy Device — Configuration Required",
+      "type": "device",
+      "capacity": 1,
+      "isActive": false,
+      "isPublic": false,
+      "readinessStatus": "acceptance_testing",
+      "notes": "Private inactive placeholder. No device identity, registration, training, maintenance, calibration, or clinical release is claimed."
+    }
+  ],
+  "categories": [
+    {
+      "key": "consultations",
+      "name": "Consultations",
+      "slug": "demo-services",
+      "description": "Appointment planning.",
+      "displayOrder": 10,
+      "icon": "clipboard"
+    },
+    {
+      "key": "medical-aesthetics",
+      "name": "Medical Aesthetics",
+      "slug": "medical-aesthetics",
+      "description": "Inactive placeholders requiring approved jurisdiction, credential, protocol, consent, product, and resource packs.",
+      "displayOrder": 20,
+      "icon": "shield"
+    }
+  ],
+  "services": [
+    {
+      "key": "medical-aesthetics-consultation",
+      "name": "Consultation request",
+      "category": "Consultations",
+      "description": "Scheduling and service information.",
+      "baseDuration": 45,
+      "price": 0,
+      "basePrice": 0,
+      "depositRequired": false,
+      "depositAmount": 0,
+      "status": "active",
+      "staffAuthorizationRequired": false,
+      "requiresConsultation": false,
+      "requiresIntakeReview": false,
+      "requiresLotTraceability": false,
+      "requiredResources": [
+        "demo-consultation-room"
+      ],
+      "isPublic": true
+    },
+    {
+      "key": "injectable-treatment-placeholder",
+      "name": "Injectable Treatment — Configuration Required",
+      "category": "Medical Aesthetics",
+      "description": "Inactive until approved products, patient-specific order, consent, credential, supervision, protocol, and lot custody are configured.",
+      "baseDuration": 60,
+      "price": 1,
+      "basePrice": 1,
+      "depositRequired": false,
+      "depositAmount": 0,
+      "status": "inactive",
+      "staffAuthorizationRequired": true,
+      "requiresConsultation": true,
+      "requiresIntakeReview": true,
+      "requiresLotTraceability": true,
+      "requiredResources": [
+        "treatment-room-placeholder"
+      ],
+      "isPublic": false
+    },
+    {
+      "key": "energy-treatment-placeholder",
+      "name": "Energy Treatment — Configuration Required",
+      "category": "Medical Aesthetics",
+      "description": "Inactive until device identity, intended use, facility rules, training, maintenance, clinical authority, protocol, and consent are configured.",
+      "baseDuration": 60,
+      "price": 1,
+      "basePrice": 1,
+      "depositRequired": false,
+      "depositAmount": 0,
+      "status": "inactive",
+      "staffAuthorizationRequired": true,
+      "requiresConsultation": true,
+      "requiresIntakeReview": true,
+      "requiresLotTraceability": false,
+      "requiredResources": [
+        "treatment-room-placeholder",
+        "energy-device-placeholder"
+      ],
+      "isPublic": false
+    }
+  ],
+  "providers": [
+    {
+      "key": "avery-rowan-demo-coordinator",
+      "name": "Avery Rowan",
+      "email": "avery.rowan@juniper-vale-demo.example",
+      "phone": "+1 (212) 555-0162",
+      "role": "assistant",
+      "tier": "junior",
+      "title": "Scheduling coordinator",
+      "bio": "Appointment planning.",
+      "baseCommissionRate": 0,
+      "status": "active",
+      "isActive": true,
+      "isPublic": true,
+      "specializations": [
+        "medical-aesthetics-consultation"
+      ]
+    }
+  ],
+  "scheduleBlocks": [
+    {
+      "key": "avery-demo-consultation-hours",
+      "provider": "avery-rowan-demo-coordinator",
+      "daysOfWeek": [2, 3, 4],
+      "startTime": "10:00",
+      "endTime": "14:00",
+      "breakStart": "12:00",
+      "breakEnd": "12:30",
+      "isAvailable": true,
+      "isPublic": true
+    }
+  ],
+  "clients": [],
+  "intakeForms": [
+    {
+      "key": "medical-history-intake",
+      "name": "Medical History Intake",
+      "requiredForServices": [],
+      "fields": [
+        {
+          "id": "goals",
+          "type": "textarea",
+          "label": "Goals and concerns",
+          "required": true
+        },
+        {
+          "id": "conditions",
+          "type": "textarea",
+          "label": "Medical conditions",
+          "required": true
+        },
+        {
+          "id": "medications",
+          "type": "textarea",
+          "label": "Medications and supplements",
+          "required": true
+        },
+        {
+          "id": "allergies",
+          "type": "textarea",
+          "label": "Allergies and prior reactions",
+          "required": true
+        },
+        {
+          "id": "priorProcedures",
+          "type": "textarea",
+          "label": "Prior procedures",
+          "required": false
+        }
+      ]
+    }
+  ],
+  "formTemplates": [
+    {
+      "key": "medical-history-intake-v1",
+      "name": "Medical History Intake v1",
+      "type": "clinical_intake",
+      "description": "Versioned intake only; it is not treatment consent or a clinical decision.",
+      "fields": [
+        {
+          "id": "historyAcknowledgement",
+          "type": "checkbox",
+          "label": "I confirm this history is complete to the best of my knowledge",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "memberships": [],
+  "packages": [],
+  "products": [],
+  "messageTemplates": [
+    {
+      "key": "appointment-reminder",
+      "name": "Appointment Reminder",
+      "type": "reminder",
+      "content": "Demo reminder template: a recorded appointment status does not establish treatment eligibility or clinical authorization.",
+      "variables": [
+        "appointmentDate"
+      ]
+    }
+  ],
+  "appointments": [],
+  "gallery": [],
+  "paymentProviders": [
+    {
+      "key": "manual-cash",
+      "name": "Manual Cash — Enable After Policy Review",
+      "code": "pp_manual_cash",
+      "adapter": "manual",
+      "isInstalled": false,
+      "isDefault": false,
+      "config": {
+        "purpose": "operator-recorded cash only"
+      }
+    },
+    {
+      "key": "stripe",
+      "name": "Stripe — Configuration Required",
+      "code": "pp_stripe",
+      "adapter": "stripe",
+      "isInstalled": false,
+      "isDefault": false,
+      "config": {}
+    }
+  ],
+  "storefront": {
+    "displayName": "Juniper Vale Med Spa",
+    "accentHue": 214,
+    "isPublished": true
+  }
+}

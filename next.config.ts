@@ -2,11 +2,9 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  logging: { serverFunctions: false },
+  allowedDevOrigins: process.env.PORTLESS_URL ? [new URL(process.env.PORTLESS_URL).hostname] : [],
   serverExternalPackages: ['graphql'],
-  // Workaround since we diverged from Keystone reltionship and document views
-  // typescript: {
-  //   ignoreBuildErrors: true,
-  // },
   images: {
     remotePatterns: [
       {

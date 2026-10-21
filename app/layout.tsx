@@ -1,21 +1,19 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
+import { storefrontMetadata } from "@/features/storefront/lib/data/brand";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+const geistSans = localFont({ src: "../public/fonts/geist.woff2", variable: "--font-geist-sans", display: "swap" });
+const geistMono = localFont({ src: "../public/fonts/geist-mono.woff2", variable: "--font-geist-mono", display: "swap" });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-export const metadata: Metadata = {
-  title: "Next x Keystone Starter",
-  description: "Next, Keystone, and Tailwind Starter Template",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = await storefrontMetadata()
+  return {
+    ...settings,
+    manifest: "/manifest.webmanifest",
+    icons: { icon: "/favicon.svg" },
+  }
+}
 
 export default function RootLayout({
   children,

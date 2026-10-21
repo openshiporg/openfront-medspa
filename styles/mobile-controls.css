@@ -1,0 +1,16 @@
+/* The interactive element itself owns its phone hit area, including portal
+   options and nested token/remove controls. Never inflate a hidden descendant. */
+@layer base {
+@media (max-width: 767px) {
+  .storefront :where(button, a, summary, input:not([type="hidden"]), select, textarea,
+    [role="button"], [role="checkbox"], [role="radio"], [role="option"],
+    [role="menuitem"], [role="combobox"]) {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .storefront :where(a, summary) {
+    display: inline-flex;
+    align-items: center;
+  }
+}
+}

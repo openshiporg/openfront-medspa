@@ -1,0 +1,13 @@
+import Link from 'next/link';
+import { getConsultationQueue, getPlanJourney } from '../actions/planJourney';
+import { PlanJourneyClient } from './PlanJourneyClient';
+
+export async function PlanJourneyPage({ consultationId, pages }: { consultationId: string; pages?: { planPage?: number; appointmentPage?: number; historyPage?: number } }) {
+  const data = await getPlanJourney(consultationId, pages);
+  return <main className="min-h-screen bg-muted/20 p-4 md:p-8"><div className="mx-auto max-w-5xl">{data ? <PlanJourneyClient data={data} /> : <section role="alert" className="rounded border bg-background p-6"><h1 className="text-xl font-semibold">Consultation / plan workflow unavailable</h1><p className="mt-2">The record is unreadable, authorization is unavailable, or authoritative evidence could not be loaded. No empty history or clinical readiness is inferred.</p><Link href="/dashboard/platform/appointments/plans" className="mt-4 inline-block underline">Return to consultation queue</Link></section>}</div></main>;
+}
+export async function ConsultationPlanQueuePage({ page, search }: { page: number; search: string }) {
+  const data = await getConsultationQueue(page, search);
+  const href = (next: number) => `/dashboard/platform/appointments/plans?page=${next}&search=${encodeURIComponent(search)}`;
+  return <main className="min-h-screen bg-muted/20 p-4 md:p-8"><div className="mx-auto grid max-w-5xl gap-5"><header><Link className="text-sm underline" href="/dashboard/platform/appointments">Appointment command center</Link><h1 className="mt-3 text-2xl font-semibold">Consultations & approved plans</h1></header><form className="flex gap-2"><label className="flex-1 text-sm">Search service<input className="mt-1 w-full rounded border bg-background p-2" name="search" defaultValue={search} maxLength={100} /></label><button className="self-end rounded border px-4 py-2">Search</button></form>{!data ? <p role="alert">Consultation queue unavailable or clinical authority denied. No empty state is inferred.</p> : <><section className="grid gap-3">{!data.items.length && <p>No matching consultations recorded.</p>}{data.items.map(item => <Link key={item.id} href={`/dashboard/platform/appointments/plans/${item.id}`} className="rounded border bg-background p-4 hover:bg-muted"><strong>{item.serviceName} · {item.clientName}</strong><p className="mt-1 text-sm">{item.status} · {item.candidacyDecision}</p></Link>)}</section><nav aria-label="Consultation queue pagination" className="flex gap-4">{page > 0 && <Link href={href(page - 1)}>Previous</Link>}<span>Page {page + 1}</span>{data.hasMore && <Link href={href(page + 1)}>Next</Link>}</nav></>}</div></main>;
+}

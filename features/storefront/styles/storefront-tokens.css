@@ -1,0 +1,57 @@
+/* Hallmark · macrostructure: Catalogue · tone: luxury · theme: MedSpa
+ * nav: N7 underlined · footer: Ft5 statement · genre: editorial
+ */
+
+.storefront {
+  --sf-paper: oklch(97.2% 0.009 78);
+  --sf-paper-2: oklch(94.5% 0.014 76);
+  --sf-paper-3: oklch(91% 0.018 74);
+  --sf-ink: oklch(21% 0.028 48);
+  --sf-ink-2: oklch(40% 0.022 50);
+  --sf-ink-3: oklch(55% 0.018 52);
+  --sf-rule: oklch(87% 0.014 76);
+  --sf-accent: oklch(41% 0.095 28);
+  --sf-accent-ink: oklch(97% 0.01 78);
+  --sf-accent-soft: oklch(94% 0.028 32);
+  --sf-focus: oklch(35% 0.09 28);
+
+  --sf-font-display: var(--font-sf-display), "Cormorant Garamond", Georgia, serif;
+  --sf-font-body: var(--font-sf-body), "DM Sans", system-ui, sans-serif;
+
+  --sf-space-3xs: 0.25rem;
+  --sf-space-2xs: 0.5rem;
+  --sf-space-xs: 0.75rem;
+  --sf-space-sm: 1rem;
+  --sf-space-md: 1.5rem;
+  --sf-space-lg: 2.25rem;
+  --sf-space-xl: 3.5rem;
+  --sf-space-2xl: 5.5rem;
+  --sf-space-3xl: 8rem;
+
+  --sf-text-xs: 0.75rem;
+  --sf-text-sm: 0.875rem;
+  --sf-text-md: 1.0625rem;
+  --sf-text-lg: 1.25rem;
+  --sf-text-xl: 1.625rem;
+  --sf-text-2xl: 2.125rem;
+  --sf-text-3xl: 2.875rem;
+  --sf-text-display: clamp(2.75rem, 6vw, 5.25rem);
+  --sf-text-display-s: clamp(2.25rem, 4.5vw, 3.75rem);
+
+  --sf-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --sf-dur-short: 220ms;
+  --sf-dur-medium: 380ms;
+
+  --sf-radius-sm: 2px;
+  --sf-radius-md: 4px;
+
+  font-family: var(--sf-font-body);
+  color: var(--sf-ink);
+  background-color: var(--sf-paper);
+  -webkit-font-smoothing: antialiased;
+}
+
+.storefront ::selection {
+  background: var(--sf-accent-soft);
+  color: var(--sf-ink);
+}

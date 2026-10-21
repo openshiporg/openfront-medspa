@@ -7,6 +7,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useMemo,
   useState,
 } from "react";
@@ -183,46 +184,29 @@ function SidebarProvider({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [toggleSidebarLeft, toggleSidebarRight]);
 
-  const leftState: SidebarState = {
+  const leftState = useMemo<SidebarState>(() => ({
     state: openLeft ? "expanded" : "collapsed",
     open: openLeft,
     setOpen: setOpenLeft,
     openMobile: openMobileLeft,
     setOpenMobile: setOpenMobileLeft,
     toggleSidebar: toggleSidebarLeft,
-  };
+  }), [openLeft, openMobileLeft, setOpenLeft, toggleSidebarLeft]);
 
-  const rightState: SidebarState = {
+  const rightState = useMemo<SidebarState>(() => ({
     state: openRight ? "expanded" : "collapsed",
     open: openRight,
     setOpen: setOpenRight,
     openMobile: openMobileRight,
     setOpenMobile: setOpenMobileRight,
     toggleSidebar: toggleSidebarRight,
-  };
+  }), [openRight, openMobileRight, setOpenRight, toggleSidebarRight]);
 
-  const contextValue = useMemo<SidebarContextProps>(
-    () => ({
-      left: leftState,
-      right: rightState,
-      isMobile,
-    }),
-    [
-      leftState.state,
-      leftState.open,
-      leftState.openMobile,
-      rightState.state,
-      rightState.open,
-      rightState.openMobile,
-      isMobile,
-      setOpenLeft,
-      setOpenRight,
-      setOpenMobileLeft,
-      setOpenMobileRight,
-      toggleSidebarLeft,
-      toggleSidebarRight,
-    ],
-  );
+  const contextValue = useMemo<SidebarContextProps>(() => ({
+    left: leftState,
+    right: rightState,
+    isMobile,
+  }), [leftState, rightState, isMobile]);
 
   return (
     <SidebarContext.Provider value={contextValue}>
@@ -737,9 +721,8 @@ function SidebarMenuSkeleton({
 }: ComponentProps<"div"> & {
   showIcon?: boolean;
 }) {
-  const width = useMemo(() => {
-    return `${Math.floor(Math.random() * 40) + 50}%`;
-  }, []);
+  const skeletonId = useId();
+  const width = `${50 + [...skeletonId].reduce((total, character) => total + character.charCodeAt(0), 0) % 40}%`;
 
   return (
     <div
