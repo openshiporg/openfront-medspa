@@ -1,3 +1,4 @@
+import { s3ForcePathStyle } from "./lib/s3-storage";
 import { createAuth } from '@keystone-6/auth'
 import { config } from '@keystone-6/core'
 import { statelessSessions } from '@keystone-6/core/session'
@@ -87,7 +88,7 @@ export default withAuth(config({
       secretAccessKey: required('S3_SECRET_ACCESS_KEY'),
       endpoint: required('S3_ENDPOINT'),
       signed: { expiry: 300 },
-      forcePathStyle: true,
+      forcePathStyle: s3ForcePathStyle(required('S3_ENDPOINT')),
     },
   },
   ui: { isAccessAllowed: ({ session }) => permissions.canAccessDashboard({ session }) },
