@@ -1,18 +1,24 @@
+import { Store } from 'lucide-react'
 import { getStorefrontSettings } from '../actions/storefrontSettings'
 import { StorefrontSettingsForm } from '../components/StorefrontSettingsForm'
-import { PlatformBreadcrumbs } from '@/features/platform/components/PlatformBreadcrumbs'
+import { ErrorState, PageHeader, PillLink, PlatformPage, TitleStatus, Track } from '@/features/platform/components/medspa-ui'
 
 interface Props { searchParams?: Promise<{ saved?: string }> }
 
 export async function StorefrontSettingsPage(_props: Props) {
   const result = await getStorefrontSettings()
-  return <>
-    <PlatformBreadcrumbs items={[{ label: 'Storefront settings' }]} />
-    <main className="mx-auto w-full max-w-4xl space-y-6 px-4 py-6 md:px-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Storefront settings</h1>
+  const published = result.status === 'loaded' && result.setting?.isPublished
+  return (
+    <PlatformPage width="narrow" breadcrumbs={[{ label: 'Storefront settings' }]}>
+      <PageHeader
+        title="Storefront"
+        icon={Store}
+        status={result.status === 'loaded' ? <TitleStatus tone={published ? 'emerald' : 'zinc'}>{published ? 'Published' : 'Not published'}</TitleStatus> : null}
+        actions={published ? <Track><PillLink href="/">View storefront</PillLink></Track> : null}
+      />
       {result.status === 'unavailable'
-        ? <section role="alert" className="rounded-lg border p-4"><h2 className="font-medium">Settings unavailable</h2><p className="mt-2 text-sm">{result.message}</p><a className="mt-3 inline-flex min-h-11 items-center underline" href="/dashboard/platform/storefront">Retry loading settings</a></section>
+        ? <ErrorState id="storefront-settings-unavailable" title="Settings unavailable" message={result.message} action={<Track><PillLink href="/dashboard/platform/storefront">Retry</PillLink></Track>} />
         : <StorefrontSettingsForm setting={result.setting} locations={result.locations} />}
-    </main>
-  </>
+    </PlatformPage>
+  )
 }

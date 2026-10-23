@@ -3,6 +3,7 @@
 import { gql } from "graphql-request"
 import { cache } from "react"
 import { medspaClient } from "../config"
+import { practiceSlug } from "./practice"
 import { readPublicProviderProfiles, type ProviderReadResult } from "./providerReadResult"
 
 export interface Provider {
@@ -15,12 +16,6 @@ export interface Provider {
     altText: string | null
   } | null
   specializations: { id: string; name: string }[]
-}
-
-function practiceSlug() {
-  const value = process.env.MEDSPA_PRACTICE_SLUG?.trim()
-  if (!value) throw new Error("MEDSPA_PRACTICE_SLUG is required for storefront reads")
-  return value
 }
 
 const PROVIDER_FRAGMENT = gql`
@@ -40,7 +35,7 @@ export const getAllProviders = cache(async function (): Promise<ProviderReadResu
       query GetAllStorefrontProviders($practiceSlug: String!) {
         storefrontProviders(practiceSlug: $practiceSlug, take: 50) { ...StorefrontProviderFields }
       }
-    `, { practiceSlug: practiceSlug() })
+    `, { practiceSlug: await practiceSlug() })
     return data.storefrontProviders
   })
 })
@@ -52,7 +47,7 @@ export const getProviderById = cache(async function (id: string): Promise<Provid
       query GetStorefrontProvider($id: ID!, $practiceSlug: String!) {
         storefrontProvider(id: $id, practiceSlug: $practiceSlug) { ...StorefrontProviderFields }
       }
-    `, { id, practiceSlug: practiceSlug() })
+    `, { id, practiceSlug: await practiceSlug() })
     return data.storefrontProvider
   })
 })
@@ -65,7 +60,7 @@ export const getFeaturedProviders = cache(async function (limit = 4): Promise<Pr
       query GetFeaturedStorefrontProviders($take: Int!, $practiceSlug: String!) {
         storefrontProviders(take: $take, practiceSlug: $practiceSlug) { ...StorefrontProviderFields }
       }
-    `, { take, practiceSlug: practiceSlug() })
+    `, { take, practiceSlug: await practiceSlug() })
     return data.storefrontProviders
   })
 })
@@ -79,7 +74,7 @@ export const getProvidersForService = cache(async function (serviceId: string): 
           ...StorefrontProviderFields
         }
       }
-    `, { serviceId, practiceSlug: practiceSlug() })
+    `, { serviceId, practiceSlug: await practiceSlug() })
     return data.storefrontProviders
   })
 })

@@ -10,18 +10,28 @@ export function CustomerAuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
   const [state, action, pending] = useActionState(creating ? signUpCustomer : signInCustomer, { message: null })
   const [show, setShow] = useState(false)
   return <div className="sf-container-narrow sf-page-pad">
-    <h1 className="sf-display mb-6 text-[var(--sf-text-2xl)]">{creating ? 'Create account' : 'Sign in'}</h1>
-    <form action={action} className="sf-card grid gap-5 p-5">
-      {creating ? <label className="grid gap-2 text-sm font-medium">Name<input className="sf-input min-h-11 w-full rounded-lg border px-3" name="name" autoComplete="name" required maxLength={120} /></label> : null}
-      <label className="grid gap-2 text-sm font-medium">Email<input className="sf-input min-h-11 w-full rounded-lg border px-3" name="email" type="email" autoComplete="email" required maxLength={254} /></label>
-      <label className="grid gap-2 text-sm font-medium">Password
-        <span className="relative block"><input className="sf-input min-h-11 w-full rounded-lg border pl-3 pr-12" name="password" type={show ? 'text' : 'password'} autoComplete={creating ? 'new-password' : 'current-password'} required minLength={creating ? 12 : 1} maxLength={200} />
-          <button aria-label={show ? 'Hide password' : 'Show password'} aria-pressed={show} type="button" onClick={() => setShow(!show)} className="absolute right-0 top-0 grid size-11 place-items-center">{show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button>
-        </span>
-      </label>
-      {state.message ? <p role="alert" className="text-sm text-red-700">{state.message}</p> : null}
-      <button disabled={pending} className="sf-btn sf-btn-primary min-h-11" type="submit">{pending ? 'Saving…' : creating ? 'Create account' : 'Sign in'}</button>
-      <Link href={creating ? '/account/sign-in' : '/account/sign-up'} className="sf-link flex min-h-11 items-center justify-center">{creating ? 'Sign in' : 'Create account'}</Link>
-    </form>
+    <div className="mx-auto grid max-w-md gap-[var(--sf-space-lg)]">
+      <header className="grid gap-4">
+        <p className="sf-eyebrow">Account</p>
+        <h1 className="sf-display text-[length:var(--sf-text-display-s)]">{creating ? 'Create account' : 'Sign in'}</h1>
+      </header>
+      <form action={action} className="sf-card grid gap-5 p-[var(--sf-space-md)]">
+        {creating ? <label className="sf-field">Name<input className="sf-input" name="name" autoComplete="name" required maxLength={120} /></label> : null}
+        <label className="sf-field">Email<input className="sf-input" name="email" type="email" autoComplete="email" required maxLength={254} /></label>
+        <label className="sf-field">Password{creating ? <span className="font-normal text-[var(--sf-ink-3)]">12 characters minimum</span> : null}
+          <span className="relative block"><input className="sf-input !pr-12" name="password" type={show ? 'text' : 'password'} autoComplete={creating ? 'new-password' : 'current-password'} required minLength={creating ? 12 : 1} maxLength={200} />
+            <button aria-label={show ? 'Hide password' : 'Show password'} aria-pressed={show} type="button" onClick={() => setShow(!show)} className="absolute right-1 top-1/2 grid size-10 -translate-y-1/2 place-items-center rounded-full text-[var(--sf-ink-3)] hover:text-[var(--sf-ink)]">{show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button>
+          </span>
+        </label>
+        {state.message ? <p role="alert" className="sf-alert"><span className="sf-dot" data-tone="stop" aria-hidden="true" />{state.message}</p> : null}
+        <div className="sf-track sf-track-block">
+          <button disabled={pending} className="sf-pill sf-pill-primary" type="submit">{pending ? <><span className="sf-spinner" aria-hidden="true" />{creating ? 'Creating account' : 'Signing in'}</> : creating ? 'Create account' : 'Sign in'}</button>
+        </div>
+      </form>
+      <p className="text-center text-[length:var(--sf-text-sm)] text-[var(--sf-ink-3)]">
+        {creating ? 'Have an account? ' : 'New here? '}
+        <Link href={creating ? '/account/sign-in' : '/account/sign-up'} className="sf-link">{creating ? 'Sign in' : 'Create account'}</Link>
+      </p>
+    </div>
   </div>
 }

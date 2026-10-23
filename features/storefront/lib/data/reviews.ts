@@ -1,6 +1,7 @@
 "use server"
 
 import { getGraphQLEndpoint } from "../getBaseUrl"
+import { practiceSlug } from "./practice"
 
 export interface Review {
   id: string
@@ -25,7 +26,6 @@ export interface Review {
   }
 }
 
-function practiceSlug() { const value = process.env.MEDSPA_PRACTICE_SLUG; if (!value) throw new Error("MEDSPA_PRACTICE_SLUG is required for storefront reads"); return value }
 
 export async function getApprovedReviews(limit?: number): Promise<Review[]> {
   const query = `
@@ -61,7 +61,7 @@ export async function getApprovedReviews(limit?: number): Promise<Review[]> {
     const response = await fetch(await getGraphQLEndpoint(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, variables: { limit, practiceSlug: practiceSlug() } }),
+      body: JSON.stringify({ query, variables: { limit, practiceSlug: await practiceSlug() } }),
       cache: "no-store",
     })
 
@@ -112,7 +112,7 @@ export async function getReviewsForService(serviceId: string): Promise<Review[]>
     const response = await fetch(await getGraphQLEndpoint(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, variables: { serviceId, practiceSlug: practiceSlug() } }),
+      body: JSON.stringify({ query, variables: { serviceId, practiceSlug: await practiceSlug() } }),
       cache: "no-store",
     })
 
@@ -162,7 +162,7 @@ export async function getReviewsForProvider(providerId: string): Promise<Review[
     const response = await fetch(await getGraphQLEndpoint(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, variables: { providerId, practiceSlug: practiceSlug() } }),
+      body: JSON.stringify({ query, variables: { providerId, practiceSlug: await practiceSlug() } }),
       cache: "no-store",
     })
 

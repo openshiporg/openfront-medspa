@@ -8,6 +8,10 @@ import { ServiceCard } from "../components/ServiceCard"
 import { ProviderCard } from "../components/ProviderCard"
 import { ProviderProfilesUnavailable } from "../components/ProviderProfilesUnavailable"
 import { ServiceCatalogUnavailable } from "../components/ServiceCatalogUnavailable"
+import { Capsule, Lens, PillLink, Status, Track } from "../components/ui/primitives"
+import { getStorefrontImageSrc } from "../lib/images"
+import { openStatus, publishedHours } from "../lib/hours"
+import { pad2 } from "../lib/format"
 
 export async function generateMetadata(): Promise<Metadata> {
   return storefrontMetadata()
@@ -21,81 +25,132 @@ export async function HomePage() {
     getFeaturedProviders(3),
   ])
   const catalogLoaded = categoryResult.status === "loaded" && featuredResult.status === "loaded"
-  const categories = categoryResult.status === "loaded" ? categoryResult.data : []
+  const categories = categoryResult.status === "loaded" ? categoryResult.data.filter((category) => category.services.length) : []
   const services = featuredResult.status === "loaded" ? featuredResult.data : []
   const providers = providerResult.status === "loaded" ? providerResult.data : []
+  const canBook = catalogLoaded && providerResult.status === "loaded" && services.length > 0
+
+  const status = openStatus(brand.hours, brand.timezone)
+  const today = publishedHours(brand.hours, "short").find((day) => day.key === status?.todayKey)
+  const heroPortrait = providers.map((provider) => getStorefrontImageSrc(provider.photo)).find(Boolean) || null
+  const heroLens = services.map((service) => getStorefrontImageSrc(service.image)).find(Boolean) || null
+  const locality = [brand.city, brand.state].filter(Boolean).join(", ")
 
   return (
     <div>
-      <section className="border-b border-[var(--sf-rule)] bg-[var(--sf-paper-2)]">
-        <div className="sf-container sf-page-pad-lg grid gap-[var(--sf-space-xl)] lg:grid-cols-[1.1fr_0.9fr] lg:items-end">
-          <div>
-            <p className="sf-eyebrow">Public service catalog</p>
-            <h1 className="sf-display mt-4 max-w-[12ch] text-[var(--sf-text-display)]">{brand.name}</h1>
-            <p className="sf-lead mt-6">{catalogLoaded ? brand.description : "Public service details could not be confirmed."}</p>
-          </div>
-          <div className="space-y-4 border-l border-[var(--sf-rule)] pl-[var(--sf-space-md)]">
-            <p className="text-[var(--sf-text-sm)] leading-relaxed text-[var(--sf-ink-2)]">
-              Review published service names, duration, and price. An appointment request does not establish candidacy, provider qualifications, clinical authorization, expected results, or appointment availability.
-            </p>
-            <div className="flex flex-wrap gap-3">
-              <Link href="/services" className="sf-btn sf-btn-primary">View published services</Link>
-              {catalogLoaded && providerResult.status === "loaded" && services.length ? <Link href="/book" className="sf-btn sf-btn-secondary">Request an appointment</Link> : null}
+      <section className="sf-hero">
+        <div className="sf-container sf-hero-grid">
+          <div className="grid min-w-0 gap-6">
+            <div className="sf-title-line">
+              {locality ? <p className="sf-eyebrow">{locality}</p> : null}
+              {status ? <Status tone={status.open ? "ok" : "off"}>{status.label}</Status> : null}
             </div>
+            <h1 className="sf-display text-[length:var(--sf-text-display)]">{brand.name}</h1>
+            {categories.length ? (
+              <ul className="sf-chip-row" aria-label="Treatment categories">
+                {categories.slice(0, 6).map((category) => (
+                  <li key={category.id}><Link className="sf-chip" href={`/services#${category.id}`}>{category.name}</Link></li>
+                ))}
+              </ul>
+            ) : null}
+            <Track>
+              {canBook ? <PillLink href="/book" variant="primary">Book an appointment</PillLink> : null}
+              <PillLink href="/services">View treatments</PillLink>
+            </Track>
+            <dl className="sf-facts">
+              {catalogLoaded ? <div><dt className="sf-eyebrow">Treatments</dt><dd className="sf-num">{brand.serviceCount}</dd></div> : null}
+              {today ? <div><dt className="sf-eyebrow">Today</dt><dd className="sf-num">{today.hours}</dd></div> : null}
+              {brand.phone && brand.phoneHref ? <div><dt className="sf-eyebrow">Call</dt><dd><a className="sf-link sf-num" href={brand.phoneHref}>{brand.phone}</a></dd></div> : null}
+            </dl>
+          </div>
+          <div className="sf-hero-media hidden sm:block" aria-hidden="true">
+            <Capsule src={heroPortrait} />
+            <Lens src={heroLens} />
           </div>
         </div>
       </section>
 
       {!catalogLoaded ? (
-        <section className="sf-container sf-page-pad-lg">
+        <section className="sf-container sf-section">
           <ServiceCatalogUnavailable retryHref="/" />
         </section>
       ) : null}
 
-      {catalogLoaded ? (
-        <section className="sf-container sf-page-pad-lg">
-          <div className="mb-[var(--sf-space-lg)] flex items-end justify-between gap-4">
-            <div><p className="sf-eyebrow">Published now</p><h2 className="sf-display mt-3 text-[var(--sf-text-3xl)]">Services</h2></div>
-            <p className="text-[var(--sf-text-sm)] text-[var(--sf-ink-3)]">{brand.serviceCount} listed</p>
+      {catalogLoaded && services.length ? (
+        <section className="sf-container sf-section" aria-labelledby="featured-heading">
+          <div className="mb-[var(--sf-space-lg)] flex flex-wrap items-end justify-between gap-4">
+            <div className="grid gap-3">
+              <p className="sf-eyebrow">Treatments</p>
+              <h2 id="featured-heading" className="sf-display text-[length:var(--sf-text-3xl)]">Most booked</h2>
+            </div>
+            <Track><PillLink href="/services" size="sm">Full menu <ArrowUpRight /></PillLink></Track>
           </div>
-          {services.length ? (
-            <div className="grid gap-[var(--sf-space-md)] md:grid-cols-2">{services.map(service => <ServiceCard key={service.id} service={service} />)}</div>
-          ) : (
-            <p className="border border-dashed border-[var(--sf-rule)] p-[var(--sf-space-lg)] text-[var(--sf-ink-2)]">No public services are currently listed.</p>
-          )}
+          <div className="grid gap-[var(--sf-space-sm)] sm:grid-cols-2 lg:grid-cols-4">
+            {services.map((service) => <ServiceCard key={service.id} service={service} variant="feature" showCategory />)}
+          </div>
         </section>
       ) : null}
 
-      {catalogLoaded && categories.length ? (
-        <section className="border-y border-[var(--sf-rule)] bg-[var(--sf-paper-2)]">
-          <div className="sf-container sf-page-pad">
-            <p className="sf-eyebrow mb-4">Catalog categories</p>
-            <div className="divide-y divide-[var(--sf-rule)] border-y border-[var(--sf-rule)]">
-              {categories.map(category => (
-                <Link key={category.id} href={`/services#${category.id}`} className="flex items-center justify-between gap-4 py-4 text-[var(--sf-ink)]">
-                  <span className="sf-display text-[var(--sf-text-xl)]">{category.name}</span>
-                  <span className="flex items-center gap-2 text-[var(--sf-text-sm)] text-[var(--sf-ink-3)]">{category.services.length} listed <ArrowUpRight className="h-4 w-4" /></span>
+      {catalogLoaded && services.length === 0 ? (
+        <section className="sf-container sf-section">
+          <div role="status" className="sf-state"><h2 className="sf-display text-[length:var(--sf-text-xl)]">No treatments listed yet</h2></div>
+        </section>
+      ) : null}
+
+      {categories.length ? (
+        <section className="sf-band" aria-labelledby="menu-heading">
+          <div className="sf-container sf-section grid gap-[var(--sf-space-lg)] lg:grid-cols-[0.8fr_1.2fr]">
+            <div className="grid content-start gap-3">
+              <p className="sf-eyebrow">Menu</p>
+              <h2 id="menu-heading" className="sf-display text-[length:var(--sf-text-3xl)]">By concern</h2>
+            </div>
+            <nav aria-label="Treatment categories" className="sf-ledger">
+              {categories.map((category, index) => (
+                <Link key={category.id} href={`/services#${category.id}`} className="sf-ledger-row">
+                  <span className="sf-ledger-index">{pad2(index + 1)}</span>
+                  <span className="sf-ledger-name">{category.name}</span>
+                  <span className="sf-ledger-figures">
+                    <span className="sf-muted">{category.services.length} {category.services.length === 1 ? "treatment" : "treatments"}</span>
+                    <ArrowUpRight className="size-4 self-center text-[var(--sf-ink-3)]" aria-hidden="true" />
+                  </span>
                 </Link>
               ))}
-            </div>
+            </nav>
           </div>
         </section>
       ) : null}
 
       {providerResult.status === "unavailable" ? (
-        <section className="sf-container sf-page-pad-lg">
+        <section className="sf-container sf-section">
           <ProviderProfilesUnavailable retryHref="/" />
         </section>
       ) : providers.length ? (
-        <section className="sf-container sf-page-pad-lg">
-          <div className="mb-[var(--sf-space-lg)] max-w-2xl">
-            <p className="sf-eyebrow">Public provider profiles</p>
-            <h2 className="sf-display mt-3 text-[var(--sf-text-3xl)]">Provider preference</h2>
-            <p className="sf-lead mt-4">Profiles show names and associated published services only. They do not represent credential, authorization, candidacy, outcome, or availability determinations.</p>
+        <section className="sf-container sf-section" aria-labelledby="providers-heading">
+          <div className="mb-[var(--sf-space-lg)] flex flex-wrap items-end justify-between gap-4">
+            <div className="grid gap-3">
+              <p className="sf-eyebrow">Providers</p>
+              <h2 id="providers-heading" className="sf-display text-[length:var(--sf-text-3xl)]">Choose who treats you</h2>
+            </div>
+            <Track><PillLink href="/team" size="sm">All providers <ArrowUpRight /></PillLink></Track>
           </div>
-          <div className="grid gap-[var(--sf-space-lg)] md:grid-cols-2 lg:grid-cols-3">{providers.map(provider => <ProviderCard key={provider.id} provider={provider} />)}</div>
+          <div className="grid grid-cols-2 gap-x-[var(--sf-space-sm)] gap-y-[var(--sf-space-lg)] md:grid-cols-3 md:gap-x-[var(--sf-space-lg)]">
+            {providers.map((provider) => <ProviderCard key={provider.id} provider={provider} />)}
+          </div>
         </section>
       ) : null}
+
+      <section className="sf-band" aria-labelledby="visit-heading">
+        <div className="sf-container sf-section grid items-end gap-[var(--sf-space-lg)] md:grid-cols-[1fr_auto]">
+          <div className="grid gap-3">
+            <p className="sf-eyebrow">Visit</p>
+            <h2 id="visit-heading" className="sf-display text-[length:var(--sf-text-3xl)]">{brand.addressLine || brand.name}</h2>
+          </div>
+          <Track>
+            <PillLink href="/contact">Hours & directions</PillLink>
+            {canBook ? <PillLink href="/book" variant="primary">Book</PillLink> : null}
+          </Track>
+        </div>
+      </section>
     </div>
   )
 }

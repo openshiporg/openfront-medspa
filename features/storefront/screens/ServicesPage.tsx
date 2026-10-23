@@ -1,111 +1,65 @@
 import { Metadata } from "next"
-import Link from "next/link"
-import { Search } from "lucide-react"
 import { getServicesGroupedByCategory } from "../lib/data/services"
 import { ServiceCard } from "../components/ServiceCard"
 import { ServiceCatalogUnavailable } from "../components/ServiceCatalogUnavailable"
 import { PageIntro } from "../components/ui/PageIntro"
+import { PillLink, StateCard, Track } from "../components/ui/primitives"
 import { storefrontMetadata } from "../lib/data/brand"
 
 export async function generateMetadata(): Promise<Metadata> {
-  return storefrontMetadata("Services")
+  return storefrontMetadata("Treatments")
 }
 
 export async function ServicesPage() {
   const catalog = await getServicesGroupedByCategory()
   if (catalog.status === "unavailable") {
     return (
-      <div className="sf-page-pad">
-        <div className="sf-container">
-          <PageIntro
-            title="Published services"
-            description="A listing does not establish candidacy, authorization, outcomes, or appointment availability."
-            size="large"
-          />
-          <ServiceCatalogUnavailable retryHref="/services" />
-        </div>
+      <div className="sf-container sf-page-pad">
+        <PageIntro eyebrow="Menu" title="Treatments" />
+        <ServiceCatalogUnavailable retryHref="/services" />
       </div>
     )
   }
-  const categories = catalog.data
+  const categories = catalog.data.filter((category) => category.services.length)
+  const total = categories.reduce((sum, category) => sum + category.services.length, 0)
 
   return (
-    <div className="sf-page-pad">
-      <div className="sf-container">
-        <PageIntro
-          title="Published services"
-          description="A listing does not establish candidacy, authorization, outcomes, or appointment availability."
-          size="large"
-        />
+    <div className="sf-container sf-page-pad">
+      <PageIntro eyebrow={total ? `Menu · ${total} ${total === 1 ? "treatment" : "treatments"}` : "Menu"} title="Treatments" />
 
-        {categories.length > 0 ? (
-          <nav
-            className="mb-[var(--sf-space-lg)] flex gap-2 overflow-x-auto pb-2 -mx-1 px-1"
-            aria-label="Service categories"
-          >
-            {categories.map((category) => (
-              <a
-                key={category.id}
-                href={`#${category.id}`}
-                className="sf-btn sf-btn-secondary !min-h-11 whitespace-nowrap shrink-0"
-              >
-                {category.name}
-              </a>
-            ))}
+      {categories.length === 0 ? (
+        <StateCard title="No treatments listed yet" action={<Track><PillLink href="/contact">Contact the practice</PillLink></Track>} />
+      ) : (
+        <div className="grid gap-[var(--sf-space-xl)] lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-[var(--sf-space-2xl)]">
+          <nav aria-label="Treatment categories" className="lg:sticky lg:top-28 lg:self-start">
+            <p className="sf-eyebrow mb-3 hidden lg:block">Jump to</p>
+            <ul className="sf-chip-row sf-jump-list">
+              {categories.map((category) => (
+                <li key={category.id}>
+                  <a href={`#${category.id}`} className="sf-chip">
+                    {category.name}<span className="sf-num text-[length:var(--sf-text-xs)] text-[var(--sf-ink-3)]">{category.services.length}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
           </nav>
-        ) : null}
 
-        {categories.length === 0 ? (
-          <div className="text-center py-[var(--sf-space-2xl)] border border-[var(--sf-rule)]">
-            <Search className="h-8 w-8 mx-auto mb-4 text-[var(--sf-ink-3)]" />
-            <h2 className="sf-display text-[var(--sf-text-2xl)] mb-2">Menu in preparation</h2>
-            <p className="sf-lead mx-auto mb-6">Services will appear here once configured.</p>
-            <Link href="/" className="sf-btn sf-btn-primary">
-              Back home
-            </Link>
-          </div>
-        ) : (
-          <div className="space-y-[var(--sf-space-2xl)]">
+          <div className="grid min-w-0 gap-[var(--sf-space-xl)]">
             {categories.map((category) => (
-              <section key={category.id} id={category.id} className="scroll-mt-24">
-                <div className="flex flex-col gap-3 mb-[var(--sf-space-md)] pb-[var(--sf-space-sm)] border-b border-[var(--sf-rule)] lg:flex-row lg:items-end lg:justify-between">
-                  <div>
-                    <h2 className="sf-display text-[var(--sf-text-3xl)]">{category.name}</h2>
-                    <p className="text-[var(--sf-text-sm)] text-[var(--sf-ink-3)] mt-1">
-                      {category.services?.length || 0}{" "}
-                      {(category.services?.length || 0) === 1 ? "service" : "services"}
-                    </p>
-                  </div>
-                  {category.description ? (
-                    <p className="sf-lead max-w-md">{category.description}</p>
-                  ) : null}
+              <section key={category.id} id={category.id} className="scroll-mt-24" aria-labelledby={`${category.id}-heading`}>
+                <div className="mb-4 flex items-baseline justify-between gap-4">
+                  <h2 id={`${category.id}-heading`} className="sf-display text-[length:var(--sf-text-3xl)]">{category.name}</h2>
+                  <span className="sf-eyebrow hidden sm:inline">Duration · Price</span>
                 </div>
-
-                {category.services && category.services.length > 0 ? (
-                  <div className="grid gap-[var(--sf-space-md)] md:grid-cols-2">
-                    {category.services.map((service) => (
-                      <ServiceCard key={service.id} service={service} variant="compact" />
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-[var(--sf-text-sm)] text-[var(--sf-ink-3)] py-8 text-center border border-dashed border-[var(--sf-rule)]">
-                    No services in this category yet.
-                  </p>
-                )}
+                <div className="sf-ledger">
+                  {category.services.map((service, index) => <ServiceCard key={service.id} service={service} index={index} />)}
+                </div>
               </section>
             ))}
+            <Track><PillLink href="/book" variant="primary">Book an appointment</PillLink></Track>
           </div>
-        )}
-
-        {categories.length > 0 ? (
-          <div className="mt-[var(--sf-space-2xl)] pt-[var(--sf-space-lg)] border-t border-[var(--sf-rule)] flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-
-            <Link href="/book" className="sf-btn sf-btn-primary shrink-0">
-              Request an appointment
-            </Link>
-          </div>
-        ) : null}
-      </div>
+        </div>
+      )}
     </div>
   )
 }

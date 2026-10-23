@@ -1,36 +1,43 @@
 import localFont from "next/font/local"
 import type { CSSProperties } from "react"
 import { Metadata } from "next"
-import Link from "next/link"
 import Nav from "@/features/storefront/modules/layout/templates/nav"
 import Footer from "@/features/storefront/modules/layout/templates/footer"
 import { getStorefrontBrand } from "@/features/storefront/lib/data/brand"
+import { PillLink, Track } from "@/features/storefront/components/ui/primitives"
 import "../styles/storefront.css"
 
 const display = localFont({ src: "../../../public/fonts/cormorant-garamond.woff2", variable: "--font-sf-display", display: "swap" })
-const body = localFont({ src: "../../../public/fonts/dm-sans.woff2", variable: "--font-sf-body", display: "swap" })
+const body = localFont({ src: "../../../public/fonts/geist.woff2", variable: "--font-sf-body", display: "swap" })
+const mono = localFont({ src: "../../../public/fonts/geist-mono.woff2", variable: "--font-sf-mono", display: "swap" })
 
 type StorefrontStyle = CSSProperties & Record<`--sf-${string}`, string>
 
+/** The practice's logo hue drives the single storefront accent. */
 function theme(hue: number): StorefrontStyle {
   return {
-    "--sf-accent": `oklch(41% 0.095 ${hue})`,
-    "--sf-accent-soft": `oklch(94% 0.028 ${hue})`,
-    "--sf-focus": `oklch(35% 0.09 ${hue})`,
+    "--sf-accent": `oklch(47% 0.085 ${hue})`,
+    "--sf-accent-ink": `oklch(98.5% 0.006 ${hue})`,
+    "--sf-accent-soft": `oklch(95% 0.024 ${hue})`,
+    "--sf-accent-glow": `oklch(87% 0.06 ${hue})`,
+    "--sf-focus": `oklch(42% 0.09 ${hue})`,
   }
 }
+
+const fonts = `${display.variable} ${body.variable} ${mono.variable}`
 
 export async function MainLayout({ children }: { children: React.ReactNode }) {
   const brand = await getStorefrontBrand()
 
   if (!brand.configured) {
     return (
-      <main className={`storefront ${display.variable} ${body.variable} min-h-screen`} style={theme(220)}>
+      <main className={`storefront ${fonts} min-h-screen`} style={theme(300)}>
         <div className="sf-container-narrow flex min-h-screen items-center justify-center py-16">
-          <section className="sf-card w-full p-[var(--sf-space-lg)] text-center" aria-labelledby="storefront-status">
-            <p className="sf-eyebrow mb-3">Storefront</p>
-            <h1 id="storefront-status" className="sf-display text-[var(--sf-text-2xl)]">Not configured</h1>
-            <p className="sf-lead mx-auto mt-4">Public identity, location, catalog, and theme are hidden until an authorized practice manager publishes complete settings.</p>
+          <section className="grid w-full justify-items-center gap-5 text-center" aria-labelledby="storefront-status">
+            <span className="sf-lens sf-dew block w-28" aria-hidden="true" />
+            <span className="sf-status"><span className="sf-dot" aria-hidden="true" />Storefront</span>
+            <h1 id="storefront-status" className="sf-display text-[length:var(--sf-text-display-s)]">Not published yet</h1>
+            <Track><PillLink href="/dashboard">Open dashboard</PillLink></Track>
           </section>
         </div>
       </main>
@@ -38,12 +45,9 @@ export async function MainLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div
-      className={`storefront ${display.variable} ${body.variable} min-h-screen flex flex-col`}
-      style={theme(brand.logoHue)}
-    >
+    <div className={`storefront ${fonts} flex min-h-screen flex-col`} style={theme(brand.logoHue)}>
       <Nav brandName={brand.name} logoSvg={brand.logoSvg} logoHue={brand.logoHue} />
-      <main className="flex-1 min-w-0">{children}</main>
+      <main className="min-w-0 flex-1">{children}</main>
       <Footer brand={brand} />
     </div>
   )
@@ -56,11 +60,14 @@ export const MainNotFoundMetadata: Metadata = {
 
 export function MainNotFound() {
   return (
-    <div className="sf-container sf-page-pad-lg flex flex-col items-center justify-center text-center min-h-[60vh]">
-      <p className="sf-eyebrow mb-4">404</p>
-      <h1 className="sf-display text-[var(--sf-text-display-s)] mb-4">This page isn&apos;t here.</h1>
-      <p className="sf-lead mx-auto mb-8">The route may have moved, or the link is out of date.</p>
-      <Link href="/" className="sf-btn sf-btn-primary">Return home</Link>
+    <div className="sf-container sf-page-pad flex min-h-[60vh] flex-col items-center justify-center gap-5 text-center">
+      <span className="sf-lens sf-dew block w-24" aria-hidden="true" />
+      <p className="sf-eyebrow">404</p>
+      <h1 className="sf-display text-[length:var(--sf-text-display-s)]">Page not found</h1>
+      <Track>
+        <PillLink href="/">Home</PillLink>
+        <PillLink href="/services" variant="primary">Treatments</PillLink>
+      </Track>
     </div>
   )
 }

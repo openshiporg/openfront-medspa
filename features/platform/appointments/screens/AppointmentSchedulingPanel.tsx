@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { getAppointmentSchedule, sendAppointmentTransition } from '../actions/appointmentSchedule';
 import type { AppointmentScheduleReadback, AppointmentTransitionInput } from '../types/appointmentSchedule';
 import { readTransitionIntent, retainTransitionIntent, resolveTransitionIntent, type TransitionIntent } from '../lib/transitionIntent';
+import { fieldLabelClass, inputClass, pillClass, trackClass } from '@/features/platform/components/pill';
 
 /** One tab-private original intent, independent of selected record, filters, form edits or reload. */
 export function AppointmentSchedulingPanel({ appointmentId, customerOnly = false }: { appointmentId: string; customerOnly?: boolean }) {
@@ -30,10 +31,10 @@ export function AppointmentSchedulingPanel({ appointmentId, customerOnly = false
         if (matches && saved) current = await getAppointmentSchedule(appointmentId, saved.original);
         if (!alive) return;
         setIntent(matches ? saved : null); setData(current); setBlocked(!current || Boolean(saved && !matches));
-        setMessage(saved && !matches ? 'An earlier update is pending for another appointment or account. Recover it from its original account and appointment before making another update.'
-          : current ? matches ? 'Update pending. Refresh status or retry the original update.' : 'Scheduling loaded.' : 'Scheduling is unavailable. Retry without replacing a pending update.');
+        setMessage(saved && !matches ? 'An earlier update is pending for another appointment or account. Recover it there first.'
+          : current ? matches ? 'Update pending. Refresh status or retry the original update.' : '' : 'Scheduling is unavailable. Retry without replacing a pending update.');
       } catch {
-        if (alive) { setBlocked(true); setMessage('Private intent storage is unavailable or malformed. No NEW command may be sent; do not clear/rekey uncertain evidence.'); }
+        if (alive) { setBlocked(true); setMessage('Saved update state is unreadable. New updates are blocked in this tab.'); }
       } finally { if (alive) setBusy(false); }
     })();
     return () => { alive = false; };
@@ -82,18 +83,21 @@ export function AppointmentSchedulingPanel({ appointmentId, customerOnly = false
     } catch (error) { setBlocked(true); setMessage(error instanceof Error ? error.message : 'Storage or acknowledgement unavailable; no NEW command is allowed.'); }
     finally { setBusy(false); }
   }
-  return <section className="grid gap-3 rounded border bg-background p-4" aria-label="Controlled appointment scheduling">
-    <h2 className="font-semibold">{customerOnly ? 'Cancel request' : 'Scheduling'}</h2>
-    <p role="status" className="text-sm">{message}</p>
-    {data && <p className="text-sm">Appointment {data.scope.appointmentId} · {data.status} · revision {data.revision} · {new Date(data.startTime).toLocaleString('en-US', { timeZone: data.timezone })} ({data.timezone})</p>}
+  const tone = data ? ({ pending: 'bg-amber-500', confirmed: 'bg-emerald-500', in_progress: 'bg-blue-500', completed: 'bg-zinc-400', cancelled: 'bg-rose-500', no_show: 'bg-orange-500' } as Record<string, string>)[data.status] || 'bg-zinc-400' : 'bg-zinc-300';
+  return <section className="grid min-w-0 gap-4 rounded-2xl border bg-background p-4 text-foreground md:p-5" aria-label="Controlled appointment scheduling">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <h2 className="text-sm font-semibold">{customerOnly ? 'Cancel request' : 'Scheduling'}</h2>
+      {data && <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><span aria-hidden="true" className={`size-2 rounded-full ${tone}`} />{data.status.replaceAll('_', ' ')}</span>}
+    </div>
+    {data && <p className="text-sm text-muted-foreground">{new Date(data.startTime).toLocaleString('en-US', { timeZone: data.timezone, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} ({data.timezone}) · revision {data.revision}</p>}
+    <p role="status" className="text-sm empty:hidden">{message}</p>
     <form onSubmit={submit} className="grid gap-3">
-      <fieldset disabled={busy || blocked || Boolean(intent) || !data?.allowedTransitions.length} className="grid gap-2 sm:grid-cols-2">
-        <label className="text-sm">Action<select name="status" className="mt-1 min-h-11 w-full rounded border bg-background p-2">{data?.allowedTransitions.map(status => <option key={status} value={status}>{{ confirmed: 'Confirm appointment only', in_progress: 'Check in appointment only — not treatment start', cancelled: 'Cancel and release reservations', no_show: 'Record no-show and release reservations' }[status]}</option>)}</select></label>
-        <label className="text-sm">Administrative reason (no clinical narrative)<input name="reason" className="mt-1 min-h-11 w-full rounded border bg-background p-2" maxLength={1000} required /></label>
+      <fieldset disabled={busy || blocked || Boolean(intent) || !data?.allowedTransitions.length} className="grid min-w-0 gap-3 disabled:opacity-70 sm:grid-cols-2">
+        <label className={fieldLabelClass}>Action<select name="status" className={inputClass}>{data?.allowedTransitions.map(status => <option key={status} value={status}>{{ confirmed: 'Confirm appointment', in_progress: 'Check in client', cancelled: 'Cancel and release reservations', no_show: 'Record no-show and release reservations' }[status]}</option>)}</select></label>
+        <label className={fieldLabelClass}>Administrative reason<input name="reason" className={inputClass} maxLength={1000} required /></label>
       </fieldset>
-      <div className="flex flex-wrap gap-2"><button className="min-h-11 rounded border px-3 py-2 text-sm disabled:opacity-50" disabled={busy || blocked || !data || (!intent && !data.allowedTransitions.length)}>{busy ? 'Working…' : intent ? 'Retry pending update' : 'Save status'}</button>{intent && <button type="button" className="min-h-11 rounded border px-3 py-2 text-sm" disabled={busy} onClick={retrieve}>Refresh update status</button>}</div>
+      <div className={`${trackClass} w-fit flex-wrap`}><button className={pillClass('primary')} disabled={busy || blocked || !data || (!intent && !data.allowedTransitions.length)}>{busy ? 'Working…' : intent ? 'Retry pending update' : 'Save status'}</button>{intent && <button type="button" className={pillClass('quiet')} disabled={busy} onClick={retrieve}>Refresh update status</button>}</div>
     </form>
-    {data && !data.allowedTransitions.length && !intent && <p className="text-sm">This simple path is unavailable for documented, allocated or terminal encounters. Original evidence is preserved; use the reviewed correction workflow.</p>}
-
+    {data && !data.allowedTransitions.length && !intent && <p className="text-sm text-muted-foreground">No status change available for this appointment.</p>}
   </section>;
 }

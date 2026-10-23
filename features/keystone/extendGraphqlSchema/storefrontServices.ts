@@ -1,10 +1,11 @@
 import { graphql } from '@keystone-6/core';
 import type { Context } from '.keystone/types';
+import { storefrontPracticeSlug } from '../lib/storefrontPractice';
 
 /** Backend-owned public presentation, not permission to traverse raw relationships. */
 export async function readStorefrontServices(context: Context, ids: readonly string[]) {
   if (ids.length > 100 || ids.some(id => typeof id !== 'string' || !id || id.length > 200)) throw new Error('Invalid service selection');
-  const slug = process.env.MEDSPA_PRACTICE_SLUG?.trim();
+  const slug = await storefrontPracticeSlug(context);
   if (!slug) throw new Error('Storefront practice is not configured');
   const practices = await context.sudo().query.Practice.findMany({
     where: { slug: { equals: slug }, isActive: { equals: true } }, take: 2,

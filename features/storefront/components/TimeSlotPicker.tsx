@@ -1,9 +1,10 @@
 "use client"
 
-import { Calendar } from "@/components/ui/calendar"
-import { addDays, isBefore, startOfDay } from "date-fns"
-import { Clock } from "lucide-react"
+import { useMemo, useState } from "react"
+import { addDays, isSameDay, startOfDay } from "date-fns"
+import { ChevronLeft, ChevronRight } from "lucide-react"
 import type { BookingSlot } from "../lib/data/availability"
+import { Dot } from "./ui/primitives"
 
 interface TimeSlotPickerProps {
   selectedDate: Date | undefined
@@ -14,67 +15,94 @@ interface TimeSlotPickerProps {
   loadingSlots?: boolean
 }
 
-export function TimeSlotPicker({
-  selectedDate,
-  onDateSelect,
-  selectedTime,
-  onTimeSelect,
-  availableSlots,
-  loadingSlots = false,
-}: TimeSlotPickerProps) {
-  const today = startOfDay(new Date())
-  const maxDate = addDays(today, 90)
+const WINDOW = 14
+const HORIZON_DAYS = 90
 
-  const disabledDates = (date: Date) => isBefore(date, today) || date > maxDate
+function slotHour(label: string): number | null {
+  const match = label.match(/(\d{1,2}):(\d{2})\s*([AP]M)?/i)
+  if (!match) return null
+  let hour = Number(match[1]) % 12
+  if (!match[3]) hour = Number(match[1])
+  else if (match[3].toUpperCase() === "PM") hour += 12
+  return hour
+}
+
+function groupSlots(slots: BookingSlot[]) {
+  const groups: Array<{ label: string; slots: BookingSlot[] }> = [
+    { label: "Morning", slots: [] },
+    { label: "Afternoon", slots: [] },
+    { label: "Evening", slots: [] },
+  ]
+  for (const slot of slots) {
+    const hour = slotHour(slot.label)
+    const index = hour === null || hour < 12 ? 0 : hour < 17 ? 1 : 2
+    groups[index].slots.push(slot)
+  }
+  return groups.filter((group) => group.slots.length)
+}
+
+export function TimeSlotPicker({ selectedDate, onDateSelect, selectedTime, onTimeSelect, availableSlots, loadingSlots = false }: TimeSlotPickerProps) {
+  const today = useMemo(() => startOfDay(new Date()), [])
+  const [page, setPage] = useState(0)
+  const lastPage = Math.floor(HORIZON_DAYS / WINDOW)
+  const days = Array.from({ length: WINDOW }, (_, index) => addDays(today, page * WINDOW + index)).filter((day) => day <= addDays(today, HORIZON_DAYS))
+  const monthLabel = days.length ? days[0].toLocaleDateString("en-US", { month: "long", year: "numeric" }) : ""
+  const groups = groupSlots(availableSlots)
 
   return (
-    <div className="grid gap-[var(--sf-space-md)] lg:grid-cols-2">
-      <div className="min-w-0 p-0 sm:sf-card sm:p-[var(--sf-space-md)]">
-        <h3 className="sf-display text-[var(--sf-text-lg)] mb-4">Select a date</h3>
-        <Calendar
-          mode="single"
-          selected={selectedDate}
-          onSelect={onDateSelect}
-          disabled={disabledDates}
-          className="rounded-none p-0"
-        />
+    <div className="grid gap-[var(--sf-space-md)]">
+      <div className="grid gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <p className="sf-eyebrow" aria-live="polite">{monthLabel}</p>
+          <div className="sf-track" role="group" aria-label="Change dates">
+            <button type="button" className="sf-pill sf-pill-sm sf-pill-icon" disabled={page === 0} onClick={() => setPage(page - 1)} aria-label="Earlier dates"><ChevronLeft /></button>
+            <button type="button" className="sf-pill sf-pill-sm sf-pill-icon" disabled={page >= lastPage} onClick={() => setPage(page + 1)} aria-label="Later dates"><ChevronRight /></button>
+          </div>
+        </div>
+        <div className="sf-date-strip" role="group" aria-label="Date">
+          {days.map((day) => {
+            const selected = selectedDate ? isSameDay(selectedDate, day) : false
+            return (
+              <button
+                key={day.toISOString()}
+                type="button"
+                className="sf-date"
+                aria-pressed={selected}
+                aria-label={day.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+                onClick={() => onDateSelect(day)}
+              >
+                <span className="sf-eyebrow sf-muted">{day.toLocaleDateString("en-US", { weekday: "short" })}</span>
+                <span className="sf-date-day">{day.getDate()}</span>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
-      <div className="sf-card p-[var(--sf-space-md)]">
-        <h3 className="sf-display text-[var(--sf-text-lg)] mb-4">Select a time</h3>
+      <div className="sf-well min-h-40 p-[var(--sf-space-md)]">
         {!selectedDate ? (
-          <div className="flex items-center justify-center h-56 text-[var(--sf-text-sm)] text-[var(--sf-ink-3)]">
-            Choose a date first
-          </div>
+          <p className="text-[length:var(--sf-text-sm)] text-[var(--sf-ink-3)]">Choose a date</p>
         ) : loadingSlots ? (
-          <div role="status" className="flex items-center justify-center gap-3 h-56">
-            <div aria-hidden="true" className="h-8 w-8 animate-spin border-b-2 border-[var(--sf-ink)]" /><span>Loading available times…</span>
-          </div>
-        ) : availableSlots.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-56 text-[var(--sf-text-sm)] text-[var(--sf-ink-3)] text-center">
-            <Clock className="h-10 w-10 mb-3 opacity-40" />
-            <p>No times available. Try another date.</p><a className="sf-btn sf-btn-secondary mt-3" href="/contact">Contact the practice</a>
+          <p role="status" className="flex items-center gap-3 text-[length:var(--sf-text-sm)] text-[var(--sf-ink-2)]"><span className="sf-spinner" aria-hidden="true" />Loading times</p>
+        ) : groups.length === 0 ? (
+          <div className="grid justify-items-start gap-3">
+            <p role="status" className="flex items-center gap-2 text-[length:var(--sf-text-sm)] text-[var(--sf-ink-2)]"><Dot tone="off" />No openings on this date</p>
+            <div className="sf-track"><a className="sf-pill sf-pill-sm" href="/contact">Contact the practice</a></div>
           </div>
         ) : (
-          <div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-64 overflow-y-auto">
-            {availableSlots.map((slot) => (
-              <button
-                key={slot.startTime}
-                type="button"
-                aria-pressed={selectedTime === slot.startTime}
-                onClick={() => onTimeSelect(slot.startTime)}
-                className={`min-h-[2.75rem] px-2 text-[var(--sf-text-sm)] font-medium border transition-colors ${
-                  selectedTime === slot.startTime
-                    ? "border-[var(--sf-ink)] bg-[var(--sf-ink)] text-[var(--sf-accent-ink)]"
-                    : "border-[var(--sf-rule)] hover:border-[var(--sf-ink)]"
-                }`}
-              >
-                {slot.label}
-              </button>
+          <div className="grid gap-5">
+            {groups.map((group) => (
+              <div key={group.label} className="grid gap-2.5">
+                <p className="sf-eyebrow">{group.label}</p>
+                <div className="sf-slot-grid" role="group" aria-label={`${group.label} times`}>
+                  {group.slots.map((slot) => (
+                    <button key={slot.startTime} type="button" className="sf-slot" aria-pressed={selectedTime === slot.startTime} onClick={() => onTimeSelect(slot.startTime)}>
+                      {slot.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
-            </div>
           </div>
         )}
       </div>

@@ -3,6 +3,7 @@
 import { gql } from "graphql-request"
 import { cache } from "react"
 import { medspaClient } from "../config"
+import { practiceSlug } from "./practice"
 import { readServiceCatalog, type ServiceCatalogResult } from "./serviceCatalogResult"
 
 export interface StorefrontImage {
@@ -36,12 +37,6 @@ type ServiceWithScopedCategory = ServiceRead & { category: Service["category"] }
 
 function toStorefrontService(service: Service): Service {
   return { ...service, basePrice: service.basePrice / 100 }
-}
-
-function practiceSlug() {
-  const value = process.env.MEDSPA_PRACTICE_SLUG?.trim()
-  if (!value) throw new Error("MEDSPA_PRACTICE_SLUG is required for storefront reads")
-  return value
 }
 
 const PUBLISHED_PRACTICE = `{
@@ -105,7 +100,7 @@ export const getServicesGroupedByCategory = cache(async function (): Promise<Ser
     const data = await medspaClient.request<{
       serviceCategories: Array<{ id: string; name: string; services: ServiceRead[] }>
       uncategorizedServices: ServiceRead[]
-    }>(query, { practiceSlug: practiceSlug() })
+    }>(query, { practiceSlug: await practiceSlug() })
     const groupedCategories = data.serviceCategories.filter(category => category.services?.length > 0)
     const categorizedReads: ServiceWithScopedCategory[] = groupedCategories.flatMap(category =>
       category.services.map(service => ({
@@ -150,7 +145,7 @@ export const getAllServices = cache(async function (): Promise<ServiceCatalogRes
           take: 100
         ) { ...StorefrontServiceFields }
       }
-    `, { practiceSlug: practiceSlug() })
+    `, { practiceSlug: await practiceSlug() })
     return (await publicPresentation(data.services)).map(toStorefrontService)
   })
 })
@@ -165,7 +160,7 @@ export const getServiceById = cache(async function (id: string): Promise<Service
           take: 1
         ) { ...StorefrontServiceFields }
       }
-    `, { id, practiceSlug: practiceSlug() })
+    `, { id, practiceSlug: await practiceSlug() })
     if (!data.services[0]) return null
     const [service] = await publicPresentation([data.services[0]])
     return toStorefrontService(service)
@@ -184,7 +179,7 @@ export const getFeaturedServices = cache(async function (limit = 4): Promise<Ser
           orderBy: { name: asc }
         ) { ...StorefrontServiceFields }
       }
-    `, { take, practiceSlug: practiceSlug() })
+    `, { take, practiceSlug: await practiceSlug() })
     return (await publicPresentation(data.services)).map(toStorefrontService)
   })
 })

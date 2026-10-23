@@ -3,6 +3,7 @@ import type { Context } from '.keystone/types'
 import { serializableWorkflow } from './serializableWorkflow'
 import { withinCustomerCreation } from '../customerCreation'
 import { assertOwnedLocalDatabase } from '../localRuntime'
+import { storefrontPracticeSlug } from '../lib/storefrontPractice'
 
 const result = graphql.object<{ success: boolean; error: string | null }>()({
   name: 'CustomerRegistrationResult',
@@ -16,7 +17,7 @@ export const registerCustomer = graphql.field({
     const name = args.name.trim(), email = args.email.trim().toLowerCase()
     if (context.session?.itemId || !name || name.length > 120 || /[\u0000-\u001f\u007f]/.test(name) || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || args.password.length < 12 || args.password.length > 200) return { success: false, error: 'Enter a name, email and password of 12–200 characters.' }
     try {
-      const slug = process.env.MEDSPA_PRACTICE_SLUG
+      const slug = await storefrontPracticeSlug(context)
       if (!slug) throw new Error('Storefront is unavailable')
       await serializableWorkflow(context, 'medspa-customer-registration', [`identity:${email}`], async tx => {
         const sudo = tx.sudo()

@@ -1,38 +1,115 @@
 import Link from "next/link"
-import { Calendar, LockKeyhole, Phone, ReceiptText } from "lucide-react"
 import { getClientPortalAction } from "../account/actions"
 import { signOutCustomer } from '../account/auth'
 import { AppointmentSchedulingPanel } from '@/features/platform/appointments/screens/AppointmentSchedulingPanel'
+import { PillLink, StateCard, Status, Track } from "../components/ui/primitives"
+import { appointmentStatus } from "../lib/format"
+import type { ClientPortalProjection } from "../account/clientPortalResult"
+
+function SignOut({ quiet = false }: { quiet?: boolean }) {
+  return <form action={signOutCustomer}><button className={`sf-pill ${quiet ? "sf-pill-quiet" : ""}`}>Sign out</button></form>
+}
+
+function AppointmentItem({ appointment }: { appointment: ClientPortalProjection["appointments"][number] }) {
+  const when = new Date(appointment.startTime)
+  const status = appointmentStatus[appointment.status] || { label: appointment.status, tone: "off" as const }
+  const title = appointment.lineItems?.map((line) => line.serviceTitle).filter(Boolean).join(", ") || "Appointment"
+  const changeable = ['pending', 'confirmed', 'cancelled', 'no_show'].includes(appointment.status)
+  return (
+    <li className="sf-card grid gap-4 p-[var(--sf-space-md)]">
+      <div className="grid gap-2">
+        <div className="sf-title-line">
+          <h3 className="sf-display text-[length:var(--sf-text-xl)] leading-tight">{title}</h3>
+          <Status tone={status.tone}>{status.label}</Status>
+        </div>
+        <p className="sf-num text-[length:var(--sf-text-sm)] text-[var(--sf-ink-2)]">
+          {when.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })} · {when.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+        </p>
+      </div>
+      {changeable ? <AppointmentSchedulingPanel appointmentId={appointment.id} customerOnly /> : null}
+    </li>
+  )
+}
 
 export async function AccountPage() {
   const result = await getClientPortalAction()
   if (result.status === "unavailable") return (
-    <div className="sf-page-pad"><div className="sf-container-narrow"><section role="alert" className="sf-card p-[var(--sf-space-lg)] text-center">
-      <h1 className="sf-display mb-3 text-[var(--sf-text-2xl)]">Client portal unavailable</h1>
-      <p className="sf-lead mx-auto mb-7">Your account could not be loaded. Try again or sign out to switch accounts.</p>
-      <form action={signOutCustomer}><button className="sf-btn sf-btn-secondary mb-4 min-h-11">Sign out</button></form>
-      <div className="flex flex-col justify-center gap-3 sm:flex-row"><a href="/account" className="sf-btn sf-btn-primary">Retry portal</a><Link href="/contact" className="sf-btn sf-btn-secondary"><Phone className="h-4 w-4" />Contact the practice</Link></div>
-    </section></div></div>
+    <div className="sf-container-narrow sf-page-pad">
+      <StateCard alert title="Account couldn't load" action={<Track><a href="/account" className="sf-pill sf-pill-primary">Try again</a><Link href="/contact" className="sf-pill">Contact</Link><SignOut quiet /></Track>} />
+    </div>
   )
   if (result.status !== "loaded") return (
-    <div className="sf-page-pad"><div className="sf-container-narrow"><div className="sf-card p-[var(--sf-space-lg)] text-center">
-      <LockKeyhole className="mx-auto mb-5 h-12 w-12 text-[var(--sf-accent)]" />
-      <h1 className="sf-display mb-3 text-[var(--sf-text-2xl)]">Account</h1>
-      <p className="sf-lead mx-auto mb-7">{result.status === "unauthenticated" ? "Sign in to view your appointments." : "No client profile is linked to this account."}</p>
-      {result.status === 'unlinked' ? <form action={signOutCustomer}><button className="sf-btn sf-btn-secondary mb-4 min-h-11">Sign out</button></form> : null}
-      <div className="flex flex-col justify-center gap-3 sm:flex-row"><Link href="/account/sign-in" className="sf-btn sf-btn-primary">Sign in</Link><Link href="/account/sign-up" className="sf-btn sf-btn-secondary">Create account</Link></div>
-    </div></div></div>
+    <div className="sf-container-narrow sf-page-pad">
+      <header className="mb-[var(--sf-space-lg)] grid gap-4">
+        <p className="sf-eyebrow">Account</p>
+        <h1 className="sf-display text-[length:var(--sf-text-display-s)]">{result.status === "unauthenticated" ? "Your appointments" : "No client profile"}</h1>
+      </header>
+      {result.status === "unauthenticated" ? (
+        <Track><PillLink href="/account/sign-in" variant="primary">Sign in</PillLink><PillLink href="/account/sign-up">Create account</PillLink></Track>
+      ) : (
+        <StateCard title="This sign-in isn't linked to a client" action={<Track><Link href="/contact" className="sf-pill">Contact the practice</Link><SignOut quiet /></Track>} />
+      )}
+    </div>
   )
-  const portal = result.portal
-  if (!portal.client) return <div role="alert" className="sf-page-pad">Client identity unavailable. No private records or new command are shown; retry verified portal access.</div>
-  return (
-    <div className="sf-page-pad"><div className="sf-container-narrow space-y-6">
-      <header><p className="sf-kicker">Account</p><h1 className="sf-display text-[var(--sf-text-2xl)]">Welcome, {portal.client.user?.name || "client"}</h1></header>
 
-      {portal.followUps.length > 0 && <section className="sf-card p-5"><h2 className="sf-display mb-4 text-xl">Follow-up</h2><ul className="space-y-3">{portal.followUps.map(task=><li key={task.id} className="border-b border-[var(--sf-rule)] pb-3"><div className="flex justify-between"><strong>{task.title}</strong><span>{task.status}</span></div><p>{task.instructions}</p><small>Due {new Date(task.dueAt).toLocaleDateString()}</small></li>)}</ul></section>}
-      <section className="sf-card p-5"><h2 className="sf-display mb-4 text-xl">Visits and receipts</h2>{portal.appointments.length ? <ul className="space-y-3">{portal.appointments.map(appointment=><li key={appointment.id} className="grid gap-3 border-b border-[var(--sf-rule)] pb-3"><div><strong>{new Date(appointment.startTime).toLocaleDateString()}</strong><p>{appointment.lineItems?.map(line=>line.serviceTitle).join(", ") || "Scheduled visit"}</p></div><span>{appointment.status}</span>{['pending', 'confirmed', 'cancelled', 'no_show'].includes(appointment.status) && <AppointmentSchedulingPanel appointmentId={appointment.id} customerOnly />}</li>)}</ul>:<p>No appointment records are shown.</p>}</section>
-      <form action={signOutCustomer}><button className="sf-btn sf-btn-secondary min-h-11">Sign out</button></form>
-      <div className="flex gap-3"><Link href="/book" className="sf-btn sf-btn-primary"><Calendar className="h-4 w-4" />Book</Link><Link href="/contact" className="sf-btn sf-btn-secondary"><ReceiptText className="h-4 w-4" />Records help</Link></div>
-    </div></div>
+  const portal = result.portal
+  if (!portal.client) return (
+    <div className="sf-container-narrow sf-page-pad">
+      <StateCard alert title="Client profile unavailable" action={<Track><a href="/account" className="sf-pill">Try again</a></Track>} />
+    </div>
+  )
+
+  const now = Date.now()
+  const upcoming = portal.appointments.filter((item) => new Date(item.startTime).getTime() >= now && !['cancelled', 'no_show', 'completed'].includes(item.status))
+    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+  const past = portal.appointments.filter((item) => !upcoming.includes(item))
+    .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())
+  const firstName = portal.client.user?.name?.split(" ")[0]
+
+  return (
+    <div className="sf-container sf-page-pad">
+      <header className="mb-[var(--sf-space-lg)] flex flex-wrap items-end justify-between gap-4">
+        <div className="grid gap-4">
+          <p className="sf-eyebrow">Account{portal.client.totalVisits ? ` · ${portal.client.totalVisits} ${portal.client.totalVisits === 1 ? "visit" : "visits"}` : ""}</p>
+          <h1 className="sf-display text-[length:var(--sf-text-display-s)]">{firstName ? `Hello, ${firstName}` : "Your account"}</h1>
+        </div>
+        <Track><PillLink href="/book" variant="primary">Book</PillLink><SignOut /></Track>
+      </header>
+
+      <div className="grid gap-[var(--sf-space-xl)] lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+        <div className="grid min-w-0 content-start gap-[var(--sf-space-xl)]">
+          <section aria-labelledby="upcoming-heading" className="grid gap-4">
+            <h2 id="upcoming-heading" className="sf-eyebrow">Upcoming</h2>
+            {upcoming.length ? <ul className="grid gap-3">{upcoming.map((appointment) => <AppointmentItem key={appointment.id} appointment={appointment} />)}</ul>
+              : <StateCard title="Nothing booked" action={<Track><PillLink href="/book" size="sm">Book an appointment</PillLink></Track>} />}
+          </section>
+
+          {past.length ? (
+            <section aria-labelledby="past-heading" className="grid gap-4">
+              <h2 id="past-heading" className="sf-eyebrow">History</h2>
+              <ul className="grid gap-3">{past.map((appointment) => <AppointmentItem key={appointment.id} appointment={appointment} />)}</ul>
+            </section>
+          ) : null}
+        </div>
+
+        <aside className="grid content-start gap-4" aria-labelledby="followup-heading">
+          <h2 id="followup-heading" className="sf-eyebrow">Aftercare</h2>
+          {portal.followUps.length ? (
+            <ul className="grid gap-3">
+              {portal.followUps.map((task) => (
+                <li key={task.id} className="sf-well grid gap-2 p-[var(--sf-space-sm)]">
+                  <div className="sf-title-line">
+                    <h3 className="font-medium">{task.title}</h3>
+                    <Status tone={task.status === "completed" ? "ok" : "wait"}>{task.status.replaceAll("_", " ")}</Status>
+                  </div>
+                  {task.instructions ? <p className="text-[length:var(--sf-text-sm)] text-[var(--sf-ink-2)]">{task.instructions}</p> : null}
+                  <p className="sf-num text-[length:var(--sf-text-xs)] text-[var(--sf-ink-3)]">Due {new Date(task.dueAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</p>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="text-[length:var(--sf-text-sm)] text-[var(--sf-ink-3)]">No aftercare tasks</p>}
+        </aside>
+      </div>
+    </div>
   )
 }

@@ -1,22 +1,39 @@
-/* Hallmark · macrostructure: Catalogue · tone: luxury · theme: MedSpa
- * nav: N7 underlined · footer: Ft5 statement · genre: editorial
+/* Med spa storefront tokens.
+ * Bone paper, graphite ink, one accent derived from the practice logo hue.
+ * Cormorant for names and headings, Geist for reading, Geist Mono for the
+ * treatment-chart numbers (durations, prices, times).
  */
 
 .storefront {
-  --sf-paper: oklch(97.2% 0.009 78);
-  --sf-paper-2: oklch(94.5% 0.014 76);
-  --sf-paper-3: oklch(91% 0.018 74);
-  --sf-ink: oklch(21% 0.028 48);
-  --sf-ink-2: oklch(40% 0.022 50);
-  --sf-ink-3: oklch(55% 0.018 52);
-  --sf-rule: oklch(87% 0.014 76);
-  --sf-accent: oklch(41% 0.095 28);
-  --sf-accent-ink: oklch(97% 0.01 78);
-  --sf-accent-soft: oklch(94% 0.028 32);
-  --sf-focus: oklch(35% 0.09 28);
+  --sf-paper: oklch(97.6% 0.006 80);
+  --sf-paper-2: oklch(95.3% 0.009 80);
+  --sf-paper-3: oklch(92.4% 0.011 78);
+  --sf-card: oklch(99.3% 0.003 80);
+  --sf-ink: oklch(21% 0.014 262);
+  --sf-ink-2: oklch(40% 0.013 262);
+  --sf-ink-3: oklch(54% 0.011 262);
+  --sf-rule: oklch(89% 0.008 80);
+  --sf-rule-strong: oklch(81% 0.01 80);
+
+  /* Overridden per practice from the logo hue in MainLayout. */
+  --sf-accent: oklch(47% 0.085 300);
+  --sf-accent-ink: oklch(98.5% 0.006 300);
+  --sf-accent-soft: oklch(95% 0.024 300);
+  --sf-accent-glow: oklch(87% 0.06 300);
+  --sf-focus: oklch(42% 0.09 300);
+
+  --sf-ok: oklch(62% 0.13 160);
+  --sf-ok-ring: oklch(92% 0.05 160);
+  --sf-wait: oklch(72% 0.14 75);
+  --sf-wait-ring: oklch(94% 0.05 85);
+  --sf-stop: oklch(58% 0.17 22);
+  --sf-stop-ring: oklch(93% 0.04 22);
+  --sf-off: oklch(68% 0.01 262);
+  --sf-off-ring: oklch(93% 0.005 262);
 
   --sf-font-display: var(--font-sf-display), "Cormorant Garamond", Georgia, serif;
-  --sf-font-body: var(--font-sf-body), "DM Sans", system-ui, sans-serif;
+  --sf-font-body: var(--font-sf-body), "Geist", system-ui, sans-serif;
+  --sf-font-mono: var(--font-sf-mono), "Geist Mono", ui-monospace, monospace;
 
   --sf-space-3xs: 0.25rem;
   --sf-space-2xs: 0.5rem;
@@ -26,29 +43,36 @@
   --sf-space-lg: 2.25rem;
   --sf-space-xl: 3.5rem;
   --sf-space-2xl: 5.5rem;
-  --sf-space-3xl: 8rem;
 
+  --sf-text-2xs: 0.6875rem;
   --sf-text-xs: 0.75rem;
   --sf-text-sm: 0.875rem;
-  --sf-text-md: 1.0625rem;
-  --sf-text-lg: 1.25rem;
-  --sf-text-xl: 1.625rem;
-  --sf-text-2xl: 2.125rem;
-  --sf-text-3xl: 2.875rem;
-  --sf-text-display: clamp(2.75rem, 6vw, 5.25rem);
-  --sf-text-display-s: clamp(2.25rem, 4.5vw, 3.75rem);
+  --sf-text-md: 1rem;
+  --sf-text-lg: 1.1875rem;
+  --sf-text-xl: 1.5rem;
+  --sf-text-2xl: 2rem;
+  --sf-text-3xl: clamp(2.125rem, 4vw, 2.875rem);
+  --sf-text-display: clamp(2.875rem, 7.5vw, 5.75rem);
+  --sf-text-display-s: clamp(2.375rem, 5vw, 3.75rem);
 
-  --sf-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --sf-dur-short: 220ms;
-  --sf-dur-medium: 380ms;
+  --sf-radius-sm: 10px;
+  --sf-radius-md: 16px;
+  --sf-radius-lg: 24px;
 
-  --sf-radius-sm: 2px;
-  --sf-radius-md: 4px;
+  --sf-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --sf-dur-short: 160ms;
+  --sf-dur-medium: 320ms;
+
+  --sf-shadow-raised: 0 1px 2px oklch(20% 0.02 262 / 0.08), 0 0 0 1px oklch(20% 0.02 262 / 0.05);
+  --sf-shadow-raised-hover: 0 2px 6px oklch(20% 0.02 262 / 0.1), 0 0 0 1px oklch(20% 0.02 262 / 0.07);
+  --sf-shadow-recessed: inset 0 1px 2px oklch(20% 0.02 262 / 0.09);
+  --sf-shadow-card: 0 1px 0 oklch(20% 0.02 262 / 0.03), 0 12px 32px -18px oklch(20% 0.02 262 / 0.18);
 
   font-family: var(--sf-font-body);
   color: var(--sf-ink);
   background-color: var(--sf-paper);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 .storefront ::selection {

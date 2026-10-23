@@ -4,13 +4,14 @@ import type { Metadata } from "next"
 import { gql } from "graphql-request"
 import { cache } from "react"
 import { medspaClient } from "../config"
+import { practiceSlug } from "./practice"
 import { publicLogoSvg, validLogoHue } from '@/features/lib/store-logo'
 import {
   STOREFRONT_NEUTRAL_NAME,
   STOREFRONT_UNCONFIGURED_DESCRIPTION,
 } from "./brand-constants"
 
-type LocationHours = Record<
+export type LocationHours = Record<
   string,
   { open?: string | null; close?: string | null; closed?: boolean | null }
 >
@@ -59,12 +60,6 @@ export interface StorefrontBrand {
   timezone: string | null
 }
 
-function practiceSlug() {
-  const value = process.env.MEDSPA_PRACTICE_SLUG?.trim()
-  if (!value) throw new Error("MEDSPA_PRACTICE_SLUG is required for storefront reads")
-  return value
-}
-
 function neutralBrand(): StorefrontBrand {
   return {
     configured: false,
@@ -96,9 +91,9 @@ function phoneHref(phone: string | null): string | null {
 }
 
 function catalogDescription(name: string, catalogNames: string[], count: number) {
-  if (!count || !catalogNames.length) return `${name} has no public services listed.`
-  const suffix = count > catalogNames.length ? ", and other published services" : ""
-  return `${name} public service listings: ${catalogNames.join(", ")}${suffix}. Listings do not establish candidacy, provider qualifications, authorization, results, or appointment availability.`
+  if (!count || !catalogNames.length) return name
+  const suffix = count > catalogNames.length ? " and more" : ""
+  return `${name}: ${catalogNames.join(", ")}${suffix}.`
 }
 
 export const getStorefrontBrand = cache(async function (): Promise<StorefrontBrand> {
@@ -127,7 +122,7 @@ export const getStorefrontBrand = cache(async function (): Promise<StorefrontBra
           }
         }
       }
-    `, { practiceSlug: practiceSlug() })
+    `, { practiceSlug: await practiceSlug() })
 
     const settings = data.publicStorefrontSettings
     const location = settings.primaryLocation
