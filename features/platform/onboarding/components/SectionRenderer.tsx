@@ -29,11 +29,14 @@ export const SectionRenderer: React.FC<SectionRendererProps> = ({
 }) => {
   return (
     <div className="space-y-0">
-      {sections.map((section, idx) => {
-        const isLastItem = idx === sections.length - 1;
-        const items = currentJsonData
-          ? getItemsFromJsonData(currentJsonData, section.type)
-          : section.getItemsFn(selectedTemplate);
+      {sections
+        .map((section) => ({
+          section,
+          items: currentJsonData ? getItemsFromJsonData(currentJsonData, section.type) : section.getItemsFn(selectedTemplate),
+        }))
+        .filter(({ items }) => items.length > 0)
+        .map(({ section, items }, idx, visible) => {
+        const isLastItem = idx === visible.length - 1;
 
         return (
           <div key={section.type} className="relative">
@@ -43,7 +46,7 @@ export const SectionRenderer: React.FC<SectionRendererProps> = ({
 
             <div className="flex items-center space-x-3 mb-2 relative">
               <div className="inline-flex size-6 items-center justify-center rounded-sm border border-border bg-background text-sm text-foreground shadow-sm z-10">
-                {section.id}
+                {idx + 1}
               </div>
               <Label className="text-sm font-medium text-foreground">
                 {section.label}

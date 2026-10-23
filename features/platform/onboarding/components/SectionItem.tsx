@@ -67,17 +67,10 @@ export const SectionItem: React.FC<SectionItemProps> = ({
                 className="p-4 text-xs min-w-[250px] max-w-[450px] z-[100]"
               >
                 <div className="font-medium text-sm mb-2 text-red-600 dark:text-red-400">
-                  Failed to create {item}
+                  Not created: {item}
                 </div>
-                <div className="text-sm text-left mb-3">
-                  This item already exists or conflicts with existing data in
-                  your installation.
-                </div>
-                <div className="font-mono text-xs text-left whitespace-pre-wrap break-words max-h-[150px] overflow-y-auto text-muted-foreground border-t pt-3 mt-1">
-                  <span className="font-semibold block mb-1">
-                    Error details:
-                  </span>
-                  {errorMessage || 'Unknown error'}
+                <div className="text-xs text-left whitespace-pre-wrap break-words max-h-[150px] overflow-y-auto text-muted-foreground">
+                  {errorMessage || 'Setup failed'}
                 </div>
               </TooltipContent>
             </Tooltip>

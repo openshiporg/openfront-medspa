@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { MEDSPA_TEMPLATES } from '../config/templates';
 import { getItemsFromJsonData, getSeedForTemplate } from '../utils/dataUtils';
 import seedData from '../lib/seed.json';
 
@@ -19,20 +18,12 @@ export interface OnboardingState {
   isLoading: boolean;
 }
 
-const initialItemsState: Record<string, string[]> = {
-  medspaInfo: [],
-  categories: [],
-  services: [],
-  staff: [],
-  clients: [],
-  intakeForms: [],
-  memberships: [],
-  retail: [],
-  appointments: [],
-};
+const SECTION_KEYS = ['medspaInfo', 'categories', 'resources', 'services', 'staff', 'intakeForms', 'retail'] as const;
+
+const initialItemsState: Record<string, string[]> = Object.fromEntries(SECTION_KEYS.map((key) => [key, []]));
 
 const getTemplateData = (template: TemplateType) =>
-  getSeedForTemplate(template === 'custom' ? 'minimal' : template, seedData);
+  getSeedForTemplate(template === 'custom' ? 'full' : template, seedData);
 
 export function useOnboardingState() {
   const [state, setState] = useState<OnboardingState>({
@@ -48,17 +39,8 @@ export function useOnboardingState() {
     isLoading: false,
   });
 
-  const getDisplayNamesFromData = (data: any) => ({
-    medspaInfo: getItemsFromJsonData(data, 'medspaInfo'),
-    categories: getItemsFromJsonData(data, 'categories'),
-    services: getItemsFromJsonData(data, 'services'),
-    staff: getItemsFromJsonData(data, 'staff'),
-    clients: getItemsFromJsonData(data, 'clients'),
-    intakeForms: getItemsFromJsonData(data, 'intakeForms'),
-    memberships: getItemsFromJsonData(data, 'memberships'),
-    retail: getItemsFromJsonData(data, 'retail'),
-    appointments: getItemsFromJsonData(data, 'appointments'),
-  });
+  const getDisplayNamesFromData = (data: any): Record<string, string[]> =>
+    Object.fromEntries(SECTION_KEYS.map((key) => [key, getItemsFromJsonData(data, key)]));
 
   const setStep = (step: OnboardingStep) => setState((prev) => ({ ...prev, step }));
   const setSelectedTemplate = (template: TemplateType) => setState((prev) => ({
@@ -72,61 +54,7 @@ export function useOnboardingState() {
   const setIsLoading = (loading: boolean) => setState((prev) => ({ ...prev, isLoading: loading }));
   const setError = (error: string | null) => setState((prev) => ({ ...prev, error }));
 
-  const markSectionsCompletedBefore = (currentSection: string) => {
-    const order = ['medspaInfo', 'categories', 'services', 'staff', 'clients', 'intakeForms', 'memberships', 'retail', 'appointments'];
-    const currentIndex = order.indexOf(currentSection);
-    if (currentIndex <= 0) return;
-
-    const displayNames = state.currentJsonData
-      ? getDisplayNamesFromData(state.currentJsonData)
-      : MEDSPA_TEMPLATES[state.selectedTemplate].displayNames;
-
-    setState((prev) => {
-      const completedItems = { ...prev.completedItems };
-      const loadingItems = { ...prev.loadingItems };
-
-      order.slice(0, currentIndex).forEach((section) => {
-        completedItems[section] = [...(displayNames as any)[section]];
-        loadingItems[section] = [];
-      });
-
-      return { ...prev, completedItems, loadingItems };
-    });
-  };
-
-  const setProgress = (message: string) => {
-    setState((prev) => ({ ...prev, progressMessage: message }));
-
-    if (message.includes('service categories')) markSectionsCompletedBefore('categories');
-    else if (message.includes('services and variants')) markSectionsCompletedBefore('services');
-    else if (message.includes('staff and schedules')) markSectionsCompletedBefore('staff');
-    else if (message.includes('clients and CRM')) markSectionsCompletedBefore('clients');
-    else if (message.includes('intake and consent')) markSectionsCompletedBefore('intakeForms');
-    else if (message.includes('memberships and packages')) markSectionsCompletedBefore('memberships');
-    else if (message.includes('retail products')) markSectionsCompletedBefore('retail');
-    else if (message.includes('sample appointments')) markSectionsCompletedBefore('appointments');
-    else if (message.includes('complete')) {
-      const displayNames = state.currentJsonData
-        ? getDisplayNamesFromData(state.currentJsonData)
-        : MEDSPA_TEMPLATES[state.selectedTemplate].displayNames;
-
-      setState((prev) => ({
-        ...prev,
-        loadingItems: { ...initialItemsState },
-        completedItems: {
-          medspaInfo: [...displayNames.medspaInfo],
-          categories: [...displayNames.categories],
-          services: [...displayNames.services],
-          staff: [...displayNames.staff],
-          clients: [...displayNames.clients],
-          intakeForms: [...displayNames.intakeForms],
-          memberships: [...displayNames.memberships],
-          retail: [...displayNames.retail],
-          appointments: [...displayNames.appointments],
-        },
-      }));
-    }
-  };
+  const setProgress = (message: string) => setState((prev) => ({ ...prev, progressMessage: message }));
 
   const setLoadingItems = (items: Record<string, string[]>) => setState((prev) => ({ ...prev, loadingItems: items }));
   const setCompletedItems = (items: Record<string, string[]>) => setState((prev) => ({ ...prev, completedItems: items }));

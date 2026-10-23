@@ -3,7 +3,7 @@ export function getItemsFromJsonData(jsonData: any, sectionType: string): string
 
   switch (sectionType) {
     case 'medspaInfo':
-      return jsonData.medspaInfo ? [jsonData.medspaInfo.name || 'MedSpa Location'] : ['MedSpa Location'];
+      return jsonData.medspaInfo ? [jsonData.medspaInfo.name || 'Practice'] : ['Practice'];
     case 'resources':
       return (jsonData.resources || []).map((resource: { name: string }) => resource.name);
     case 'categories':

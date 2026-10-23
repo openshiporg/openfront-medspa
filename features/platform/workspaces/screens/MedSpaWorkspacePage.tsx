@@ -1,3 +1,5 @@
+import { hasPracticeSetup } from '@/features/platform/lib/practiceSetup';
+import { PracticeSetupState } from '@/features/platform/components/PracticeSetupState';
 import type { ComponentType } from 'react';
 import { ArrowUpRight, Boxes, Building2, ChartNoAxesCombined, ContactRound, Gift, Megaphone, PlugZap, Sparkles } from 'lucide-react';
 import {
@@ -32,10 +34,11 @@ export async function MedSpaWorkspacePage({ section }: { section: WorkspaceSecti
   const breadcrumbs = [{ label: title }];
 
   if (result.status === 'unavailable') {
+    const practiceReady = await hasPracticeSetup();
     return (
       <PlatformPage breadcrumbs={breadcrumbs}>
         <PageHeader title={title} icon={Icon} />
-        <ErrorState id={`${section}-unavailable`} title={`${title} unavailable`} message={result.message} action={<Track><PillLink href={`/dashboard/platform/${section}`}>Retry</PillLink></Track>} />
+        {practiceReady === false ? <PracticeSetupState /> : <ErrorState id={`${section}-unavailable`} title={`${title} unavailable`} message={result.message} action={<Track><PillLink href={`/dashboard/platform/${section}`}>Retry</PillLink></Track>} />}
       </PlatformPage>
     );
   }

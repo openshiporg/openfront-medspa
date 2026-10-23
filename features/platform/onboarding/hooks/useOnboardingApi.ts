@@ -45,7 +45,7 @@ function errorMessage(error: any) {
   if (error?.response?.errors?.length) {
     return error.response.errors.map((item: any) => item.message || JSON.stringify(item)).join('\n');
   }
-  return error?.message || 'MedSpa setup failed';
+  return error?.message || 'Setup failed. Nothing was created; try again.';
 }
 
 export function useOnboardingApi({
@@ -53,6 +53,7 @@ export function useOnboardingApi({
   setProgress,
   setItemLoading,
   setItemCompleted,
+  setItemError,
   setStep,
   setError,
   setIsLoading,
@@ -63,12 +64,14 @@ export function useOnboardingApi({
     setError(null);
     resetOnboardingState();
     setStep('progress');
-    setProgress('Applying medspa setup in one secure transaction...');
+    setProgress('Creating your practice');
 
+    const pending: Array<[string, string]> = [];
     try {
       for (const section of SECTION_DEFINITIONS) {
         for (const item of getItemsFromJsonData(currentJsonData, section.type)) {
           setItemLoading(section.type, item);
+          pending.push([section.type, item]);
         }
       }
 
@@ -81,17 +84,21 @@ export function useOnboardingApi({
         { seed: currentJsonData },
       );
       const result = response.runMedSpaOnboarding;
-      if (!result.success || !result.completed) throw new Error(result.error || 'MedSpa setup did not complete');
+      if (!result.success || !result.completed) throw new Error(result.error || 'Setup did not finish. Nothing was created; try again.');
 
       for (const section of SECTION_DEFINITIONS) {
         for (const item of getItemsFromJsonData(currentJsonData, section.type)) {
           setItemCompleted(section.type, item);
         }
       }
-      setProgress(`MedSpa setup complete · ${result.created} created, ${result.reused} reused.`);
+      setProgress(`${result.created} records created`);
       setStep('done');
     } catch (error) {
-      setError(errorMessage(error));
+      const message = errorMessage(error);
+      // The setup is one transaction: every pending item failed together.
+      for (const [type, item] of pending) setItemError(type, item, message);
+      setError(message);
+      setStep('template');
     } finally {
       setIsLoading(false);
     }

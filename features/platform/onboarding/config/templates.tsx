@@ -4,31 +4,28 @@ export interface MedSpaTemplate {
   name: string;
   description: string;
   icon: React.ReactNode;
-  displayNames: Record<'medspaInfo' | 'categories' | 'resources' | 'services' | 'staff' | 'clients' | 'intakeForms' | 'memberships' | 'retail' | 'appointments', string[]>;
+  displayNames: Record<'medspaInfo' | 'categories' | 'resources' | 'services' | 'staff' | 'intakeForms' | 'retail', string[]>;
 }
 
-const boundedDisplay: MedSpaTemplate['displayNames'] = {
-  medspaInfo: ['Bounded Med Spa Demo — configuration required'],
-  categories: ['Consultations', 'Medical Aesthetics'],
-  resources: ['Consultation Room', 'Treatment Room', 'Unconfigured Energy Device'],
-  services: ['Medical Aesthetics Consultation', 'Inactive injectable placeholder', 'Inactive energy-device placeholder'],
-  staff: ['No staff or clinical authority is fabricated'],
-  clients: ['No patient records are fabricated'],
-  intakeForms: ['Medical History Intake v1 (not treatment consent)'],
-  memberships: ['No consumer contracts are enabled'],
-  retail: ['No tracked inventory is received by onboarding'],
-  appointments: ['No appointment or treatment evidence is fabricated'],
+const sampleDisplay: MedSpaTemplate['displayNames'] = {
+  medspaInfo: ['Juniper Vale Med Spa'],
+  categories: ['Consultations', 'Facials & peels', 'Injectables', 'Light & skin renewal'],
+  resources: ['Consultation room', 'Treatment room', 'Light therapy suite'],
+  services: ['New client consultation', 'Injectables consultation', 'Signature hydrating facial', 'Glow chemical peel', 'Dermaplaning', 'LED light therapy'],
+  staff: ['Maya Ortiz', 'Lena Park'],
+  intakeForms: ['Medical history', 'Medical history acknowledgement'],
+  retail: ['Appointment reminder'],
 };
 
 export const MEDSPA_TEMPLATES: Record<'full' | 'minimal' | 'custom', MedSpaTemplate> = {
-  full: { name: 'Bounded Med Spa Setup', description: 'Create fail-closed operational placeholders without inventing clinical, legal, provider, patient, payment, or inventory evidence.', icon: <Building2 className="h-5 w-5" />, displayNames: boundedDisplay },
-  minimal: { name: 'Essential Fail-Closed Setup', description: 'Create the same bounded foundation; medical activation still requires approved authority and policy packs.', icon: <Package className="h-5 w-5" />, displayNames: boundedDisplay },
-  custom: { name: 'Custom Bounded Setup', description: 'Customize non-regulated setup data while preserving empty appointments and controlled authority, consent, asset, and lot workflows.', icon: <CircleCheck className="h-5 w-5" />, displayNames: boundedDisplay },
+  full: { name: 'Sample med spa', description: 'Treatments, rooms, two providers and weekly hours. Published and bookable.', icon: <Building2 className="h-5 w-5" />, displayNames: sampleDisplay },
+  minimal: { name: 'Start small', description: 'Your location, one consultation and one provider. Published.', icon: <Package className="h-5 w-5" />, displayNames: sampleDisplay },
+  custom: { name: 'Custom', description: 'Edit the setup data before it is created.', icon: <CircleCheck className="h-5 w-5" />, displayNames: sampleDisplay },
 };
 
 export interface SectionDefinition { id: number; type: string; label: string; getItemsFn: (template: 'full' | 'minimal' | 'custom') => string[] }
-const definitions: Array<[string, string]> = [
-  ['medspaInfo', 'Med Spa Location'], ['categories', 'Service Categories'], ['resources', 'Rooms & Equipment'], ['services', 'Services'], ['staff', 'Staff & Authority'], ['clients', 'Patient Records'], ['intakeForms', 'Intake (Not Consent)'], ['memberships', 'Consumer Contracts'], ['retail', 'Inventory & Messages'], ['appointments', 'Appointment Evidence'],
+const definitions: Array<[keyof MedSpaTemplate['displayNames'], string]> = [
+  ['medspaInfo', 'Practice & location'], ['categories', 'Categories'], ['resources', 'Rooms'], ['services', 'Treatments'], ['staff', 'Providers & hours'], ['intakeForms', 'Intake forms'], ['retail', 'Messages'],
 ];
-export const SECTION_DEFINITIONS: SectionDefinition[] = definitions.map(([type, label], index) => ({ id: index + 1, type, label, getItemsFn: template => MEDSPA_TEMPLATES[template].displayNames[type as keyof MedSpaTemplate['displayNames']] }));
+export const SECTION_DEFINITIONS: SectionDefinition[] = definitions.map(([type, label], index) => ({ id: index + 1, type, label, getItemsFn: template => MEDSPA_TEMPLATES[template].displayNames[type] }));
 export const STORE_TEMPLATES = MEDSPA_TEMPLATES;

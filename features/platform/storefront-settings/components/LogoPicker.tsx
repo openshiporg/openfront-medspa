@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Check } from 'lucide-react'
 import { LOGO_ICONS } from '../lib/icon-registry'
 import { sanitizeStoreLogoSvg } from '@/features/lib/sanitize-store-logo'
-import { DEFAULT_LOGO_SVG } from '@/features/lib/store-logo'
+import { brandHueColor, DEFAULT_LOGO_SVG, LOGO_BASE_HUE, logoHueFilter } from '@/features/lib/store-logo'
 import { pillClass, trackClass } from '@/features/platform/components/pill'
 
 /** Untitled UI registry tile picker, custom SVG escape hatch, and hue, with a live lockup. */
@@ -12,7 +12,7 @@ export function LogoPicker({ initialSvg, initialHue, displayName }: { initialSvg
   const [svg, setSvg] = useState(initialSvg || '')
   const [draft, setDraft] = useState(initialSvg || '')
   const [customMode, setCustomMode] = useState(false)
-  const [hue, setHue] = useState(initialHue ?? 0)
+  const [hue, setHue] = useState(initialHue ?? LOGO_BASE_HUE)
   const safe = svg ? sanitizeStoreLogoSvg(svg) : DEFAULT_LOGO_SVG
   const safeDraft = draft ? sanitizeStoreLogoSvg(draft) : ''
   const input = useRef<HTMLTextAreaElement>(null)
@@ -26,9 +26,9 @@ export function LogoPicker({ initialSvg, initialHue, displayName }: { initialSvg
     <input type="hidden" name="logoSvg" value={svg} />
 
     <div className="flex min-w-0 items-center gap-3 rounded-2xl border bg-muted/30 p-4" aria-label="Current logo preview">
-      <span className="block size-10 shrink-0 overflow-hidden [&>svg]:block [&>svg]:size-full" style={{ filter: `hue-rotate(${hue}deg)` }} dangerouslySetInnerHTML={{ __html: safe || DEFAULT_LOGO_SVG }} aria-hidden="true" />
+      <span className="block size-10 shrink-0 overflow-hidden [&>svg]:block [&>svg]:size-full" style={{ filter: logoHueFilter(hue) }} dangerouslySetInnerHTML={{ __html: safe || DEFAULT_LOGO_SVG }} aria-hidden="true" />
       <span className="min-w-0 truncate text-lg font-semibold tracking-tight">{displayName || 'Practice name'}</span>
-      <output className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">{hue}°</output>
+      <output className="ml-auto flex shrink-0 items-center gap-1.5 text-xs tabular-nums text-muted-foreground"><span aria-hidden="true" className="size-3 rounded-full" style={{ background: brandHueColor(hue) }} />{hue}°</output>
     </div>
 
     <div role="radiogroup" aria-label="Logo library" className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8">
@@ -38,7 +38,7 @@ export function LogoPicker({ initialSvg, initialHue, displayName }: { initialSvg
       ))}
     </div>
 
-    <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">Logo hue
+    <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">Brand hue
       <input name="logoHue" type="range" min={0} max={360} step={1} value={hue} onChange={event => setHue(Number(event.target.value))} className="h-8 w-full accent-violet-600" />
     </label>
 
@@ -70,7 +70,7 @@ function Tile({ label, active, onSelect, svg, hue }: { label: string; active: bo
     onClick={onSelect}
     className={`relative flex aspect-square min-w-0 items-center justify-center rounded-xl border bg-background p-2.5 transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? 'border-violet-500 shadow-[0_0_0_3px_rgb(139_92_246/0.18)]' : 'hover:bg-muted/50'}`}
   >
-    <span className="block size-full overflow-hidden [&>svg]:block [&>svg]:size-full" style={{ filter: `hue-rotate(${hue}deg)` }} dangerouslySetInnerHTML={{ __html: svg }} aria-hidden="true" />
+    <span className="block size-full overflow-hidden [&>svg]:block [&>svg]:size-full" style={{ filter: logoHueFilter(hue) }} dangerouslySetInnerHTML={{ __html: svg }} aria-hidden="true" />
     {active ? <span className="absolute right-1 top-1 flex size-4 items-center justify-center rounded-full bg-violet-600 text-white"><Check className="size-3" /></span> : null}
   </button>
 }

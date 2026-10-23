@@ -1,4 +1,6 @@
 import { Store } from 'lucide-react'
+import { hasPracticeSetup } from '@/features/platform/lib/practiceSetup'
+import { PracticeSetupState } from '@/features/platform/components/PracticeSetupState'
 import { getStorefrontSettings } from '../actions/storefrontSettings'
 import { StorefrontSettingsForm } from '../components/StorefrontSettingsForm'
 import { ErrorState, PageHeader, PillLink, PlatformPage, TitleStatus, Track } from '@/features/platform/components/medspa-ui'
@@ -8,6 +10,7 @@ interface Props { searchParams?: Promise<{ saved?: string }> }
 export async function StorefrontSettingsPage(_props: Props) {
   const result = await getStorefrontSettings()
   const published = result.status === 'loaded' && result.setting?.isPublished
+  const needsSetup = (result.status === 'unavailable' || (!result.setting && result.locations.length === 0)) && await hasPracticeSetup() === false
   return (
     <PlatformPage width="narrow" breadcrumbs={[{ label: 'Storefront settings' }]}>
       <PageHeader
@@ -16,7 +19,7 @@ export async function StorefrontSettingsPage(_props: Props) {
         status={result.status === 'loaded' ? <TitleStatus tone={published ? 'emerald' : 'zinc'}>{published ? 'Published' : 'Not published'}</TitleStatus> : null}
         actions={published ? <Track><PillLink href="/">View storefront</PillLink></Track> : null}
       />
-      {result.status === 'unavailable'
+      {needsSetup ? <PracticeSetupState /> : result.status === 'unavailable'
         ? <ErrorState id="storefront-settings-unavailable" title="Settings unavailable" message={result.message} action={<Track><PillLink href="/dashboard/platform/storefront">Retry</PillLink></Track>} />
         : <StorefrontSettingsForm setting={result.setting} locations={result.locations} />}
     </PlatformPage>

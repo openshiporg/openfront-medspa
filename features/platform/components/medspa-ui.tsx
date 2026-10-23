@@ -68,8 +68,8 @@ export function PillLink({ href, children, variant = 'raised', size }: { href: s
 /** Filter tabs: the active tab is the raised pill; the rest sit quiet in the track. */
 export function SegmentTabs({ label, tabs, active }: { label: string; active: string; tabs: Array<{ value: string; label: string; href: string; count?: number | null }> }) {
   return (
-    <nav aria-label={label} className="-mx-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] md:mx-0 md:px-0">
-      <div className={trackClass}>
+    <nav aria-label={label} className="-mx-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [mask-image:linear-gradient(to_right,black_calc(100%-2.5rem),transparent)] md:mx-0 md:px-0 md:[mask-image:none]">
+      <div className={cn(trackClass, 'w-max max-w-none pr-1')}>
         {tabs.map((tab) => {
           const isActive = tab.value === active;
           return (
@@ -115,7 +115,7 @@ export function PageHeader({ title, status, meta, actions, icon: Icon, eyebrow }
 export function MetricStrip({ items }: { items: Array<{ label: string; value: ReactNode; tone?: Tone; href?: string }> }) {
   if (!items.length) return null;
   return (
-    <dl className="grid grid-cols-2 overflow-hidden rounded-2xl border bg-border sm:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] [&>*]:bg-background" style={{ gap: 1 }}>
+    <dl className="grid grid-cols-2 overflow-hidden rounded-2xl border bg-border sm:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] [&>*]:bg-background max-sm:[&>*:last-child:nth-child(odd)]:col-span-2" style={{ gap: 1 }}>
       {items.map((item, index) => {
         const body = <>
           <dt className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">{item.tone ? <StatusDot tone={item.tone} /> : null}<span className="truncate">{item.label}</span></dt>

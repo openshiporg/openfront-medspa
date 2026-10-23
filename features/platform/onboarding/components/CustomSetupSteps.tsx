@@ -73,15 +73,13 @@ export function CustomSetupSteps({ currentJson, onJsonUpdate = () => {}, onBack 
   };
 
   const generateAIPrompt = () => {
-    return `Help me customize this fail-closed Med Spa setup seed without inventing regulated evidence.
+    return `Help me set up my med spa from this JSON. Keep every top-level key and the same structure.
 
-Keep every existing top-level key. Keep appointments, clients, products, memberships, packages, and gallery empty. Do not create provider credentials, licensure verification, scope, supervision, clinical authority, treatment consent, patient records, clinical photos, treatment administrations, received lots, payment settlement, legal policy, or consumer-contract evidence. Clinical treatment services and treatment resources must remain inactive and non-public until those records are loaded through their controlled workflows. Tracked product opening quantity must remain zero and Stripe must remain disabled.
+Ask me for: practice name, address, phone, email, timezone and opening hours; the storefront display name and brand hue (0-360); my treatment categories; each treatment's name, duration in minutes and price in cents; my rooms; each provider's name, email, role (provider, esthetician, nurse, physician or assistant) and the treatments they perform; and each provider's weekly hours (dayOfWeek 0-6, Sunday is 0, times as HH:MM inside opening hours).
 
-This onboarding environment must stay unmistakably fictional: keep internal medspaInfo.name marked “Demo” or “Mock,” keep public storefront.displayName free of demo/preview/placeholder labels, use only a reserved 555-01xx phone number and a reserved .example email, and retain coherent fictional location details. Keep storefront.isPublished true with a whole-number accentHue from 0 through 360. The one public service must remain a zero-price, non-clinical demo consultation request with staffAuthorizationRequired false. It must avoid claims about credentials, candidacy, authorization, confirmation, outcomes, safety, payment readiness, or appointment availability.
+Rules: treatments that are bookable online (isPublic true) must be active, keep staffAuthorizationRequired false and the requires* flags false, and use rooms that are active and isPublic true. Treatments that need clinical authority stay isPublic false. Keep appointments empty. Lot-tracked products start at quantity 0. Keep Stripe isInstalled false.
 
-Keep only explicitly fictional demo support personnel with role assistant, active/isActive/isPublic true, and associations to active explicitly public services. Public request resources and recurring schedule blocks must each set isPublic true and remain active/available; private treatment placeholders must set isPublic false. Do not label demo personnel as clinicians or imply that their profile or returned schedule times establish credentials, authorization, candidacy, availability confirmation, or outcomes.
-
-Ask only about fictional demo identity/contact/location metadata, inactive treatment placeholders, the public consultation-request room, safe demo support-personnel naming, demo recurring request windows, hue, and non-secret adapter labels. Then return one complete JSON object that preserves these restrictions.`;
+Return one complete JSON object.`;
   };
 
   const validateAndApplyJson = () => {
@@ -101,18 +99,18 @@ Ask only about fictional demo identity/contact/location metadata, inactive treat
       setJsonApplied(true);
       setJsonError('');
     } catch (error) {
-      setJsonError('Invalid JSON format. Please check your syntax.');
+      setJsonError('That isn\'t valid JSON.');
     }
   };
 
   const steps = [
     {
       number: 1,
-      title: 'Copy Base Configuration',
-      description: 'Start with the complete medspa setup seed JSON.',
+      title: 'Copy the setup data',
+      description: 'The same data the sample med spa uses.',
       content: (
         <DataCard
-          title="Onboarding Data"
+          title="Setup data"
           content={JSON.stringify(completeJson, null, 2)}
           onCopy={copyToClipboard}
           copied={copiedItems.json || false}
@@ -122,11 +120,11 @@ Ask only about fictional demo identity/contact/location metadata, inactive treat
     },
     {
       number: 2,
-      title: 'Copy AI Customization Prompt',
-      description: 'Use this prompt with any AI assistant to adapt the seed to your medspa.',
+      title: 'Copy the AI prompt',
+      description: 'Paste both into an AI assistant to fill in your practice.',
       content: (
         <DataCard
-          title="AI Prompt"
+          title="AI prompt"
           content={generateAIPrompt()}
           onCopy={copyToClipboard}
           copied={copiedItems.prompt || false}
@@ -136,29 +134,18 @@ Ask only about fictional demo identity/contact/location metadata, inactive treat
     },
     {
       number: 3,
-      title: 'Customize Your Seed',
-      description: 'Update only the bounded fictional demo identity and request scenario.',
-      content: (
-        <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">
-            Keep keys consistent across the public demo service, support profile, request room, and recurring schedule. Appointments must remain empty.
-          </p>
-          <ul className="text-sm text-muted-foreground space-y-1 ml-4">
-            <li>• Use prices in cents for service.price and service variants.</li>
-            <li>• Use integer cents for every monetary field, including memberships, packages, and retail products.</li>
-            <li>• Use dayOfWeek 0-6 for recurring staff schedules, where Sunday is 0.</li>
-          </ul>
-        </div>
-      ),
+      title: 'Check the rules',
+      description: 'Prices are whole cents. Weekdays run 0-6, Sunday is 0.',
+      content: null,
     },
     {
       number: 4,
-      title: 'Paste Custom JSON',
-      description: 'Paste the updated JSON object and apply it before confirming setup.',
+      title: 'Paste your data',
+      description: 'Apply it, then confirm setup.',
       content: (
         <div className="rounded-lg border overflow-hidden">
           <div className="flex items-center justify-between px-4 py-2 bg-muted border-b">
-            <span className="text-sm font-medium text-muted-foreground">Custom Onboarding Data</span>
+            <span className="text-sm font-medium text-muted-foreground">Your setup data</span>
             <Button
               size="sm"
               variant="ghost"
@@ -171,6 +158,7 @@ Ask only about fictional demo identity/contact/location metadata, inactive treat
                   console.error('Failed to paste:', error);
                 }
               }}
+              aria-label="Paste from clipboard"
               className="h-6 w-6 p-0 hover:bg-background/80"
             >
               <Clipboard className="h-3 w-3 text-muted-foreground" />
@@ -178,7 +166,7 @@ Ask only about fictional demo identity/contact/location metadata, inactive treat
           </div>
           <div className="bg-background">
             <Textarea
-              placeholder="Paste your customized JSON configuration here..."
+              placeholder="Paste JSON"
               value={customJson}
               onChange={(event) => {
                 setCustomJson(event.target.value);
@@ -196,7 +184,7 @@ Ask only about fictional demo identity/contact/location metadata, inactive treat
           )}
           <div className="flex items-center justify-end px-4 py-2 bg-muted border-t">
             <Button size="sm" onClick={validateAndApplyJson} disabled={!customJson.trim()}>
-              Apply Configuration
+              Apply
             </Button>
           </div>
         </div>
@@ -218,17 +206,10 @@ Ask only about fictional demo identity/contact/location metadata, inactive treat
             className="h-8 px-2"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
-            Back to Custom Setup
+            Back
           </Button>
         </div>
       )}
-
-      <div className="space-y-2">
-        <Label className="text-sm font-medium">Custom Setup Configuration</Label>
-        <p className="text-xs text-muted-foreground">
-          Follow these steps to create a personalized medspa setup using AI assistance.
-        </p>
-      </div>
 
       <div className="space-y-0">
         {steps.map((step, index) => (

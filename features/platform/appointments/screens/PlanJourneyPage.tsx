@@ -1,3 +1,5 @@
+import { hasPracticeSetup } from '@/features/platform/lib/practiceSetup';
+import { PracticeSetupState } from '@/features/platform/components/PracticeSetupState';
 import Link from 'next/link';
 import { ClipboardList, Search } from 'lucide-react';
 import {
@@ -17,7 +19,7 @@ export async function PlanJourneyPage({ consultationId, pages }: { consultationI
       { label: data ? data.consultation.serviceName : 'Consultation' },
     ]}>
       {data ? <PlanJourneyClient data={data} /> : (
-        <ErrorState id="plan-unavailable" title="Consultation unavailable" message="This consultation could not be loaded for your role." action={<Track><PillLink href="/dashboard/platform/appointments/plans">Consultation queue</PillLink></Track>} />
+        <ErrorState id="plan-unavailable" title="Consultation unavailable" message="This consultation could not be loaded." action={<Track><PillLink href="/dashboard/platform/appointments/plans">Consultation queue</PillLink></Track>} />
       )}
     </PlatformPage>
   );
@@ -25,6 +27,7 @@ export async function PlanJourneyPage({ consultationId, pages }: { consultationI
 
 export async function ConsultationPlanQueuePage({ page, search }: { page: number; search: string }) {
   const data = await getConsultationQueue(page, search);
+  const practiceReady = data ? true : await hasPracticeSetup();
   const href = (next: number) => `/dashboard/platform/appointments/plans?page=${next}&search=${encodeURIComponent(search)}`;
   return (
     <PlatformPage width="narrow" breadcrumbs={queueCrumbs}>
@@ -36,7 +39,7 @@ export async function ConsultationPlanQueuePage({ page, search }: { page: number
         <div className="inline-flex rounded-full bg-muted p-1 shadow-[inset_0_1px_2px_rgb(0_0_0/0.08)]"><button className={pillClass('raised')}><Search /> Search</button></div>
       </form>
       {!data ? (
-        <ErrorState id="consultations-unavailable" title="Consultation queue unavailable" message="The queue could not be loaded for your role." action={<Track><PillLink href={href(page)}>Retry</PillLink></Track>} />
+        practiceReady === false ? <PracticeSetupState /> : <ErrorState id="consultations-unavailable" title="Consultation queue unavailable" message="The queue could not be loaded." action={<Track><PillLink href={href(page)}>Retry</PillLink></Track>} />
       ) : (
         <>
           {!data.items.length ? <EmptyState icon={ClipboardList} title="No matching consultations" /> : (

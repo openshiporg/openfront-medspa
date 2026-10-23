@@ -93,7 +93,7 @@ export async function AppointmentOperationsPage({ searchParams }: PageProps) {
         actions={
           <Track label="Appointment actions">
             <PillLink href="/dashboard/platform/appointments/plans" variant="quiet">Consultations & plans</PillLink>
-            <PillLink href="/book" variant="primary">New request</PillLink>
+            <PillLink href="/dashboard/platform/appointments/new" variant="primary">Book appointment</PillLink>
           </Track>
         }
       />

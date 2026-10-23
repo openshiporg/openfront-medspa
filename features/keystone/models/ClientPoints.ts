@@ -27,6 +27,8 @@ export const ClientPoints = list({
     plural: "ClientPointsRecords",
   },
   ui: {
+    // "Client Points" would map back to the list key and break the dashboard's admin meta.
+    plural: "Client Points Records",
     listView: {
       initialColumns: ["client", "points", "tier"],
     },

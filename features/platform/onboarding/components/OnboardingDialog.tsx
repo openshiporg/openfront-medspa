@@ -15,6 +15,7 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -41,42 +42,17 @@ interface OnboardingDialogProps {
   onClose: () => void;
 }
 
-const getDisplayNames = (selectedTemplate: 'full' | 'minimal' | 'custom', currentJsonData: any) => {
+const getDisplayNames = (selectedTemplate: 'full' | 'minimal' | 'custom', currentJsonData: any): Record<string, string[]> => {
   if (!currentJsonData) return MEDSPA_TEMPLATES[selectedTemplate].displayNames;
-
-  return {
-    medspaInfo: getItemsFromJsonData(currentJsonData, 'medspaInfo'),
-    categories: getItemsFromJsonData(currentJsonData, 'categories'),
-    services: getItemsFromJsonData(currentJsonData, 'services'),
-    staff: getItemsFromJsonData(currentJsonData, 'staff'),
-    clients: getItemsFromJsonData(currentJsonData, 'clients'),
-    intakeForms: getItemsFromJsonData(currentJsonData, 'intakeForms'),
-    memberships: getItemsFromJsonData(currentJsonData, 'memberships'),
-    retail: getItemsFromJsonData(currentJsonData, 'retail'),
-    appointments: getItemsFromJsonData(currentJsonData, 'appointments'),
-  };
+  return Object.fromEntries(SECTION_DEFINITIONS.map((section) => [section.type, getItemsFromJsonData(currentJsonData, section.type)]));
 };
 
-const templateOptions = [
-  {
-    value: 'minimal' as const,
-    title: 'Essential Bounded Setup',
-    description: 'Fictional catalog and nonclinical demo configuration only. No patient records, consumer contracts, or appointment evidence.',
-    icon: Package,
-  },
-  {
-    value: 'full' as const,
-    title: 'Full Bounded Setup',
-    description: 'Uses the same fail-closed placeholder seed; no patients, provider qualifications, memberships, payments, or appointments are fabricated.',
-    icon: Building2,
-  },
-  {
-    value: 'custom' as const,
-    title: 'Custom Bounded Setup',
-    description: 'Edit the nonclinical seed placeholders; regulated authority and treatment evidence remain unconfigured.',
-    icon: CircleCheck,
-  },
-];
+const templateOptions = (['full', 'minimal', 'custom'] as const).map((value) => ({
+  value,
+  title: MEDSPA_TEMPLATES[value].name,
+  description: MEDSPA_TEMPLATES[value].description,
+  icon: value === 'full' ? Building2 : value === 'minimal' ? Package : CircleCheck,
+}));
 
 const OnboardingDialog: React.FC<OnboardingDialogProps> = ({ isOpen, onClose }) => {
   const onboardingState = useOnboardingState();
@@ -126,7 +102,8 @@ const OnboardingDialog: React.FC<OnboardingDialogProps> = ({ isOpen, onClose }) 
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-[95vw] flex-col overflow-hidden p-0 gap-0 sm:max-w-4xl">
         <DialogHeader className="border-b px-4 sm:px-6 py-4 mb-0 shrink-0">
-          <DialogTitle>MedSpa Setup</DialogTitle>
+          <DialogTitle>Practice setup</DialogTitle>
+          <DialogDescription className="sr-only">Choose how to create your practice, then confirm.</DialogDescription>
         </DialogHeader>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
@@ -138,13 +115,9 @@ const OnboardingDialog: React.FC<OnboardingDialogProps> = ({ isOpen, onClose }) 
                     <Sparkles className="size-5 text-foreground" aria-hidden={true} />
                   </div>
                   <div className="space-y-0.5">
-                    <h3 className="text-sm font-medium text-foreground">MedSpa Setup</h3>
+                    <h3 className="text-sm font-medium text-foreground">Practice setup</h3>
                     <p className="text-sm text-muted-foreground">
-                      {step === 'done'
-                        ? 'Bounded demo setup complete'
-                        : selectedTemplate === 'custom'
-                        ? 'Customize the medspa seed JSON'
-                        : 'Configure medspa business data'}
+                      {step === 'done' ? 'Practice created' : selectedTemplate === 'custom' ? 'Custom setup data' : 'Choose a starting point'}
                     </p>
                   </div>
                 </div>
@@ -152,26 +125,20 @@ const OnboardingDialog: React.FC<OnboardingDialogProps> = ({ isOpen, onClose }) 
 
                 {step === 'done' ? (
                   <>
-                    <h4 className="text-sm font-medium text-foreground mb-2">Bounded Setup Complete</h4>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      The fictional demo configuration was created. Clinical, legal, provider, patient, payment, and appointment readiness remain unverified or unconfigured.
-                    </p>
                     <div className="flex items-center space-x-2 text-sm text-emerald-600 dark:text-emerald-500 mb-4">
                       <CircleCheck className="h-4 w-4 fill-emerald-500 text-background" />
-                      <span>Onboarding complete</span>
+                      <span>{currentJsonData?.storefront?.isPublished === false ? 'Storefront saved, not published' : 'Storefront published'}</span>
                     </div>
 
                     <div className="space-y-3 text-sm">
-                      <SummaryLine count={displayNames.categories.length} label="service category" />
-                      <SummaryLine count={displayNames.services.length} label="service" />
-                      <SummaryLine count={displayNames.staff.length} label="staff profile" />
-                      <SummaryLine count={displayNames.clients.length} label="client profile" />
-                      <SummaryLine count={displayNames.appointments.length} label="sample appointment" />
+                      <SummaryLine count={displayNames.services?.length || 0} label="treatment" />
+                      <SummaryLine count={displayNames.resources?.length || 0} label="room" />
+                      <SummaryLine count={displayNames.staff?.length || 0} label="provider" />
                     </div>
                   </>
                 ) : !isLoading ? (
                   <>
-                    <h4 className="text-sm font-medium text-foreground mb-4">Setup Type</h4>
+                    <h4 className="text-sm font-medium text-foreground mb-4">Start with</h4>
 
                     <div className="block lg:hidden">
                       <Select
@@ -235,7 +202,7 @@ const OnboardingDialog: React.FC<OnboardingDialogProps> = ({ isOpen, onClose }) 
                 ) : (
                   <>
                     <h4 className="text-sm font-medium text-foreground">
-                      Creating {selectedTemplate === 'minimal' ? 'Basic' : 'Complete'} Setup
+                      Creating practice
                     </h4>
                     <p className="mt-1 text-sm leading-6 text-muted-foreground">{progressMessage}</p>
                   </>
@@ -244,7 +211,7 @@ const OnboardingDialog: React.FC<OnboardingDialogProps> = ({ isOpen, onClose }) 
             </div>
 
             <div className="hidden lg:flex flex-col border-t mt-auto">
-              {error && !isLoading && step !== 'done' && <ErrorBadge />}
+              {error && !isLoading && step !== 'done' && <ErrorBadge message={error} />}
               <DialogActions step={step} isLoading={isLoading} runOnboarding={runOnboarding} />
             </div>
           </div>
@@ -276,7 +243,7 @@ const OnboardingDialog: React.FC<OnboardingDialogProps> = ({ isOpen, onClose }) 
         </div>
 
         <div className="flex shrink-0 flex-col border-t lg:hidden">
-          {error && !isLoading && step !== 'done' && <ErrorBadge />}
+          {error && !isLoading && step !== 'done' && <ErrorBadge message={error} />}
           <DialogActions step={step} isLoading={isLoading} runOnboarding={runOnboarding} />
         </div>
       </DialogContent>
@@ -295,12 +262,12 @@ function SummaryLine({ count, label }: { count: number; label: string }) {
   );
 }
 
-function ErrorBadge() {
+function ErrorBadge({ message }: { message: string }) {
   return (
-    <Badge color="rose" className="rounded-none gap-3 text-sm border-b">
-      <AlertCircle className="size-4 sm:size-7" />
+    <Badge color="rose" className="rounded-none gap-3 text-sm border-b" role="alert">
+      <AlertCircle className="size-4 shrink-0 sm:size-5" />
       <span className="text-xs sm:text-sm">
-        Setup hit an error. Check the failed item tooltip for details; already-created records are safe to keep.
+        Setup failed and nothing was created. {message}
       </span>
     </Badge>
   );
@@ -326,7 +293,7 @@ function DialogActions({
           </DialogClose>
           <Button asChild className="w-full sm:w-auto">
             <a href="/" target="_blank" rel="noopener noreferrer">
-              View medspa storefront
+              View storefront
               <ArrowUpRight className="ml-1.5 h-4 w-4" />
             </a>
           </Button>

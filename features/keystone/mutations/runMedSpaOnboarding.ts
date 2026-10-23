@@ -35,105 +35,90 @@ export type MedSpaOnboardingResult = {
 
 type FailurePoint = "resources" | "services" | "people" | "appointments";
 
-// A real practice gets its location, settings and catalog as private drafts the
-// merchant reviews and publishes; template people, photos and paid offers are not copied.
-function realPracticeSeed(seed: Record<string, any>) {
-  return {
-    ...seed,
-    storefront: { ...seed.storefront, isPublished: false },
-    resources: seed.resources.map((item: any) => ({ ...item, isPublic: false })),
-    services: seed.services.map((item: any) => ({ ...item, isPublic: false })),
-    providers: [], scheduleBlocks: [], clients: [], appointments: [], gallery: [], memberships: [], packages: [],
-  };
+function needsClinicalAuthority(service: any) {
+  return service.staffAuthorizationRequired !== false || service.requiresConsultation === true
+    || service.requiresIntakeReview === true || service.requiresLotTraceability === true;
 }
 
-function validateSeed(input: unknown, isolatedLocal: boolean): any {
-  if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("MedSpa seed must be an object");
-  let seed = input as Record<string, any>;
+/**
+ * One contract for every environment: the practice is created with its
+ * location, rooms, treatments, providers and hours, and the storefront can go
+ * live at once. Treatments that need clinical authority stay private until the
+ * practice records that authority, because public booking cannot satisfy it.
+ */
+function validateSeed(input: unknown): any {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Setup data must be a JSON object");
+  const seed = input as Record<string, any>;
   if (!seed.medspaInfo || typeof seed.medspaInfo !== "object" || Array.isArray(seed.medspaInfo)) {
-    throw new Error("MedSpa seed requires medspaInfo");
+    throw new Error("Setup data needs medspaInfo");
   }
   if (!seed.storefront || typeof seed.storefront !== "object" || Array.isArray(seed.storefront)) {
-    throw new Error("MedSpa seed requires storefront settings");
+    throw new Error("Setup data needs storefront settings");
   }
   if (!String(seed.medspaInfo.name || "").trim() || !String(seed.storefront.displayName || '').trim()) {
-    throw new Error("Onboarding requires a practice name and storefront display name");
+    throw new Error("Enter a practice name and a storefront display name");
   }
-  if (isolatedLocal && !/\b(?:demo|mock)\b/i.test(String(seed.medspaInfo.name || ""))) {
-    throw new Error("Onboarding practice and storefront identities must be clearly marked demo or mock");
-  }
-  if (!Number.isInteger(seed.storefront.accentHue) || seed.storefront.accentHue < 0 || seed.storefront.accentHue > 360 || (isolatedLocal && seed.storefront.isPublished !== true)) {
-    throw new Error("Onboarding storefront settings must publish a valid demo hue");
+  if (!/[a-z0-9]/i.test(String(seed.medspaInfo.name))) throw new Error("Practice name needs at least one letter or number");
+  if (!Number.isInteger(seed.storefront.accentHue) || seed.storefront.accentHue < 0 || seed.storefront.accentHue > 360) {
+    throw new Error("Storefront hue must be a whole number from 0 to 360");
   }
   for (const key of REQUIRED_ARRAYS) {
-    if (!Array.isArray(seed[key])) throw new Error(`MedSpa seed requires ${key}`);
-    if (seed[key].length > 500) throw new Error(`MedSpa seed ${key} exceeds the 500-item limit`);
+    if (!Array.isArray(seed[key])) throw new Error(`Setup data needs a ${key} list`);
+    if (seed[key].length > 500) throw new Error(`Setup data ${key} has more than 500 items`);
   }
-  if (!isolatedLocal) seed = realPracticeSeed(seed);
   const imagePaths = [
     ...seed.services.map((item: any) => item.imagePath),
     ...seed.providers.map((item: any) => item.imagePath),
     ...seed.gallery.map((item: any) => item.imagePath),
   ].filter(Boolean);
   if (imagePaths.some((value: unknown) => typeof value !== "string" || !/^\/images\/[a-z0-9_./-]+$/i.test(value) || value.includes(".."))) {
-    throw new Error("MedSpa seed image paths must be canonical relative /images/ paths");
+    throw new Error("Image paths must start with /images/");
   }
   const resourceTypes = new Set(["room", "device", "equipment", "station", "other"]);
-  if (seed.resources.some((item: any) => !resourceTypes.has(item.type))) throw new Error("MedSpa seed contains an unsupported resource type");
-  if (isolatedLocal && (!/\b(?:demo|mock|fictional)\b/i.test(`${seed.medspaInfo.name || ""} ${seed.medspaInfo.address || ""}`)
-    || !/^\+?1?[\s().-]*[2-9]\d{2}[\s().-]*555[\s.-]*01\d{2}$/.test(String(seed.medspaInfo.phone || ""))
-    || !/@[a-z0-9.-]+\.example$/i.test(String(seed.medspaInfo.email || "")))) {
-    throw new Error("Onboarding location and contact must be unmistakably fictional demo data");
-  }
+  if (seed.resources.some((item: any) => !resourceTypes.has(item.type))) throw new Error("Rooms and equipment use room, device, equipment, station or other");
   const resourcesByKey = new Map(seed.resources.map((item: any) => [item.key, item]));
   for (const resource of seed.resources) {
-    if (typeof resource.isPublic !== "boolean" || (resource.isPublic && resource.isActive !== true)) {
-      throw new Error(`Resource ${resource.name || "unknown"} must be explicitly public and active or remain private`);
-    }
+    if (resource.isPublic === true && resource.isActive === false) throw new Error(`${resource.name || "A room"} can't be bookable while inactive`);
   }
-  if (seed.appointments.length) throw new Error("Onboarding cannot manufacture appointment or treatment evidence");
+  if (seed.appointments.length) throw new Error("Setup can't create appointments");
   for (const service of seed.services) {
+    const name = service.name || "A treatment";
     if (!Number.isInteger(service.price) || service.price < 0 || !Number.isInteger(service.basePrice) || service.basePrice < 0) {
-      throw new Error(`Service ${service.name || "unknown"} prices must be non-negative integer cents`);
+      throw new Error(`${name}: prices must be whole cents`);
     }
-    if (typeof service.isPublic !== "boolean" || service.isPublic !== (service.status === "active")) {
-      throw new Error(`Service ${service.name || "unknown"} must publish only when active`);
-    }
-    if (service.isPublic && (!isolatedLocal || service.price !== 0 || service.basePrice !== 0 || Number(service.depositAmount || 0) !== 0 || service.staffAuthorizationRequired !== false || service.requiresConsultation !== false || service.requiresIntakeReview !== false || service.requiresLotTraceability !== false)) {
-      throw new Error(`Public onboarding service ${service.name || "unknown"} must be a non-clinical demo request`);
+    if (service.isPublic === true && service.status !== "active") throw new Error(`${name} must be active to be bookable online`);
+    if (service.isPublic === true && needsClinicalAuthority(service)) {
+      throw new Error(`${name} needs clinical authority, so it can't be bookable online yet`);
     }
     for (const resourceKey of service.requiredResources || []) {
       const resource = resourcesByKey.get(resourceKey) as any;
-      if (service.isPublic && (!resource || resource.isActive !== true || resource.isPublic !== true)) {
-        throw new Error(`Public onboarding service ${service.name || "unknown"} requires an active explicitly public resource`);
+      if (!resource) throw new Error(`${name} uses an unknown room "${resourceKey}"`);
+      if (service.isPublic === true && (resource.isActive === false || resource.isPublic !== true)) {
+        throw new Error(`${name} is bookable online, so ${resource.name} must be active and bookable too`);
       }
     }
-  }
-  if (isolatedLocal && !seed.services.some((service: any) => service.status === "active" && service.isPublic === true)) {
-    throw new Error("Onboarding requires at least one active mock public service");
   }
   const servicesByKey = new Map(seed.services.map((item: any) => [item.key, item]));
   const providersByKey = new Map(seed.providers.map((item: any) => [item.key, item]));
   for (const provider of seed.providers) {
-    if (typeof provider.isPublic !== "boolean" || (provider.isPublic && (provider.status !== "active" || provider.isActive !== true || provider.role !== "assistant"
-      || !isolatedLocal))) {
-      throw new Error(`Public onboarding provider ${provider.name || "unknown"} must be active, explicitly public, fictional demo support personnel`);
+    const name = provider.name || "A provider";
+    if (!String(provider.email || "").includes("@")) throw new Error(`${name} needs an email address`);
+    if (provider.isPublic === true && (provider.status !== "active" || provider.isActive !== true)) {
+      throw new Error(`${name} must be active to be bookable online`);
     }
     for (const serviceKey of provider.specializations || []) {
-      const service = servicesByKey.get(serviceKey) as any;
-      if (provider.isPublic && (!service || service.status !== "active" || service.isPublic !== true)) {
-        throw new Error(`Public onboarding provider ${provider.name || "unknown"} may reference only active explicitly public services`);
-      }
+      if (!servicesByKey.has(serviceKey)) throw new Error(`${name} lists an unknown treatment "${serviceKey}"`);
     }
   }
   for (const block of seed.scheduleBlocks) {
     const provider = providersByKey.get(block.provider) as any;
-    if (typeof block.isPublic !== "boolean" || (block.isPublic && (block.isAvailable !== true || !provider || provider.isPublic !== true))) {
-      throw new Error(`Public onboarding schedule ${block.key || "unknown"} must be available and belong to explicitly public demo personnel`);
+    if (!provider) throw new Error(`Schedule ${block.key || ""} belongs to an unknown provider`);
+    if (block.isPublic === true && (block.isAvailable === false || provider.isPublic !== true)) {
+      throw new Error(`${provider.name}'s online hours need an available, bookable provider`);
     }
   }
   if (seed.products.some((item: any) => item.trackLots !== false && Number(item.quantity || 0) > 0)) {
-    throw new Error("Tracked inventory must enter through controlled lot receiving");
+    throw new Error("Lot-tracked products start at zero; receive stock through inventory");
   }
   for (const [section, fields] of Object.entries({
     memberships: ["monthlyPrice"],
@@ -143,7 +128,7 @@ function validateSeed(input: unknown, isolatedLocal: boolean): any {
     for (const item of seed[section]) {
       for (const field of fields) {
         if (item[field] != null && !Number.isInteger(item[field])) {
-          throw new Error(`${section}.${field} must be integer cents`);
+          throw new Error(`${section}.${field} must be whole cents`);
         }
       }
     }
@@ -175,7 +160,7 @@ export async function runMedSpaOnboardingTransaction(
     throw new Error("The one-time onboarding role is not an isolated bootstrap role");
   }
   const isolatedLocal = await assertOwnedLocalDatabase(context.prisma);
-  const seed = validateSeed(seedInput, isolatedLocal);
+  const seed = validateSeed(seedInput);
 
   return context.transaction(async (transactionContext: Context) => {
     await transactionContext.prisma.$executeRawUnsafe(
@@ -445,7 +430,7 @@ export async function runMedSpaOnboardingTransaction(
         revision: existingStorefront.revision + 1,
       });
     } else {
-      await createOne("StorefrontSetting", { ...storefrontData, logoSvg: DEFAULT_LOGO_SVG, logoHue: 0, revision: 1 });
+      await createOne("StorefrontSetting", { ...storefrontData, logoSvg: DEFAULT_LOGO_SVG, logoHue: seed.storefront.accentHue, revision: 1 });
     }
     if (failurePoint === "services") throw new Error("Injected onboarding failure after services");
 
@@ -657,6 +642,13 @@ export async function runMedSpaOnboardingTransaction(
   }, { maxWait: 5_000, timeout: 120_000, isolationLevel: "Serializable" as any });
 }
 
+function onboardingFailureMessage(error: unknown): string {
+  const code = (error as { code?: unknown })?.code;
+  if (typeof code === "string" && /^P\d{4}$/.test(code)) return "Setup couldn't be saved. Nothing was created; try again.";
+  if (error instanceof Error && error.message && error.message.length <= 300) return error.message;
+  return "Setup failed. Nothing was created; try again.";
+}
+
 const resultType = graphql.object<MedSpaOnboardingResult>()({
   name: "RunMedSpaOnboardingResult",
   fields: {
@@ -673,6 +665,11 @@ export const runMedSpaOnboarding = graphql.field({
   type: resultType,
   args: { seed: graphql.arg({ type: graphql.JSON }) },
   async resolve(_source, { seed }, context: Context) {
-    return runMedSpaOnboardingTransaction(context, seed ?? defaultSeed);
+    try {
+      return await runMedSpaOnboardingTransaction(context, seed ?? defaultSeed);
+    } catch (error) {
+      // The transaction rolled back; report why instead of Keystone's masked error.
+      return { success: false, completed: false, created: 0, reused: 0, locationId: null, error: onboardingFailureMessage(error) };
+    }
   },
 });

@@ -160,6 +160,7 @@ export const getStorefrontBrand = cache(async function (): Promise<StorefrontBra
 
 export async function storefrontMetadata(page?: string): Promise<Metadata> {
   const brand = await getStorefrontBrand()
+  if (!brand.configured) return { title: "Coming soon", robots: { index: false, follow: false } }
   const title = page ? `${page} | ${brand.name}` : brand.name
   return {
     applicationName: brand.name,

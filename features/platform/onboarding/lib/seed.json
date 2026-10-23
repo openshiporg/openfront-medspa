@@ -1,7 +1,7 @@
 {
   "medspaInfo": {
-    "key": "juniper-vale-demo-med-spa",
-    "name": "Juniper Vale Med Spa — Demo",
+    "key": "juniper-vale-med-spa",
+    "name": "Juniper Vale Med Spa",
     "address": "400 Juniper Avenue, Suite 210",
     "city": "Brooklyn",
     "state": "NY",
@@ -10,72 +10,112 @@
     "email": "hello@juniper-vale.example",
     "timezone": "America/New_York",
     "hours": {
-      "monday": { "closed": true },
-      "tuesday": { "open": "10:00", "close": "17:00", "closed": false },
-      "wednesday": { "open": "10:00", "close": "17:00", "closed": false },
-      "thursday": { "open": "10:00", "close": "17:00", "closed": false },
-      "friday": { "open": "10:00", "close": "16:00", "closed": false },
-      "saturday": { "open": "10:00", "close": "14:00", "closed": false },
-      "sunday": { "closed": true }
+      "monday": {
+        "closed": true
+      },
+      "tuesday": {
+        "open": "10:00",
+        "close": "17:00",
+        "closed": false
+      },
+      "wednesday": {
+        "open": "10:00",
+        "close": "17:00",
+        "closed": false
+      },
+      "thursday": {
+        "open": "10:00",
+        "close": "17:00",
+        "closed": false
+      },
+      "friday": {
+        "open": "10:00",
+        "close": "16:00",
+        "closed": false
+      },
+      "saturday": {
+        "open": "10:00",
+        "close": "14:00",
+        "closed": false
+      },
+      "sunday": {
+        "closed": true
+      }
     }
   },
   "resources": [
     {
-      "key": "demo-consultation-room",
+      "key": "consultation-room",
       "name": "Consultation room",
       "type": "room",
       "capacity": 1,
       "isActive": true,
       "isPublic": true,
       "readinessStatus": "available",
-      "notes": "Fictional room used only to exercise the demo consultation-request schedule. It is not represented as a clinical treatment environment."
+      "notes": ""
     },
     {
-      "key": "treatment-room-placeholder",
-      "name": "Treatment Room — Configuration Required",
+      "key": "treatment-room",
+      "name": "Treatment room",
       "type": "room",
       "capacity": 1,
-      "isActive": false,
-      "isPublic": false,
-      "readinessStatus": "acceptance_testing",
-      "notes": "Private inactive placeholder. Readiness, emergency requirements, and clinical release remain unconfigured."
+      "isActive": true,
+      "isPublic": true,
+      "readinessStatus": "available",
+      "notes": ""
     },
     {
-      "key": "energy-device-placeholder",
-      "name": "Energy Device — Configuration Required",
-      "type": "device",
+      "key": "light-suite",
+      "name": "Light therapy suite",
+      "type": "room",
       "capacity": 1,
-      "isActive": false,
-      "isPublic": false,
-      "readinessStatus": "acceptance_testing",
-      "notes": "Private inactive placeholder. No device identity, registration, training, maintenance, calibration, or clinical release is claimed."
+      "isActive": true,
+      "isPublic": true,
+      "readinessStatus": "available",
+      "notes": ""
     }
   ],
   "categories": [
     {
       "key": "consultations",
       "name": "Consultations",
-      "slug": "demo-services",
-      "description": "Appointment planning.",
+      "slug": "consultations",
+      "description": "",
       "displayOrder": 10,
       "icon": "clipboard"
     },
     {
-      "key": "medical-aesthetics",
-      "name": "Medical Aesthetics",
-      "slug": "medical-aesthetics",
-      "description": "Inactive placeholders requiring approved jurisdiction, credential, protocol, consent, product, and resource packs.",
+      "key": "facials",
+      "name": "Facials & peels",
+      "slug": "facials-peels",
+      "description": "",
       "displayOrder": 20,
-      "icon": "shield"
+      "icon": "sparkles"
+    },
+    {
+      "key": "injectables",
+      "name": "Injectables",
+      "slug": "injectables",
+      "description": "",
+      "displayOrder": 30,
+      "icon": "syringe"
+    },
+    {
+      "key": "light",
+      "name": "Light & skin renewal",
+      "slug": "light-skin-renewal",
+      "description": "",
+      "displayOrder": 40,
+      "icon": "sun"
     }
   ],
   "services": [
     {
-      "key": "medical-aesthetics-consultation",
-      "name": "Consultation request",
+      "key": "new-client-consultation",
+      "name": "New client consultation",
       "category": "Consultations",
-      "description": "Scheduling and service information.",
-      "baseDuration": 45,
+      "description": "Goals, skin assessment and a treatment plan.",
+      "baseDuration": 30,
       "price": 0,
       "basePrice": 0,
       "depositRequired": false,
@@ -86,80 +126,195 @@
       "requiresIntakeReview": false,
       "requiresLotTraceability": false,
       "requiredResources": [
-        "demo-consultation-room"
+        "consultation-room"
       ],
       "isPublic": true
     },
     {
-      "key": "injectable-treatment-placeholder",
-      "name": "Injectable Treatment — Configuration Required",
-      "category": "Medical Aesthetics",
-      "description": "Inactive until approved products, patient-specific order, consent, credential, supervision, protocol, and lot custody are configured.",
-      "baseDuration": 60,
-      "price": 1,
-      "basePrice": 1,
+      "key": "injectables-consultation",
+      "name": "Injectables consultation",
+      "category": "Injectables",
+      "description": "Neuromodulator and filler planning with a provider.",
+      "baseDuration": 30,
+      "price": 0,
+      "basePrice": 0,
       "depositRequired": false,
       "depositAmount": 0,
-      "status": "inactive",
-      "staffAuthorizationRequired": true,
-      "requiresConsultation": true,
-      "requiresIntakeReview": true,
-      "requiresLotTraceability": true,
-      "requiredResources": [
-        "treatment-room-placeholder"
-      ],
-      "isPublic": false
-    },
-    {
-      "key": "energy-treatment-placeholder",
-      "name": "Energy Treatment — Configuration Required",
-      "category": "Medical Aesthetics",
-      "description": "Inactive until device identity, intended use, facility rules, training, maintenance, clinical authority, protocol, and consent are configured.",
-      "baseDuration": 60,
-      "price": 1,
-      "basePrice": 1,
-      "depositRequired": false,
-      "depositAmount": 0,
-      "status": "inactive",
-      "staffAuthorizationRequired": true,
-      "requiresConsultation": true,
-      "requiresIntakeReview": true,
+      "status": "active",
+      "staffAuthorizationRequired": false,
+      "requiresConsultation": false,
+      "requiresIntakeReview": false,
       "requiresLotTraceability": false,
       "requiredResources": [
-        "treatment-room-placeholder",
-        "energy-device-placeholder"
+        "consultation-room"
       ],
-      "isPublic": false
+      "isPublic": true
+    },
+    {
+      "key": "signature-facial",
+      "name": "Signature hydrating facial",
+      "category": "Facials & peels",
+      "description": "Cleanse, exfoliation, extraction and hydration.",
+      "baseDuration": 60,
+      "price": 16500,
+      "basePrice": 16500,
+      "depositRequired": false,
+      "depositAmount": 0,
+      "status": "active",
+      "staffAuthorizationRequired": false,
+      "requiresConsultation": false,
+      "requiresIntakeReview": false,
+      "requiresLotTraceability": false,
+      "requiredResources": [
+        "treatment-room"
+      ],
+      "isPublic": true
+    },
+    {
+      "key": "glow-peel",
+      "name": "Glow chemical peel",
+      "category": "Facials & peels",
+      "description": "Light resurfacing peel for tone and texture.",
+      "baseDuration": 45,
+      "price": 14000,
+      "basePrice": 14000,
+      "depositRequired": false,
+      "depositAmount": 0,
+      "status": "active",
+      "staffAuthorizationRequired": false,
+      "requiresConsultation": false,
+      "requiresIntakeReview": false,
+      "requiresLotTraceability": false,
+      "requiredResources": [
+        "treatment-room"
+      ],
+      "isPublic": true
+    },
+    {
+      "key": "dermaplaning",
+      "name": "Dermaplaning",
+      "category": "Facials & peels",
+      "description": "Gentle exfoliation for smoother skin.",
+      "baseDuration": 45,
+      "price": 9500,
+      "basePrice": 9500,
+      "depositRequired": false,
+      "depositAmount": 0,
+      "status": "active",
+      "staffAuthorizationRequired": false,
+      "requiresConsultation": false,
+      "requiresIntakeReview": false,
+      "requiresLotTraceability": false,
+      "requiredResources": [
+        "treatment-room"
+      ],
+      "isPublic": true
+    },
+    {
+      "key": "led-therapy",
+      "name": "LED light therapy",
+      "category": "Light & skin renewal",
+      "description": "Red and blue light session.",
+      "baseDuration": 30,
+      "price": 6500,
+      "basePrice": 6500,
+      "depositRequired": false,
+      "depositAmount": 0,
+      "status": "active",
+      "staffAuthorizationRequired": false,
+      "requiresConsultation": false,
+      "requiresIntakeReview": false,
+      "requiresLotTraceability": false,
+      "requiredResources": [
+        "light-suite"
+      ],
+      "isPublic": true
     }
   ],
   "providers": [
     {
-      "key": "avery-rowan-demo-coordinator",
-      "name": "Avery Rowan",
-      "email": "avery.rowan@juniper-vale-demo.example",
+      "key": "maya-ortiz",
+      "name": "Maya Ortiz",
+      "email": "maya.ortiz@juniper-vale.example",
       "phone": "+1 (212) 555-0162",
-      "role": "assistant",
-      "tier": "junior",
-      "title": "Scheduling coordinator",
-      "bio": "Appointment planning.",
+      "role": "nurse",
+      "tier": "senior",
+      "title": "Aesthetic nurse",
+      "bio": "",
       "baseCommissionRate": 0,
       "status": "active",
       "isActive": true,
       "isPublic": true,
       "specializations": [
-        "medical-aesthetics-consultation"
+        "new-client-consultation",
+        "injectables-consultation",
+        "glow-peel",
+        "led-therapy"
+      ]
+    },
+    {
+      "key": "lena-park",
+      "name": "Lena Park",
+      "email": "lena.park@juniper-vale.example",
+      "phone": "+1 (212) 555-0163",
+      "role": "esthetician",
+      "tier": "senior",
+      "title": "Lead esthetician",
+      "bio": "",
+      "baseCommissionRate": 0,
+      "status": "active",
+      "isActive": true,
+      "isPublic": true,
+      "specializations": [
+        "new-client-consultation",
+        "signature-facial",
+        "glow-peel",
+        "dermaplaning",
+        "led-therapy"
       ]
     }
   ],
   "scheduleBlocks": [
     {
-      "key": "avery-demo-consultation-hours",
-      "provider": "avery-rowan-demo-coordinator",
-      "daysOfWeek": [2, 3, 4],
+      "key": "maya-weekdays",
+      "provider": "maya-ortiz",
+      "daysOfWeek": [
+        2,
+        3,
+        4
+      ],
+      "startTime": "10:00",
+      "endTime": "17:00",
+      "breakStart": "13:00",
+      "breakEnd": "13:30",
+      "isAvailable": true,
+      "isPublic": true
+    },
+    {
+      "key": "lena-week",
+      "provider": "lena-park",
+      "daysOfWeek": [
+        3,
+        4,
+        5
+      ],
+      "startTime": "10:00",
+      "endTime": "16:00",
+      "breakStart": "12:30",
+      "breakEnd": "13:00",
+      "isAvailable": true,
+      "isPublic": true
+    },
+    {
+      "key": "lena-saturday",
+      "provider": "lena-park",
+      "daysOfWeek": [
+        6
+      ],
       "startTime": "10:00",
       "endTime": "14:00",
-      "breakStart": "12:00",
-      "breakEnd": "12:30",
+      "breakStart": "",
+      "breakEnd": "",
       "isAvailable": true,
       "isPublic": true
     }
@@ -168,7 +323,7 @@
   "intakeForms": [
     {
       "key": "medical-history-intake",
-      "name": "Medical History Intake",
+      "name": "Medical history",
       "requiredForServices": [],
       "fields": [
         {
@@ -207,9 +362,9 @@
   "formTemplates": [
     {
       "key": "medical-history-intake-v1",
-      "name": "Medical History Intake v1",
+      "name": "Medical history acknowledgement",
       "type": "clinical_intake",
-      "description": "Versioned intake only; it is not treatment consent or a clinical decision.",
+      "description": "",
       "fields": [
         {
           "id": "historyAcknowledgement",
@@ -226,10 +381,11 @@
   "messageTemplates": [
     {
       "key": "appointment-reminder",
-      "name": "Appointment Reminder",
+      "name": "Appointment reminder",
       "type": "reminder",
-      "content": "Demo reminder template: a recorded appointment status does not establish treatment eligibility or clinical authorization.",
+      "content": "Hi {{clientName}}, this is a reminder of your appointment on {{appointmentDate}}.",
       "variables": [
+        "clientName",
         "appointmentDate"
       ]
     }
@@ -239,18 +395,16 @@
   "paymentProviders": [
     {
       "key": "manual-cash",
-      "name": "Manual Cash — Enable After Policy Review",
+      "name": "Cash",
       "code": "pp_manual_cash",
       "adapter": "manual",
-      "isInstalled": false,
-      "isDefault": false,
-      "config": {
-        "purpose": "operator-recorded cash only"
-      }
+      "isInstalled": true,
+      "isDefault": true,
+      "config": {}
     },
     {
       "key": "stripe",
-      "name": "Stripe — Configuration Required",
+      "name": "Stripe",
       "code": "pp_stripe",
       "adapter": "stripe",
       "isInstalled": false,
