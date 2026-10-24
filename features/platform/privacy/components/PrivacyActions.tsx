@@ -2,13 +2,8 @@
 
 import { WorkflowSheet } from '@/features/platform/forms/components/WorkflowSheet';
 import type { Option } from '@/features/platform/forms/types';
+import { REQUEST_TYPES } from '../lib/requestTypes';
 import { appendRightsStep, createRightsRequest, placeHold, publishRetention, releaseHold } from '../actions/privacy';
-
-export const REQUEST_TYPES: Option[] = [
-  { value: 'access', label: 'Access to records' }, { value: 'export', label: 'Export records' }, { value: 'amendment', label: 'Amend records' },
-  { value: 'restriction', label: 'Restrict use' }, { value: 'disclosure_accounting', label: 'Disclosure accounting' },
-  { value: 'representative_update', label: 'Representative update' }, { value: 'deletion_review', label: 'Deletion review' },
-];
 
 const day = (value: string | boolean | undefined) => value ? new Date(`${value}T00:00:00`).toISOString() : null;
 

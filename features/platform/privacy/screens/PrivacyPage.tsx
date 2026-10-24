@@ -3,7 +3,8 @@ import { ArrowUpRight, Archive, Gavel, KeyRound, LockKeyhole, UserRoundSearch } 
 import { statusFilter } from '@/features/platform/lib/queryParams';
 import { Chip, EmptyState, ErrorState, MetricStrip, PageHeader, PillLink, PlatformPage, SegmentTabs, StatusDot, Track, humanize, type Tone } from '@/features/platform/components/medspa-ui';
 import { getPrivacyOverview } from '../actions/privacy';
-import { PlaceHoldSheet, ReleaseHoldSheet, RetentionPolicySheet, RightsRequestSheet, REQUEST_TYPES } from '../components/PrivacyActions';
+import { PlaceHoldSheet, ReleaseHoldSheet, RetentionPolicySheet, RightsRequestSheet } from '../components/PrivacyActions';
+import { REQUEST_TYPES } from '../lib/requestTypes';
 import type { RightsRequestRow } from '../types';
 
 const tabs = ['requests', 'holds', 'retention', 'access'] as const;
