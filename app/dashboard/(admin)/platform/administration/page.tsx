@@ -1,2 +1,5 @@
-import { MedSpaWorkspacePage } from '@/features/platform/workspaces/screens/MedSpaWorkspacePage';
-export default function AdministrationPage() { return <MedSpaWorkspacePage section="administration" />; }
+import { AdministrationHubPage } from '@/features/platform/administration/screens/AdministrationHubPage';
+
+export const dynamic = 'force-dynamic';
+
+export default AdministrationHubPage;

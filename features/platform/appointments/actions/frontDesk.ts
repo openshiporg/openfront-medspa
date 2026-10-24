@@ -21,14 +21,18 @@ export async function getFrontDeskOptions(): Promise<FrontDeskOptions> {
   `, {}, { cache: 'no-store' }).catch(() => null);
   if (!response?.success) return { status: 'unavailable' };
   // Client lookup is optional: roles without client access can still book by contact details.
-  const clients = await keystoneClient<{ clients: FrontDeskClient[] }>(`
-    query FrontDeskClients { clients(orderBy: { updatedAt: desc }, take: 200) { id user { name email phone } } }
+  // The directory reads names through the practice-scoped projection, so front-desk roles see them too.
+  const directory = await keystoneClient<{ medspaClientDirectory: { items: Array<{ id: string; name: string | null; email: string | null; phone: string | null }> } }>(`
+    query FrontDeskClients { medspaClientDirectory(page: 0) }
   `, {}, { cache: 'no-store' }).catch(() => null);
+  const clients: FrontDeskClient[] = directory?.success
+    ? (directory.data.medspaClientDirectory?.items || []).filter((item) => item.email).map((item) => ({ id: item.id, user: { name: item.name || item.email!, email: item.email!, phone: item.phone } }))
+    : [];
   return {
     status: 'loaded',
     services: response.data.services || [],
     locations: response.data.locations || [],
-    clients: clients?.success ? (clients.data.clients || []).filter((client) => client.user?.email) : [],
+    clients,
   };
 }
 
@@ -44,4 +48,16 @@ export async function bookFromFrontDesk(input: FrontDeskBookingInput): Promise<{
     }
   `, { ...input });
   return response.success ? response.data.bookAppointment : { success: false, error: 'Booking not confirmed. Check the appointments list before retrying.' };
+}
+
+/** Server-side client search for the front-desk picker (name, email or phone). */
+export async function searchFrontDeskClients(search: string): Promise<FrontDeskClient[]> {
+  const term = search.trim().slice(0, 100);
+  if (term.length < 2) return [];
+  const response = await keystoneClient<{ medspaClientDirectory: { items: Array<{ id: string; name: string | null; email: string | null; phone: string | null }> } }>(`
+    query FrontDeskClientSearch($search: String) { medspaClientDirectory(search: $search, page: 0) }
+  `, { search: term }, { cache: 'no-store' }).catch(() => null);
+  if (!response?.success) return [];
+  return (response.data.medspaClientDirectory?.items || []).filter((item) => item.email).slice(0, 8)
+    .map((item) => ({ id: item.id, user: { name: item.name || item.email!, email: item.email!, phone: item.phone } }));
 }

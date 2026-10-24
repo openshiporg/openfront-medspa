@@ -1,2 +1,5 @@
-import { MedSpaWorkspacePage } from '@/features/platform/workspaces/screens/MedSpaWorkspacePage';
-export default function BenefitsPage() { return <MedSpaWorkspacePage section="benefits" />; }
+import { BenefitsPage } from '@/features/platform/benefits/screens/BenefitsPage';
+
+export const dynamic = 'force-dynamic';
+
+export default BenefitsPage;

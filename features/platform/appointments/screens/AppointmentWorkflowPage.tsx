@@ -57,9 +57,10 @@ export async function AppointmentWorkflowPage({ appointmentId }: { appointmentId
           <span>{appointment.duration || 0} min</span>
           <span>{appointment.location?.name || 'No location'}</span>
         </>}
-        actions={capabilities.canManageFinance ? (
+        actions={capabilities.canManageFinance || capabilities.canManageClinical ? (
           <Track>
-            <PillLink href={`/dashboard/platform/checkout/${appointment.id}`} variant={checkoutOpen ? 'primary' : 'raised'}>{checkoutOpen ? 'Start checkout' : 'Checkout status'}</PillLink>
+            {capabilities.canManageClinical ? <PillLink href={`/dashboard/platform/appointments/${appointment.id}/treatment`}>Treatment</PillLink> : null}
+            {capabilities.canManageFinance ? <PillLink href={`/dashboard/platform/checkout/${appointment.id}`} variant={checkoutOpen ? 'primary' : 'raised'}>{checkoutOpen ? 'Start checkout' : 'Checkout status'}</PillLink> : null}
           </Track>
         ) : null}
       />

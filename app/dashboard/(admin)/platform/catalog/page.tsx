@@ -1,2 +1,3 @@
-import { MedSpaWorkspacePage } from '@/features/platform/workspaces/screens/MedSpaWorkspacePage';
-export default function CatalogPage() { return <MedSpaWorkspacePage section="catalog" />; }
+import { CatalogPage } from '@/features/platform/catalog/screens/CatalogPage';
+
+export default CatalogPage;

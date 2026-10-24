@@ -4,7 +4,10 @@ import {
   Chip, EmptyState, ErrorState, Fact, MetricStrip, Notice, PageHeader, PillLink, PlatformPage, SegmentTabs, StatusDot,
   TitleStatus, Track, pillClass, trackClass,
 } from '@/features/platform/components/medspa-ui';
-import { getResourceOperations, PlatformResource, setResourceActive } from '../actions/resources';
+import { getResourceOperations, setResourceActive } from '../actions/resources';
+import { READINESS_LABELS, RESOURCE_TYPE_LABELS, type PlatformResource, type ResourceFormOptions } from '../types';
+import { ResourceFormSheet } from '../components/ResourceFormSheet';
+import { ReadinessActions } from '../components/ReadinessActions';
 
 interface PageProps {
   searchParams?: Promise<{ status?: string }>;
@@ -16,14 +19,6 @@ const tabs = [
   { value: 'all', label: 'All' },
 ] as const;
 
-const typeLabels: Record<string, string> = {
-  station: 'Station',
-  room: 'Treatment room',
-  device: 'Device',
-  equipment: 'Equipment',
-  other: 'Other',
-};
-
 function formatDateTime(value?: string | null, timeZone = 'UTC') {
   if (!value) return 'Unscheduled';
   return new Date(value).toLocaleString('en-US', { timeZone, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -32,7 +27,7 @@ function formatDateTime(value?: string | null, timeZone = 'UTC') {
 export async function ResourceOperationsPage({ searchParams }: PageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const activeStatus = statusFilter(resolvedSearchParams.status, ["active","inactive","all"] as const, 'active');
-  const { resources, counts, availability } = await getResourceOperations(activeStatus);
+  const { resources, counts, availability, options } = await getResourceOperations(activeStatus);
   const breadcrumbs = [{ label: 'Resources' }];
 
   if (availability === 'unavailable') {
@@ -53,7 +48,7 @@ export async function ResourceOperationsPage({ searchParams }: PageProps) {
 
   return (
     <PlatformPage breadcrumbs={breadcrumbs}>
-      <PageHeader title="Rooms & devices" icon={DoorOpen} actions={<Track><PillLink href="/dashboard/resources/create">New resource</PillLink></Track>} />
+      <PageHeader title="Rooms & devices" icon={DoorOpen} actions={<Track><ResourceFormSheet options={options} /></Track>} />
 
       <MetricStrip items={[
         { label: 'Active', value: counts.active, tone: 'emerald' },
@@ -68,17 +63,30 @@ export async function ResourceOperationsPage({ searchParams }: PageProps) {
       <SegmentTabs label="Resource filters" tabs={tabItems} active={activeStatus} />
 
       {resources.length === 0 ? (
-        <EmptyState icon={DoorOpen} title="No resources in this view" />
+        <EmptyState icon={DoorOpen} title="No resources in this view" action={<Track><ResourceFormSheet options={options} /></Track>} />
       ) : (
         <section aria-label="Resources" className="grid gap-4 lg:grid-cols-2">
-          {resources.map((resource) => <ResourceCard key={resource.id} resource={resource} />)}
+          {resources.map((resource) => <ResourceCard key={resource.id} resource={resource} options={options} />)}
         </section>
       )}
     </PlatformPage>
   );
 }
 
-function ResourceCard({ resource }: { resource: PlatformResource }) {
+function readinessTone(status?: string | null) {
+  if (status === 'available') return 'emerald' as const;
+  if (status === 'cleaning' || status === 'in_use') return 'blue' as const;
+  if (status === 'acceptance_testing' || status === 'maintenance_due') return 'amber' as const;
+  if (status === 'retired') return 'zinc' as const;
+  return 'rose' as const;
+}
+
+function formatDay(value?: string | null) {
+  return value ? new Date(value).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+}
+
+function ResourceCard({ resource, options }: { resource: PlatformResource; options: ResourceFormOptions }) {
+  const isDevice = resource.type === 'device' || resource.type === 'equipment';
   const services = resource.services.map((service) => service.name).filter((name): name is string => Boolean(name));
   const timeZone = resource.location?.timezone || 'UTC';
 
@@ -89,25 +97,36 @@ function ResourceCard({ resource }: { resource: PlatformResource }) {
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
               <h2 className="min-w-0 truncate text-base font-semibold">{resource.name || 'Unnamed resource'}</h2>
-              <TitleStatus tone={resource.isActive ? 'emerald' : 'zinc'}>{resource.isActive ? 'Active' : 'Inactive'}</TitleStatus>
+              {isDevice
+                ? <TitleStatus tone={readinessTone(resource.readinessStatus)}>{READINESS_LABELS[resource.readinessStatus || ''] || 'Readiness unknown'}</TitleStatus>
+                : <TitleStatus tone={resource.isActive ? 'emerald' : 'zinc'}>{resource.isActive ? 'Active' : 'Inactive'}</TitleStatus>}
+              {resource.isPublic ? <Chip>Online</Chip> : null}
             </div>
-            <p className="mt-0.5 text-sm text-muted-foreground">{typeLabels[resource.type || ''] || resource.type || 'Resource'} · capacity {resource.capacity || 1}</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">{RESOURCE_TYPE_LABELS[resource.type || ''] || resource.type || 'Resource'} · capacity {resource.capacity || 1}</p>
           </div>
           <div className={trackClass}>
-            <form action={setResourceActive}>
+            <ResourceFormSheet resource={resource} options={options} />
+            {!isDevice ? <form action={setResourceActive}>
               <input type="hidden" name="id" value={resource.id} />
               <input type="hidden" name="revision" value={resource.revision} />
               <input type="hidden" name="isActive" value={resource.isActive ? 'false' : 'true'} />
               <button type="submit" className={pillClass(resource.isActive ? 'quiet' : 'raised', 'sm')}>{resource.isActive ? 'Deactivate' : 'Reactivate'}</button>
-            </form>
-            <PillLink href={`/dashboard/resources/${resource.id}`} size="sm">Open</PillLink>
+            </form> : null}
           </div>
         </div>
 
         <dl className="grid grid-cols-2 gap-3">
           <Fact label="Location">{[resource.location?.name, resource.location?.city].filter(Boolean).join(', ') || 'No location'}</Fact>
           <Fact label="Holds">{resource.appointments.length}</Fact>
+          {isDevice ? <>
+            <Fact label="Model">{[resource.manufacturer, resource.model].filter(Boolean).join(' ') || '—'}</Fact>
+            <Fact label="Serial">{resource.serialNumber || '—'}</Fact>
+            <Fact label="Maintenance due">{formatDay(resource.maintenanceDueAt)}</Fact>
+            <Fact label="Calibration due">{formatDay(resource.calibrationDueAt)}</Fact>
+          </> : null}
         </dl>
+
+        {isDevice ? <ReadinessActions resourceId={resource.id} status={resource.readinessStatus || ''} releaseProviderId={options.releaseProviderId} /> : null}
 
         <div className="flex flex-wrap gap-1.5">
           {services.length ? services.map((name) => <Chip key={name}>{name}</Chip>) : <Chip tone="amber">No treatments assigned</Chip>}

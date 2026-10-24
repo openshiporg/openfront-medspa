@@ -1,2 +1,5 @@
-import { MedSpaWorkspacePage } from '@/features/platform/workspaces/screens/MedSpaWorkspacePage';
-export default function ClientsPage() { return <MedSpaWorkspacePage section="clients" />; }
+import { ClientListPage } from '@/features/platform/clients/screens/ClientListPage';
+
+export const dynamic = 'force-dynamic';
+
+export default ClientListPage;

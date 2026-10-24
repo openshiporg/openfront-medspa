@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { Banknote, Boxes, Building2, CalendarClock, CalendarHeart, ChartNoAxesCombined, ContactRound, DoorOpen, Gift, LayoutGrid, Megaphone, PlugZap, ReceiptText, Sparkles, Store, UsersRound } from 'lucide-react'
+import { Banknote, Boxes, Building2, CalendarClock, CalendarHeart, ChartNoAxesCombined, ContactRound, CreditCard, DoorOpen, FileSignature, Gift, HeartPulse, LayoutGrid, LockKeyhole, MapPin, Megaphone, PlugZap, ReceiptText, ShieldAlert, Sparkles, Star, Stethoscope, Store, UsersRound } from 'lucide-react'
 
 export interface PlatformNavItem {
   title: string
@@ -7,7 +7,7 @@ export interface PlatformNavItem {
   color: string
   description: string
   icon: LucideIcon
-  group: 'standalone' | 'relationships' | 'catalog' | 'operations' | 'insights'
+  group: 'standalone' | 'relationships' | 'catalog' | 'operations' | 'clinical' | 'insights'
 }
 
 export interface PlatformNavGroup {
@@ -21,17 +21,25 @@ export const platformNavItems: PlatformNavItem[] = [
   { title: 'Appointments', href: '/platform/appointments', color: 'purple', description: 'Day sheet, arrivals and appointment status.', icon: CalendarHeart, group: 'standalone' },
   { title: 'Checkout', href: '/platform/checkout', color: 'emerald', description: 'Treatment tickets, retail add-ons and cash settlement.', icon: ReceiptText, group: 'standalone' },
   { title: 'Clients', href: '/platform/clients', color: 'rose', description: 'Client records, visit history and follow-up.', icon: ContactRound, group: 'relationships' },
-  { title: 'Waitlist & communications', href: '/platform/engagement', color: 'orange', description: 'Waitlist demand, slot offers and delivery exceptions.', icon: Megaphone, group: 'relationships' },
-  { title: 'Services & catalog', href: '/platform/catalog', color: 'violet', description: 'Treatments, pricing, duration and room coverage.', icon: Sparkles, group: 'catalog' },
-  { title: 'Memberships & benefits', href: '/platform/benefits', color: 'pink', description: 'Memberships, treatment packages and gift-card value.', icon: Gift, group: 'catalog' },
-  { title: 'Retail inventory', href: '/platform/inventory', color: 'lime', description: 'Skincare stock, product lots and inventory movement.', icon: Boxes, group: 'catalog' },
-  { title: 'Staff schedules', href: '/platform/schedules', color: 'blue', description: 'Provider availability and weekly coverage.', icon: CalendarClock, group: 'operations' },
-  { title: 'Resources', href: '/platform/resources', color: 'teal', description: 'Treatment rooms, devices and bookable equipment.', icon: DoorOpen, group: 'operations' },
-  { title: 'Staff & locations', href: '/platform/administration', color: 'cyan', description: 'Provider assignment and location readiness.', icon: Building2, group: 'operations' },
-  { title: 'Storefront settings', href: '/platform/storefront', color: 'indigo', description: 'Practice name, logo, location and publishing.', icon: Store, group: 'operations' },
-  { title: 'Commissions', href: '/platform/commissions', color: 'amber', description: 'Provider commissions and payouts.', icon: Banknote, group: 'operations' },
-  { title: 'Reports', href: '/platform/reports', color: 'sky', description: 'Settled revenue, refunds, visits and payouts.', icon: ChartNoAxesCombined, group: 'insights' },
-  { title: 'Integrations & exceptions', href: '/platform/integrations', color: 'zinc', description: 'Payment providers, webhooks and event delivery.', icon: PlugZap, group: 'insights' },
+  { title: 'Waitlist & messages', href: '/platform/engagement', color: 'orange', description: 'Waitlist, message templates and delivery log.', icon: Megaphone, group: 'relationships' },
+  { title: 'Follow-ups', href: '/platform/follow-ups', color: 'red', description: 'Aftercare tasks and client responses.', icon: HeartPulse, group: 'relationships' },
+  { title: 'Reviews', href: '/platform/reviews', color: 'yellow', description: 'Approve or hide client reviews.', icon: Star, group: 'relationships' },
+  { title: 'Treatments', href: '/platform/catalog', color: 'violet', description: 'Menu, prices, online booking and rooms per treatment.', icon: Sparkles, group: 'catalog' },
+  { title: 'Memberships & benefits', href: '/platform/benefits', color: 'pink', description: 'Membership plans, packages and gift cards.', icon: Gift, group: 'catalog' },
+  { title: 'Inventory & purchasing', href: '/platform/inventory', color: 'lime', description: 'Products, lots, purchase orders and vendors.', icon: Boxes, group: 'catalog' },
+  { title: 'Practice', href: '/platform/administration', color: 'cyan', description: 'Staff, locations, rooms and hours at a glance.', icon: Building2, group: 'operations' },
+  { title: 'Staff', href: '/platform/staff', color: 'violet', description: 'Providers, roles, invitations and treatment authority.', icon: UsersRound, group: 'operations' },
+  { title: 'Locations', href: '/platform/locations', color: 'cyan', description: 'Addresses, timezones and opening hours.', icon: MapPin, group: 'operations' },
+  { title: 'Staff schedules', href: '/platform/schedules', color: 'blue', description: 'Weekly hours, one-off hours and time off.', icon: CalendarClock, group: 'operations' },
+  { title: 'Rooms & devices', href: '/platform/resources', color: 'teal', description: 'Rooms, devices, readiness and holds.', icon: DoorOpen, group: 'operations' },
+  { title: 'Storefront settings', href: '/platform/storefront', color: 'indigo', description: 'Practice name, logo, publishing and checkout tax.', icon: Store, group: 'operations' },
+  { title: 'Forms & consent', href: '/platform/forms', color: 'sky', description: 'Intake forms, consent versions and intake review.', icon: FileSignature, group: 'clinical' },
+  { title: 'Safety', href: '/platform/safety', color: 'red', description: 'Incidents, recalls and device readiness.', icon: ShieldAlert, group: 'clinical' },
+  { title: 'Privacy & records', href: '/platform/privacy', color: 'slate', description: 'Patient rights requests, legal holds and retention.', icon: LockKeyhole, group: 'clinical' },
+  { title: 'Payments', href: '/platform/payments', color: 'emerald', description: 'Settled payments, refunds and tips.', icon: CreditCard, group: 'insights' },
+  { title: 'Commissions', href: '/platform/commissions', color: 'amber', description: 'Provider commissions and payouts.', icon: Banknote, group: 'insights' },
+  { title: 'Reports', href: '/platform/reports', color: 'sky', description: 'Revenue, visits, treatments and providers.', icon: ChartNoAxesCombined, group: 'insights' },
+  { title: 'Integrations', href: '/platform/integrations', color: 'zinc', description: 'Payment methods, email and event log.', icon: PlugZap, group: 'insights' },
 ]
 
 export const platformStandaloneItems = platformNavItems.filter((item) => item.group === 'standalone')
@@ -40,6 +48,7 @@ const groupDefinitions = [
   { id: 'relationships', title: 'Clients & demand', icon: UsersRound },
   { id: 'catalog', title: 'Catalog & retail', icon: LayoutGrid },
   { id: 'operations', title: 'Practice', icon: Building2 },
+  { id: 'clinical', title: 'Clinical & compliance', icon: Stethoscope },
   { id: 'insights', title: 'Insights & systems', icon: ChartNoAxesCombined },
 ] as const
 

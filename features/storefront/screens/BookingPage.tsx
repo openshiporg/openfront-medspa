@@ -11,6 +11,7 @@ import { getAvailableTimeSlots, type BookingSlot } from "../lib/data/availabilit
 import { ProviderProfilesUnavailable } from "../components/ProviderProfilesUnavailable"
 import { TimeSlotPicker } from "../components/TimeSlotPicker"
 import { BookingStepIndicator } from "../components/BookingStepIndicator"
+import { WaitlistOffer } from "../components/WaitlistOffer"
 import { Dot, Lens, Status, StateCard } from "../components/ui/primitives"
 import { getStorefrontImageSrc } from "../lib/images"
 import { formatDuration, formatPrice } from "../lib/format"
@@ -359,6 +360,9 @@ export function BookingPage({ initialServices = EMPTY_SERVICES, initialContact =
                 loadingSlots={loadingSlots}
                 workingDays={provider?.workingDays}
               />
+              {selectedDate && selectedService && !loadingSlots && availableSlots.length === 0 ? (
+                <WaitlistOffer serviceId={selectedService} providerId={selectedProvider} date={selectedDate} signedIn={Boolean(initialContact)} />
+              ) : null}
               <div className="sf-track self-start">
                 <button type="button" onClick={handleDateTimeConfirm} disabled={!selectedDate || !selectedTime} className="sf-pill sf-pill-primary">
                   Continue<ArrowRight />

@@ -13910,6 +13910,21 @@ type Mutation {
   submitAppointmentReview(appointmentId: ID!, rating: Int!, comment: String, idempotencyKey: String!): SubmitAppointmentReviewResult!
   requestWaitlistSpot(serviceId: ID!, providerId: ID, preferredDays: [String!], preferredTimeRange: String, notes: String, idempotencyKey: String!): RequestWaitlistSpotResult!
   cancelGuestAppointment(appointmentId: ID!, token: String!, reason: String): CancelGuestAppointmentResult!
+  upsertResource(resourceId: ID, expectedRevision: Int, name: String!, type: String!, locationId: ID!, capacity: Int!, isPublic: Boolean!, notes: String, manufacturer: String, model: String, serialNumber: String, maintenanceDueAt: String, calibrationDueAt: String, serviceIds: [ID!]!, idempotencyKey: String!): ResourceUpsertResult
+  updateProviderProfile(providerId: ID!, title: String, bio: String, role: String!, tier: String!, status: String!, isActive: Boolean!, isPublic: Boolean!, specializationIds: [ID!]!, locationIds: [ID!]!, idempotencyKey: String!): PracticeAdminWorkflowResult
+  upsertLocation(locationId: ID, name: String!, address: String, city: String, state: String, zipCode: String, phone: String, email: String, timezone: String!, hours: JSON!, isActive: Boolean!, idempotencyKey: String!): PracticeAdminWorkflowResult
+  updateClientProfile(clientId: ID!, name: String!, phone: String, dateOfBirth: String, contactPreferences: String, operationalNotes: String, preferredProviderId: ID, homeLocationId: ID, marketingConsent: Boolean!, idempotencyKey: String!): ClientRelationshipWorkflowResult!
+  moderateReview(reviewId: ID!, isApproved: Boolean!, idempotencyKey: String!): ClientRelationshipWorkflowResult!
+  upsertMembershipPlan(membershipId: ID, name: String!, description: String, monthlyPrice: Int!, discountPercent: Int!, includedServiceIds: [ID!]!, isActive: Boolean!, idempotencyKey: String!): BenefitWorkflowResult
+  upsertServicePackage(packageId: ID, name: String!, description: String, totalPrice: Int!, savingsAmount: Int!, validDays: Int!, serviceIds: [ID!]!, isActive: Boolean!, idempotencyKey: String!): BenefitWorkflowResult
+  enrollClientMembership(clientId: ID!, membershipId: ID!, startDate: String!, idempotencyKey: String!): BenefitWorkflowResult
+  sellClientPackage(clientId: ID!, packageId: ID!, paidAmount: Int!, idempotencyKey: String!): BenefitWorkflowResult
+  issueGiftCard(amount: Int!, recipientName: String, recipientEmail: String, message: String, paymentMethod: String!, idempotencyKey: String!): BenefitWorkflowResult
+  upsertProduct(productId: ID, name: String!, sku: String!, kind: String!, trackLots: Boolean!, price: Int!, cost: Int, reorderPoint: Int, category: String, description: String, isActive: Boolean!): ProcurementWorkflowResult
+  draftPurchaseOrder(vendorId: ID!, locationId: ID!, expectedAt: String, lines: JSON!, idempotencyKey: String!): ProcurementWorkflowResult
+  transitionPurchaseOrder(purchaseOrderId: ID!, action: String!, expectedRevision: Int!): ProcurementWorkflowResult
+  upsertIntakeForm(formId: ID, name: String!, fields: JSON!, requiredForServiceIds: [ID!], isActive: Boolean!, idempotencyKey: String!): FormWorkflowResult
+  upsertFormTemplate(templateId: ID, name: String!, type: String!, description: String, fields: JSON!, requiredForCategoryIds: [ID!], isActive: Boolean!, idempotencyKey: String!): FormWorkflowResult
 }
 
 type CustomerRegistrationResult {
@@ -14157,6 +14172,44 @@ type RequestWaitlistSpotResult {
 type CancelGuestAppointmentResult {
   success: Boolean!
   recordId: ID
+  error: String
+}
+
+type ResourceUpsertResult {
+  success: Boolean!
+  resourceId: ID
+  revision: Int
+  error: String
+}
+
+type PracticeAdminWorkflowResult {
+  success: Boolean!
+  recordId: ID
+  error: String
+}
+
+type ClientRelationshipWorkflowResult {
+  success: Boolean!
+  recordId: ID
+  error: String
+}
+
+type BenefitWorkflowResult {
+  success: Boolean!
+  recordId: ID
+  error: String
+}
+
+type ProcurementWorkflowResult {
+  success: Boolean!
+  recordId: ID
+  error: String
+}
+
+type FormWorkflowResult {
+  success: Boolean!
+  recordId: ID
+  version: Int
   error: String
 }
 
@@ -14502,6 +14555,11 @@ type Query {
   clientIntakeForms(appointmentId: ID!): [ClientIntakeTemplate!]!
   storefrontReviews(serviceId: ID, providerId: ID, take: Int): [StorefrontReview!]!
   storefrontAppointment(appointmentId: ID!, token: String): StorefrontGuestAppointment
+  medspaClientDirectory(search: String, filter: String, page: Int): JSON
+  medspaClientRecord(clientId: ID!): JSON
+  medspaWaitlistBoard(status: String): JSON
+  medspaMessageLog(status: String, page: Int): JSON
+  medspaReviewBoard(filter: String, page: Int): JSON
 }
 
 type AvailabilityResult {

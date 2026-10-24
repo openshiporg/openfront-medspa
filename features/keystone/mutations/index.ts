@@ -36,6 +36,12 @@ import { scheduleAppointmentResources } from "./resourceReservationWorkflows";
 import { acceptStaffInvitation, createProviderProfile, inviteStaff, upsertAccessRole } from "./staffAccessWorkflows";
 import { publishStorefrontSettings } from "./storefrontSettings";
 import { registerCustomer } from "./registerCustomer";
+import { upsertResource } from "./resourceCatalogWorkflows";
+import { updateProviderProfile, upsertLocation } from "./practiceAdminWorkflows";
+import { medspaClientDirectory, medspaClientRecord, medspaMessageLog, medspaReviewBoard, medspaWaitlistBoard, moderateReview, updateClientProfile } from "./clientRelationshipWorkflows";
+import { enrollClientMembership, issueGiftCard, sellClientPackage, upsertMembershipPlan, upsertServicePackage } from "./benefitCatalogWorkflows";
+import { createPurchaseOrder, transitionPurchaseOrder, upsertProduct } from "./procurementWorkflows";
+import { upsertFormTemplate, upsertIntakeForm } from "./formWorkflows";
 import { cancelGuestAppointment, clientIntakeForms, requestWaitlistSpot, storefrontAppointment, storefrontReviews, submitAppointmentReview } from "./storefrontClientWorkflows";
 
 const gql = String.raw;
@@ -61,6 +67,11 @@ export const extendGraphqlSchema = graphql.extend((base) => ({
     clientIntakeForms,
     storefrontReviews,
     storefrontAppointment,
+    medspaClientDirectory,
+    medspaClientRecord,
+    medspaWaitlistBoard,
+    medspaMessageLog,
+    medspaReviewBoard,
   },
   mutation: {
     registerCustomer,
@@ -139,5 +150,21 @@ export const extendGraphqlSchema = graphql.extend((base) => ({
     submitAppointmentReview,
     requestWaitlistSpot,
     cancelGuestAppointment,
+    upsertResource,
+    updateProviderProfile,
+    upsertLocation,
+    updateClientProfile,
+    moderateReview,
+    upsertMembershipPlan,
+    upsertServicePackage,
+    enrollClientMembership,
+    sellClientPackage,
+    issueGiftCard,
+    upsertProduct,
+    // Keystone already generates createPurchaseOrder for the list.
+    draftPurchaseOrder: createPurchaseOrder,
+    transitionPurchaseOrder,
+    upsertIntakeForm,
+    upsertFormTemplate,
   },
 }));

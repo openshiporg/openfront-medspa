@@ -3,7 +3,6 @@
 import { keystoneClient } from "@/features/dashboard/lib/keystoneClient"
 import { resolveClientPortalResult, type ClientPortalLoadResult, type ClientPortalProjection } from "./clientPortalResult"
 
-export type { ClientPortalLoadResult, ClientPortalProjection } from "./clientPortalResult"
 
 export async function getClientPortalAction(): Promise<ClientPortalLoadResult> {
   try {

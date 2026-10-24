@@ -1,2 +1,5 @@
-import { MedSpaWorkspacePage } from '@/features/platform/workspaces/screens/MedSpaWorkspacePage';
-export default function EngagementPage() { return <MedSpaWorkspacePage section="engagement" />; }
+import { EngagementPage } from '@/features/platform/engagement/screens/EngagementPage';
+
+export const dynamic = 'force-dynamic';
+
+export default EngagementPage;

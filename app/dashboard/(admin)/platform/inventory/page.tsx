@@ -1,2 +1,5 @@
-import { MedSpaWorkspacePage } from '@/features/platform/workspaces/screens/MedSpaWorkspacePage';
-export default function InventoryPage() { return <MedSpaWorkspacePage section="inventory" />; }
+import { InventoryPage } from '@/features/platform/inventory/screens/InventoryPage';
+
+export const dynamic = 'force-dynamic';
+
+export default InventoryPage;

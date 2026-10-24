@@ -9,6 +9,8 @@ import { ServiceCatalogUnavailable } from "../components/ServiceCatalogUnavailab
 import { Lens, PillLink, StateCard, Track } from "../components/ui/primitives"
 import { getStorefrontImageSrc } from "../lib/images"
 import { formatDuration, formatPrice } from "../lib/format"
+import { getStorefrontReviews } from "../lib/data/storefrontReviews"
+import { averageRating, ReviewList, Stars } from "../components/ReviewList"
 
 interface ServiceDetailPageProps { params: Promise<{ id: string }> }
 
@@ -24,7 +26,7 @@ export async function ServiceDetailPage({ params }: ServiceDetailPageProps) {
   }
   if (!catalog.data) notFound()
   const service = catalog.data
-  const providerResult = await getProvidersForService(id)
+  const [providerResult, reviews] = await Promise.all([getProvidersForService(id), getStorefrontReviews({ serviceId: id, take: 6 })])
   const providers = providerResult.status === "loaded" ? providerResult.data : []
   const imageSrc = getStorefrontImageSrc(service.image)
   const bookable = providerResult.status === "loaded" && providers.length > 0
@@ -38,6 +40,7 @@ export async function ServiceDetailPage({ params }: ServiceDetailPageProps) {
           <header className="grid gap-5">
             {service.category ? <p className="sf-eyebrow">{service.category.name}</p> : null}
             <h1 className="sf-display text-[length:var(--sf-text-display-s)]">{service.name}</h1>
+            {reviews.length ? <a href="#reviews" className="flex items-center gap-2 text-[length:var(--sf-text-sm)] text-[var(--sf-ink-2)] no-underline"><Stars rating={averageRating(reviews)} /><span className="sf-num">{averageRating(reviews).toFixed(1)} · {reviews.length} {reviews.length === 1 ? "review" : "reviews"}</span></a> : null}
           </header>
 
           <Lens src={imageSrc} alt={service.image?.altText || service.name} name={service.name} className="w-[min(100%,22rem)]" />
@@ -54,6 +57,13 @@ export async function ServiceDetailPage({ params }: ServiceDetailPageProps) {
               <p role="status" className="text-[length:var(--sf-text-sm)] text-[var(--sf-ink-3)]">No providers listed for this treatment</p>
             )}
           </section>
+
+          {reviews.length ? (
+            <section id="reviews" aria-labelledby="reviews-heading" className="grid scroll-mt-24 gap-4">
+              <h2 id="reviews-heading" className="sf-eyebrow">Reviews</h2>
+              <ReviewList reviews={reviews} showTreatment={false} />
+            </section>
+          ) : null}
         </div>
 
         <aside className="lg:sticky lg:top-28 lg:self-start">

@@ -1,17 +1,27 @@
+import Link from 'next/link';
 import { CalendarClock, UsersRound } from 'lucide-react';
 import {
-  Avatar, Chip, EmptyState, ErrorState, MetricStrip, Notice, PageHeader, PillLink, PlatformPage, StatusDot, TitleStatus,
-  Track, humanize, pillClass, trackClass,
+  Avatar, Chip, EmptyState, ErrorState, MetricStrip, Notice, PageHeader, PillLink, PlatformPage, StatusDot, TitleStatus, Track, humanize, pillClass, trackClass,
 } from '@/features/platform/components/medspa-ui';
-import { getScheduleOperations, PlatformSchedule, PlatformProviderSchedule, setScheduleAvailability } from '../actions/schedules';
+import { PracticeSetupState } from '@/features/platform/components/PracticeSetupState';
+import { hasPracticeSetup } from '@/features/platform/lib/practiceSetup';
+import { getScheduleOperations, setScheduleAvailability } from '../actions/schedules';
+import { ScheduleSheet } from '../components/ScheduleSheet';
+import type { PlatformProviderSchedule, PlatformSchedule, ScheduleLocation } from '../types';
 
 const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 // Practice weeks read Monday first.
 const weekOrder = [1, 2, 3, 4, 5, 6, 0];
 
-function formatSchedule(schedule: PlatformSchedule) {
-  if (!schedule.startTime || !schedule.endTime) return 'No hours';
-  return `${schedule.startTime}–${schedule.endTime}`;
+type ProviderOption = { id: string; name: string; locationIds: string[]; isPublic: boolean };
+
+function hoursLabel(schedule: PlatformSchedule) {
+  return schedule.startTime && schedule.endTime ? `${schedule.startTime}–${schedule.endTime}` : 'No hours';
+}
+
+function dateLabel(value?: string | null) {
+  if (!value) return '—';
+  return new Date(`${value.slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 
 function formatAppointmentTime(value?: string | null, timeZone = 'UTC') {
@@ -19,56 +29,94 @@ function formatAppointmentTime(value?: string | null, timeZone = 'UTC') {
   return new Date(value).toLocaleString('en-US', { timeZone, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-export async function StaffSchedulePage() {
-  const { providers, availability, scheduleCount, inactiveScheduleCount, activeProviderCount } = await getScheduleOperations();
+export async function StaffSchedulePage({ searchParams }: { searchParams?: Promise<{ provider?: string }> }) {
+  const params = searchParams ? await searchParams : {};
+  const providerFilter = typeof params.provider === 'string' && params.provider ? params.provider : null;
+  const data = await getScheduleOperations(providerFilter);
   const breadcrumbs = [{ label: 'Staff schedules' }];
-  if (availability === 'unavailable') {
+
+  if (data.availability === 'unavailable') {
+    const practiceReady = await hasPracticeSetup();
     return (
       <PlatformPage breadcrumbs={breadcrumbs}>
         <PageHeader title="Staff schedules" icon={CalendarClock} />
-        <ErrorState id="schedules-unavailable" title="Staff schedules unavailable" action={<Track><PillLink href="/dashboard/platform/schedules">Retry</PillLink></Track>} />
+        {practiceReady === false ? <PracticeSetupState /> : <ErrorState id="schedules-unavailable" title="Staff schedules unavailable" action={<Track><PillLink href="/dashboard/platform/schedules">Retry</PillLink></Track>} />}
       </PlatformPage>
     );
   }
-  const providersWithoutSchedules = providers.filter((provider) => provider.schedules.length === 0).length;
+
+  const { providers, locations, blockedCount } = data;
+  const options: ProviderOption[] = providers.map((provider) => ({ id: provider.id, name: provider.user?.name || 'Provider', locationIds: provider.locations.map((item) => item.id), isPublic: provider.isPublic === true }));
+  const withoutHours = providers.filter((provider) => !provider.schedules.some((item) => item.type === 'recurring' && item.isAvailable !== false)).length;
+  const offline = providers.filter((provider) => provider.schedules.some((item) => item.type === 'recurring') && !provider.schedules.some((item) => item.isPublic && item.isAvailable !== false)).length;
+  const today = new Date().toISOString().slice(0, 10);
+  const dated = providers.flatMap((provider) => provider.schedules
+    .filter((item) => item.type !== 'recurring' && item.localDate && item.localDate.slice(0, 10) >= today)
+    .map((item) => ({ ...item, provider })))
+    .sort((a, b) => (a.localDate || '').localeCompare(b.localDate || ''));
+  const filtered = providerFilter ? providers.find((provider) => provider.id === providerFilter) : null;
 
   return (
     <PlatformPage breadcrumbs={breadcrumbs}>
-      <PageHeader title="Staff schedules" icon={CalendarClock} />
+      <PageHeader
+        title={filtered ? `${filtered.user?.name || 'Provider'} · hours` : 'Staff schedules'}
+        icon={CalendarClock}
+        actions={<Track>
+          {providerFilter ? <PillLink href="/dashboard/platform/schedules">All providers</PillLink> : null}
+          <ScheduleSheet providers={options} locations={locations} providerId={providerFilter || undefined} variant="primary" />
+        </Track>}
+      />
 
       <MetricStrip items={[
-        { label: 'Active providers', value: activeProviderCount ?? providers.length },
-        { label: 'Schedule blocks', value: scheduleCount ?? 0, tone: 'emerald' },
-        { label: 'Blocked', value: inactiveScheduleCount ?? 0, tone: 'rose' },
-        { label: 'Without a schedule', value: providersWithoutSchedules, tone: providersWithoutSchedules ? 'amber' : undefined },
+        { label: 'Active providers', value: providers.length },
+        { label: 'Without weekly hours', value: withoutHours, tone: withoutHours ? 'amber' : undefined },
+        { label: 'Not bookable online', value: offline, tone: offline ? 'amber' : undefined },
+        { label: 'Blocked entries', value: blockedCount, tone: blockedCount ? 'rose' : undefined },
       ]} />
 
-      {providersWithoutSchedules > 0 && (
-        <Notice title={`${providersWithoutSchedules} active provider${providersWithoutSchedules === 1 ? '' : 's'} without a weekly schedule`}>They have no bookable times.</Notice>
-      )}
+      {withoutHours > 0 && <Notice title={`${withoutHours} active provider${withoutHours === 1 ? '' : 's'} without weekly hours`}>No bookable times.</Notice>}
 
       {providers.length === 0 ? (
-        <EmptyState icon={UsersRound} title="No active providers" />
+        <EmptyState icon={UsersRound} title={providerFilter ? 'Provider not active' : 'No active providers'} action={<Track><PillLink href="/dashboard/platform/staff">Staff</PillLink></Track>} />
       ) : (
         <section aria-label="Weekly roster" className="grid gap-4">
-          {providers.map((provider) => <ProviderRoster key={provider.id} provider={provider} />)}
+          {providers.map((provider) => <ProviderRoster key={provider.id} provider={provider} options={options} locations={locations} />)}
         </section>
       )}
+
+      {dated.length ? (
+        <section aria-labelledby="dated-heading" className="overflow-hidden rounded-2xl border bg-background">
+          <h2 id="dated-heading" className="border-b px-4 py-3 text-sm font-semibold md:px-5">Dates & time off</h2>
+          <ul className="divide-y">
+            {dated.map((item) => (
+              <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-5">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                    <p className="text-sm font-medium tabular-nums">{dateLabel(item.localDate)} · {hoursLabel(item)}</p>
+                    <TitleStatus tone={item.type === 'time_off' ? 'rose' : item.isAvailable === false ? 'zinc' : 'emerald'}>{item.type === 'time_off' ? 'Time off' : item.isAvailable === false ? 'Blocked' : 'Extra hours'}</TitleStatus>
+                  </div>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{[item.provider.user?.name, item.location?.name, item.reason].filter(Boolean).join(' · ')}</p>
+                </div>
+                <Track><ScheduleSheet providers={options} locations={locations} schedule={{ ...item, providerId: item.provider.id }} size="sm" /></Track>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </PlatformPage>
   );
 }
 
-function ProviderRoster({ provider }: { provider: PlatformProviderSchedule }) {
+function ProviderRoster({ provider, options, locations }: { provider: PlatformProviderSchedule; options: ProviderOption[]; locations: ScheduleLocation[] }) {
   const name = provider.user?.name || 'Unnamed provider';
-  const coverageByDay = new Map<number, PlatformSchedule[]>();
-  provider.schedules.forEach((schedule) => {
+  const weekly = provider.schedules.filter((schedule) => schedule.type === 'recurring');
+  const byDay = new Map<number, PlatformSchedule[]>();
+  for (const schedule of weekly) {
     const day = schedule.dayOfWeek ?? -1;
-    if (!coverageByDay.has(day)) coverageByDay.set(day, []);
-    coverageByDay.get(day)?.push(schedule);
-  });
-  const availableBlocks = provider.schedules.filter((schedule) => schedule.isAvailable !== false).length;
-  const specialties = provider.specializations.map((service) => service.name).filter((value): value is string => Boolean(value));
-  const zone = provider.appointments[0]?.location?.timezone || 'UTC';
+    byDay.set(day, [...(byDay.get(day) || []), schedule]);
+  }
+  const open = weekly.filter((schedule) => schedule.isAvailable !== false).length;
+  const zone = provider.appointments[0]?.location?.timezone || weekly[0]?.location?.timezone || 'UTC';
 
   return (
     <article className="min-w-0 overflow-hidden rounded-2xl border bg-background">
@@ -78,26 +126,26 @@ function ProviderRoster({ provider }: { provider: PlatformProviderSchedule }) {
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
               <h2 className="min-w-0 truncate text-base font-semibold">{name}</h2>
-              <TitleStatus tone={availableBlocks ? 'emerald' : 'amber'}>{availableBlocks ? `${availableBlocks} block${availableBlocks === 1 ? '' : 's'}` : 'No schedule'}</TitleStatus>
+              <TitleStatus tone={open ? 'emerald' : 'amber'}>{open ? `${open} weekly block${open === 1 ? '' : 's'}` : 'No weekly hours'}</TitleStatus>
             </div>
-            <p className="mt-0.5 truncate text-sm text-muted-foreground">
-              {[provider.role ? humanize(provider.role) : null, provider.tier ? `${provider.tier} tier` : null, provider.user?.email].filter(Boolean).join(' · ') || 'Provider'}
-            </p>
+            <p className="mt-0.5 truncate text-sm text-muted-foreground">{[provider.title || (provider.role ? humanize(provider.role) : null), provider.locations.map((item) => item.name).join(', ')].filter(Boolean).join(' · ') || 'Provider'}</p>
           </div>
         </div>
-        <Track><PillLink href={`/dashboard/providers/${provider.id}`} size="sm">Open provider</PillLink></Track>
+        <Track>
+          <ScheduleSheet providers={options} locations={locations} providerId={provider.id} size="sm" />
+          <PillLink href={`/dashboard/platform/staff/${provider.id}`} size="sm">Profile</PillLink>
+        </Track>
       </div>
-
-      {specialties.length > 0 && <div className="flex flex-wrap gap-1.5 px-4 pb-4 md:px-5">{specialties.map((specialty) => <Chip key={specialty}>{specialty}</Chip>)}</div>}
+      {!provider.isPublic ? <div className="px-4 pb-3 md:px-5"><Chip tone="zinc">Not bookable online</Chip></div> : null}
 
       <ol className="grid border-t lg:grid-cols-7 lg:divide-x">
         {weekOrder.map((index) => {
-          const blocks = coverageByDay.get(index) || [];
+          const blocks = byDay.get(index) || [];
           return (
             <li key={days[index]} className="grid min-w-0 grid-cols-[3rem_minmax(0,1fr)] items-start gap-2 border-b p-3 last:border-b-0 lg:block lg:border-b-0">
               <div className="text-xs font-semibold text-muted-foreground lg:mb-2">{days[index]}</div>
               {blocks.length ? (
-                <div className="grid min-w-0 gap-2">{blocks.map((schedule) => <ScheduleBlock key={schedule.id} schedule={schedule} />)}</div>
+                <div className="grid min-w-0 gap-2">{blocks.map((schedule) => <ScheduleBlock key={schedule.id} schedule={schedule} providerId={provider.id} options={options} locations={locations} />)}</div>
               ) : <div className="text-xs text-muted-foreground">Off</div>}
             </li>
           );
@@ -108,13 +156,15 @@ function ProviderRoster({ provider }: { provider: PlatformProviderSchedule }) {
         <h3 className="px-4 pt-3 text-xs font-medium text-muted-foreground md:px-5">Next appointments</h3>
         {provider.appointments.length ? (
           <ul className="divide-y">
-            {provider.appointments.slice(0, 5).map((appointment) => (
-              <li key={appointment.id} className="flex min-w-0 items-start gap-3 px-4 py-2.5 text-sm md:px-5">
-                <StatusDot tone="violet" className="mt-1.5" />
-                <div className="min-w-0">
-                  <div className="font-medium tabular-nums">{formatAppointmentTime(appointment.startTime, appointment.location?.timezone || zone)}</div>
-                  <div className="truncate text-muted-foreground">{appointment.client?.user?.name || 'Unnamed client'} · {appointment.services.map((service) => service.name).filter(Boolean).join(', ') || 'Treatment'}</div>
-                </div>
+            {provider.appointments.map((appointment) => (
+              <li key={appointment.id}>
+                <Link href={`/dashboard/platform/appointments/${appointment.id}`} className="flex min-w-0 items-start gap-3 px-4 py-2.5 text-sm hover:bg-muted/40 md:px-5">
+                  <StatusDot tone="violet" className="mt-1.5" />
+                  <div className="min-w-0">
+                    <div className="font-medium tabular-nums">{formatAppointmentTime(appointment.startTime, appointment.location?.timezone || zone)}</div>
+                    <div className="truncate text-muted-foreground">{appointment.client?.user?.name || 'Client'} · {appointment.lineItems.map((item) => item.serviceTitle).filter(Boolean).join(', ') || 'Treatment'}</div>
+                  </div>
+                </Link>
               </li>
             ))}
           </ul>
@@ -124,12 +174,13 @@ function ProviderRoster({ provider }: { provider: PlatformProviderSchedule }) {
   );
 }
 
-function ScheduleBlock({ schedule }: { schedule: PlatformSchedule }) {
+function ScheduleBlock({ schedule, providerId, options, locations }: { schedule: PlatformSchedule; providerId: string; options: ProviderOption[]; locations: ScheduleLocation[] }) {
   const blocked = schedule.isAvailable === false;
   return (
     <div className={`min-w-0 rounded-xl border p-2 text-xs ${blocked ? 'border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-100' : 'bg-background'}`}>
-      <div className="flex items-center gap-1.5 font-medium tabular-nums"><StatusDot tone={blocked ? 'rose' : 'emerald'} />{formatSchedule(schedule)}</div>
+      <div className="flex items-center gap-1.5 font-medium tabular-nums"><StatusDot tone={blocked ? 'rose' : schedule.isPublic ? 'emerald' : 'zinc'} />{hoursLabel(schedule)}</div>
       {schedule.breakStart && schedule.breakEnd && <div className="mt-1 text-muted-foreground">Break {schedule.breakStart}–{schedule.breakEnd}</div>}
+      {!schedule.isPublic && !blocked ? <div className="mt-1 text-muted-foreground">Staff only</div> : null}
       {schedule.reason && <div className="mt-1 break-words text-muted-foreground">{schedule.reason}</div>}
       <form action={setScheduleAvailability} className="mt-2 grid gap-1.5">
         <input type="hidden" name="id" value={schedule.id} />
@@ -137,19 +188,22 @@ function ScheduleBlock({ schedule }: { schedule: PlatformSchedule }) {
         <input type="hidden" name="isAvailable" value={blocked ? 'true' : 'false'} />
         {!blocked && (
           <input
-            id={`schedule-reason-${schedule.id}`}
-            aria-label={`Reason for blocking schedule ${formatSchedule(schedule)} (${schedule.id})`}
+            aria-label={`Reason for blocking ${days[schedule.dayOfWeek ?? 0]} ${hoursLabel(schedule)}`}
             name="reason"
             placeholder="Reason"
             className="h-7 w-full min-w-0 rounded-lg border bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         )}
         <span className={`${trackClass} w-fit`}>
-          <button type="submit" aria-label={`${blocked ? 'Restore' : 'Block'} schedule ${formatSchedule(schedule)} (${schedule.id})`} className={pillClass(blocked ? 'raised' : 'danger', 'sm')}>
+          <button type="submit" aria-label={`${blocked ? 'Restore' : 'Block'} ${days[schedule.dayOfWeek ?? 0]} ${hoursLabel(schedule)}`} className={pillClass(blocked ? 'raised' : 'danger', 'sm')}>
             {blocked ? 'Restore' : 'Block'}
           </button>
         </span>
       </form>
+      {/* Kept outside the block form so the drawer's own submit never reaches it. */}
+      <div className={`${trackClass} mt-1.5 w-fit`}>
+        <ScheduleSheet providers={options} locations={locations} schedule={{ ...schedule, providerId }} size="sm" />
+      </div>
     </div>
   );
 }

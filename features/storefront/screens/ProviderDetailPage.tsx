@@ -6,6 +6,8 @@ import { ProviderProfilesUnavailable } from "../components/ProviderProfilesUnava
 import { getStorefrontImageSrc } from "../lib/images"
 import { Capsule, PillLink, Track } from "../components/ui/primitives"
 import { pad2 } from "../lib/format"
+import { getStorefrontReviews } from "../lib/data/storefrontReviews"
+import { ReviewList } from "../components/ReviewList"
 
 interface ProviderDetailPageProps { params: Promise<{ id: string }> }
 
@@ -23,6 +25,7 @@ export async function ProviderDetailPage({ params }: ProviderDetailPageProps) {
   const provider = result.data
   const name = provider.user?.name || "Provider"
   const photoUrl = getStorefrontImageSrc(provider.photo)
+  const reviews = await getStorefrontReviews({ providerId: provider.id, take: 6 })
 
   return (
     <div className="sf-container sf-page-pad">
@@ -53,6 +56,13 @@ export async function ProviderDetailPage({ params }: ProviderDetailPageProps) {
           ) : (
             <p role="status" className="text-[length:var(--sf-text-sm)] text-[var(--sf-ink-3)]">No treatments listed</p>
           )}
+
+          {reviews.length ? (
+            <section aria-labelledby="provider-reviews" className="grid gap-3">
+              <h2 id="provider-reviews" className="sf-eyebrow">Reviews</h2>
+              <ReviewList reviews={reviews} />
+            </section>
+          ) : null}
 
           {provider.specializations.length ? (
             <Track><PillLink href={`/book?provider=${provider.id}`} variant="primary">Book with {name.split(" ")[0]}</PillLink></Track>
