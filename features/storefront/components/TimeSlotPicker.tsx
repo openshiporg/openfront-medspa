@@ -13,6 +13,8 @@ interface TimeSlotPickerProps {
   onTimeSelect: (startTime: string) => void
   availableSlots: BookingSlot[]
   loadingSlots?: boolean
+  /** Provider's working weekdays (0 = Sunday); other days are shown as off. */
+  workingDays?: number[]
 }
 
 const WINDOW = 14
@@ -41,7 +43,8 @@ function groupSlots(slots: BookingSlot[]) {
   return groups.filter((group) => group.slots.length)
 }
 
-export function TimeSlotPicker({ selectedDate, onDateSelect, selectedTime, onTimeSelect, availableSlots, loadingSlots = false }: TimeSlotPickerProps) {
+export function TimeSlotPicker({ selectedDate, onDateSelect, selectedTime, onTimeSelect, availableSlots, loadingSlots = false, workingDays }: TimeSlotPickerProps) {
+  const offDay = (day: Date) => Boolean(workingDays?.length) && !workingDays!.includes(day.getDay())
   const today = useMemo(() => startOfDay(new Date()), [])
   const [page, setPage] = useState(0)
   const lastPage = Math.floor(HORIZON_DAYS / WINDOW)
@@ -68,7 +71,8 @@ export function TimeSlotPicker({ selectedDate, onDateSelect, selectedTime, onTim
                 type="button"
                 className="sf-date"
                 aria-pressed={selected}
-                aria-label={day.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+                disabled={offDay(day)}
+                aria-label={`${day.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}${offDay(day) ? ", not available" : ""}`}
                 onClick={() => onDateSelect(day)}
               >
                 <span className="sf-eyebrow sf-muted">{day.toLocaleDateString("en-US", { weekday: "short" })}</span>

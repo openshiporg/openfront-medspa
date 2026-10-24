@@ -16,6 +16,7 @@ export interface Provider {
     altText: string | null
   } | null
   specializations: { id: string; name: string }[]
+  workingDays?: number[]
 }
 
 const PROVIDER_FRAGMENT = gql`
@@ -25,6 +26,7 @@ const PROVIDER_FRAGMENT = gql`
     isActive
     photo { image { url } imagePath altText }
     specializations { id name }
+    workingDays
   }
 `
 

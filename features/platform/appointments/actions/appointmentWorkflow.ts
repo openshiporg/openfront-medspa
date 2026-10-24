@@ -52,6 +52,8 @@ export type AppointmentWorkflowData = {
   appointment: AppointmentWorkflowDetail | null;
   capabilities: WorkflowCapabilities;
   clinical: ClinicalWorkflowSummary | null;
+  /** Contact for a storefront guest request, which has no client record. */
+  guest?: { name: string; email: string; phone: string } | null;
 };
 
 const noCapabilities: WorkflowCapabilities = {
@@ -93,7 +95,7 @@ export async function getAppointmentWorkflowDetail(id: string): Promise<Appointm
   const capabilities = await getCapabilities();
   if (capabilities.canSchedule && !capabilities.canManageClinical) {
     const scheduling = await getAppointmentSchedule(id);
-    return { appointment: scheduling ? { id: scheduling.scope.appointmentId, startTime: scheduling.startTime, endTime: scheduling.endTime, status: scheduling.status, location: { id: scheduling.scope.locationId, timezone: scheduling.timezone }, services: [], lineItems: [] } : null, capabilities, clinical: null };
+    return { appointment: scheduling ? { id: scheduling.scope.appointmentId, startTime: scheduling.startTime, endTime: scheduling.endTime, status: scheduling.status, location: { id: scheduling.scope.locationId, timezone: scheduling.timezone }, services: [], lineItems: [] } : null, capabilities, clinical: null, guest: scheduling?.guest || null };
   }
   if (capabilities.canManageClinical) {
     const header = await keystoneClient<{ medspaAppointmentClinicalHeader: { appointmentId: string } }>('query AppointmentClinicalHeader($appointmentId: ID!) { medspaAppointmentClinicalHeader(appointmentId: $appointmentId) }', { appointmentId: id });
@@ -141,5 +143,10 @@ export async function getAppointmentWorkflowDetail(id: string): Promise<Appointm
     if (clinicalResponse.success && clinicalResponse.data.appointment) clinical = clinicalResponse.data.appointment;
   }
 
-  return { appointment: response.data.appointment, capabilities, clinical };
+  // Guest requests carry their contact in the scheduling readback, not on a client record.
+  const guest = !response.data.appointment.client && capabilities.canSchedule
+    ? (await getAppointmentSchedule(id, undefined, 'scheduler'))?.guest || null
+    : null;
+
+  return { appointment: response.data.appointment, capabilities, clinical, guest };
 }

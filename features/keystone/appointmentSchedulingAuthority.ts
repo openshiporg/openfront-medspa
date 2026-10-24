@@ -38,6 +38,11 @@ export async function canReadAppointmentPrivateFields<TypeInfo extends BaseKeyst
   } catch { return false; }
 }
 
+/** Scope key for the appointment's client: the Client id, or a stable guest key for storefront guest requests. */
+export function appointmentClientKey(appointment: Record<string, any>): string {
+  return appointment.client?.id || `guest:${appointment.id}`;
+}
+
 /** Scheduling is not permission to retrieve a clinical graph. No claimed purpose grants access. */
 export async function assertAppointmentSchedulingAuthority(context: Context, appointmentId: string, options: { cancellationOnly?: boolean; purpose?: AppointmentScheduleScope['purpose'] } = {}) {
   const actorId = context.session?.itemId;
@@ -48,15 +53,17 @@ export async function assertAppointmentSchedulingAuthority(context: Context, app
   if (!actor || actor.id !== actorId || actor.status !== 'active' || actor.practice?.id !== practiceId) throw new Error('Appointment scheduling access is unavailable');
   // Header only: no metadata, consultation, consent, session, payment or narrative before authority.
   const header = await sudo.query.Appointment.findOne({ where: { id: appointmentId }, query: 'id practice { id } location { id } client { id practice { id } user { id } }' });
-  if (!header || header.practice?.id !== practiceId || header.client?.practice?.id !== practiceId || !header.client?.id || !header.location?.id) throw new Error('Appointment scheduling access is unavailable');
+  // Guest storefront requests have no Client; staff schedule them under a per-appointment guest key.
+  if (!header || header.practice?.id !== practiceId || (header.client && header.client.practice?.id !== practiceId) || !header.location?.id) throw new Error('Appointment scheduling access is unavailable');
+  const clientKey = appointmentClientKey(header);
   const location = await sudo.query.Location.findOne({ where: { id: header.location.id }, query: 'id isActive practice { id }' });
   if (!location || location.id !== header.location.id || location.practice?.id !== practiceId || location.isActive !== true) throw new Error('Appointment scheduling access is unavailable');
-  const owner = header.client.user?.id === actorId;
+  const owner = Boolean(header.client?.user?.id) && header.client!.user!.id === actorId;
   const scheduler = permissions.canSchedule({ session: context.session }) && actor.role?.canSchedule === true && actor.role.practice?.id === practiceId;
   // Explicit customer purpose preserves owned cancellation even if that identity also has staff flags.
   if (owner && (options.purpose === 'customer_cancel' || (options.cancellationOnly && options.purpose !== 'scheduler') || !scheduler)) {
     if (!options.cancellationOnly) throw new Error('Owned customer access is limited to cancellation and its readback');
-    return { scope: { actorId, practiceId, locationId: location.id, clientId: header.client.id, appointmentId: header.id, purpose: 'customer_cancel' } satisfies AppointmentScheduleScope, membershipId: null, delegation: 'owned_customer', header };
+    return { scope: { actorId, practiceId, locationId: location.id, clientId: clientKey, appointmentId: header.id, purpose: 'customer_cancel' } satisfies AppointmentScheduleScope, membershipId: null, delegation: 'owned_customer', header };
   }
   if (!scheduler || options.purpose === 'customer_cancel') throw new Error('Appointment scheduling access is unavailable');
   const member = await currentMember(sudo, practiceId, actorId);
@@ -64,5 +71,5 @@ export async function assertAppointmentSchedulingAuthority(context: Context, app
   // Existing controlled Role.canManagePractice + canSchedule is a separate practice-wide grant.
   // It never substitutes for active membership and never grants clinical read/perform authority.
   if (!assigned && actor.role?.canManagePractice !== true) throw new Error('Current scheduling location authority is unavailable');
-  return { scope: { actorId, practiceId, locationId: location.id, clientId: header.client.id, appointmentId: header.id, purpose: 'scheduler' } satisfies AppointmentScheduleScope, membershipId: member.id, delegation: assigned ? 'location_member' : 'practice_manager', header };
+  return { scope: { actorId, practiceId, locationId: location.id, clientId: clientKey, appointmentId: header.id, purpose: 'scheduler' } satisfies AppointmentScheduleScope, membershipId: member.id, delegation: assigned ? 'location_member' : 'practice_manager', header };
 }

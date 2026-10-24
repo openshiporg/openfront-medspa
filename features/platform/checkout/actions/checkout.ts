@@ -43,6 +43,7 @@ export interface CheckoutAppointment {
   id: string;
   startTime?: string | null;
   location?: { timezone?: string | null } | null;
+  practice?: { taxRate?: number | null } | null;
   duration?: number | null;
   status?: string | null;
   depositAmount?: number | null;
@@ -112,6 +113,7 @@ const CHECKOUT_APPOINTMENT_QUERY = `
   id
   startTime
   location { timezone }
+  practice { taxRate }
   duration
   status
   depositAmount
@@ -204,7 +206,7 @@ export function calculateCheckoutTotals(appointment: CheckoutAppointment) {
   // Deposits are not allocated into controlled checkout until refund/cancellation reconciliation exists.
   const depositCredit = 0;
   let tax: number | null = null;
-  try { tax = Math.round(subtotal * configuredTaxRate()); } catch { /* Missing configuration is not an estimate of zero tax. */ }
+  try { tax = Math.round(subtotal * configuredTaxRate(process.env.TAX_RATE, appointment.practice?.taxRate)); } catch { /* No rate is not an estimate of zero tax. */ }
   const totalDue = tax === null ? null : Math.max(0, subtotal + tax - depositCredit);
   const ratesAvailable = rawLineItems.every((item) => item.commissionRate !== null && Number.isFinite(item.commissionRate) && item.commissionRate >= 0 && item.commissionRate <= 1);
   const commissionEstimate = ratesAvailable

@@ -13,7 +13,7 @@ const sampleDisplay: MedSpaTemplate['displayNames'] = {
   resources: ['Consultation room', 'Treatment room', 'Light therapy suite'],
   services: ['New client consultation', 'Injectables consultation', 'Signature hydrating facial', 'Glow chemical peel', 'Dermaplaning', 'LED light therapy'],
   staff: ['Maya Ortiz', 'Lena Park'],
-  intakeForms: ['Medical history', 'Medical history acknowledgement'],
+  intakeForms: ['Medical history'],
   retail: ['Appointment reminder'],
 };
 

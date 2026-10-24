@@ -516,7 +516,8 @@ export async function runMedSpaOnboardingTransaction(
       if (existing) await updateOne("IntakeForm", existing.id, data); else await createOne("IntakeForm", data);
     }
     for (const item of seed.formTemplates) {
-      const data = { name: item.name, type: item.type, description: item.description || "", fields: item.fields, isActive: true };
+      const categories = (item.requiredForCategories || []).map((key: string) => categoryIds[key]).filter(Boolean).map((id: string) => ({ id }));
+      const data = { name: item.name, type: item.type, description: item.description || "", fields: item.fields, isActive: true, requiredForCategories: { connect: categories } };
       const existing = await findOne("FormTemplate", { name: { equals: item.name } });
       if (existing) await updateOne("FormTemplate", existing.id, data); else await createOne("FormTemplate", data);
     }

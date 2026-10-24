@@ -88,9 +88,9 @@ export function PlatformPage({ breadcrumbs, children, width = 'wide' }: { breadc
   return (
     <>
       <PlatformBreadcrumbs items={breadcrumbs} />
-      <main className="min-w-0">
+      <div className="min-w-0">
         <div className={cn('mx-auto flex w-full min-w-0 flex-col gap-6 px-4 py-6 md:px-6 md:py-8', width === 'wide' ? 'max-w-7xl' : 'max-w-4xl')}>{children}</div>
-      </main>
+      </div>
     </>
   );
 }

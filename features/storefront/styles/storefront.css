@@ -665,6 +665,12 @@ textarea.sf-input { min-height: 7rem; resize: vertical; }
 
 .sf-date:hover { border-color: var(--sf-rule-strong); }
 
+.sf-date:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+  border-style: dashed;
+}
+
 .sf-date[aria-pressed="true"] {
   border-color: var(--sf-ink);
   background: var(--sf-ink);

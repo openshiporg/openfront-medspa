@@ -1,4 +1,5 @@
 import { graphql } from "@keystone-6/core";
+import { configuredTaxRate } from "../checkoutInput";
 import type { Context } from ".keystone/types";
 import { permissions } from "../access";
 import { assertPracticeRecord, requireActorPractice } from "../workflowAuth";
@@ -10,7 +11,6 @@ import {
   refundProviderPayment,
 } from "../utils/paymentProviderAdapter";
 
-const TAX_RATE = Number.parseFloat(process.env.TAX_RATE || "0.08");
 
 function operator(context: Context) {
   return permissions.canManageFinance({ session: context.session as any });
@@ -149,7 +149,7 @@ export const processPayment = graphql.field({
 
       const appointment = await sudo.query.Appointment.findOne({
         where: { id: args.appointmentId },
-        query: `id status payment { id status } lineItems { price quantity } client { user { email } }`,
+        query: `id status payment { id status } practice { taxRate } lineItems { price quantity } client { user { email } }`,
       });
       if (!appointment) throw new Error("Appointment not found");
       if (!["confirmed", "in_progress"].includes(appointment.status || "")) throw new Error("Appointment is not eligible for payment");
@@ -159,7 +159,7 @@ export const processPayment = graphql.field({
       if (subtotalCents <= 0) throw new Error("Appointment has no payable line items");
       const tipCents = Math.max(0, args.tipAmount || 0);
       const discountCents = Math.max(0, args.discountAmount || 0);
-      const taxCents = Math.round(subtotalCents * TAX_RATE);
+      const taxCents = Math.round(subtotalCents * configuredTaxRate(process.env.TAX_RATE, appointment.practice?.taxRate));
       const totalCents = Math.max(0, subtotalCents + taxCents + tipCents - discountCents);
       const provider = await loadProvider(sudo, args.providerCode);
       const providerConfig = paymentProviderFromRecord(provider as { code: string; adapter: string; config?: unknown });

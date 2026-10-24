@@ -92,7 +92,7 @@ async function load(section: Section, sudo: ReturnType<Context["sudo"]>, practic
     sudo.query.PaymentWebhookEvent.findMany({where:scoped(practiceId),take:100,orderBy:{processedAt:"desc"},query:"id status"}),
   ]);
   const webhookAttention=webhooks.filter((item)=>item.status!=="processed").length;
-  return {metrics:[count("Providers installed (max 20)",providers.filter((x)=>x.isInstalled).length),count("Events pending",pending),count("Events failed",failed),count("Webhook attention (max 100)",webhookAttention)],records:providers.map((item)=>row({id:item.id,title:item.name,subtitle:`${item.adapter} · ${item.code}`,status:item.isInstalled?(item.isDefault?"installed_default":"installed"):"not_installed",detail:"Secrets and payloads omitted"})),attentionCount:providers.filter((x)=>!x.isInstalled).length+pending+failed+webhookAttention};
+  return {metrics:[count("Providers installed (max 20)",providers.filter((x)=>x.isInstalled).length),count("Events recorded",pending),count("Events failed",failed),count("Webhook attention (max 100)",webhookAttention)],records:providers.map((item)=>row({id:item.id,title:item.name,subtitle:`${item.adapter} · ${item.code}`,status:item.isInstalled?(item.isDefault?"installed_default":"installed"):"not_installed",detail:"Secrets and payloads omitted"})),attentionCount:failed+webhookAttention};
 }
 
 const sectionCapability: Record<Section,typeof permissions.canReadClients> = {

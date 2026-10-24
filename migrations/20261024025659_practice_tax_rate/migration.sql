@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Practice" ADD COLUMN     "taxRate" DOUBLE PRECISION NOT NULL DEFAULT 0;

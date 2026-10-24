@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge-button';
 import { CustomSetupSteps } from './CustomSetupSteps';
+import { PracticeDetailsFields } from './PracticeDetailsFields';
 import { SectionRenderer } from './SectionRenderer';
 import { useOnboardingState } from '../hooks/useOnboardingState';
 import { useOnboardingApi } from '../hooks/useOnboardingApi';
@@ -227,6 +228,8 @@ const OnboardingDialog: React.FC<OnboardingDialogProps> = ({ isOpen, onClose }) 
                 onBack={() => setCustomJsonApplied(false)}
               />
             ) : (
+              <>
+              {step === 'template' && selectedTemplate !== 'custom' && !isLoading ? <PracticeDetailsFields data={currentJsonData} onChange={setCurrentJsonData} /> : null}
               <SectionRenderer
                 sections={SECTION_DEFINITIONS}
                 selectedTemplate={selectedTemplate}
@@ -238,6 +241,7 @@ const OnboardingDialog: React.FC<OnboardingDialogProps> = ({ isOpen, onClose }) 
                 step={step}
                 currentJsonData={currentJsonData}
               />
+              </>
             )}
           </div>
         </div>

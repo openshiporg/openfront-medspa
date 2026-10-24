@@ -361,15 +361,56 @@
   ],
   "formTemplates": [
     {
-      "key": "medical-history-intake-v1",
-      "name": "Medical history acknowledgement",
+      "key": "medical-history-v1",
+      "name": "Medical history",
       "type": "clinical_intake",
       "description": "",
+      "requiredForCategories": [
+        "facials",
+        "injectables",
+        "light"
+      ],
       "fields": [
+        {
+          "id": "goals",
+          "type": "textarea",
+          "label": "Goals and concerns",
+          "required": true
+        },
+        {
+          "id": "conditions",
+          "type": "textarea",
+          "label": "Medical conditions",
+          "required": true
+        },
+        {
+          "id": "medications",
+          "type": "textarea",
+          "label": "Medications and supplements",
+          "required": true
+        },
+        {
+          "id": "allergies",
+          "type": "textarea",
+          "label": "Allergies and prior reactions",
+          "required": true
+        },
+        {
+          "id": "pregnant",
+          "type": "checkbox",
+          "label": "Pregnant or breastfeeding",
+          "required": false
+        },
+        {
+          "id": "priorProcedures",
+          "type": "textarea",
+          "label": "Prior aesthetic procedures",
+          "required": false
+        },
         {
           "id": "historyAcknowledgement",
           "type": "checkbox",
-          "label": "I confirm this history is complete to the best of my knowledge",
+          "label": "This history is complete and accurate",
           "required": true
         }
       ]

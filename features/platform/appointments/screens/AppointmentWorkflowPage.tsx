@@ -17,7 +17,7 @@ function needsClinicalReview(appointment: AppointmentWorkflowDetail) {
 }
 
 export async function AppointmentWorkflowPage({ appointmentId }: { appointmentId: string }) {
-  const { appointment, capabilities, clinical } = await getAppointmentWorkflowDetail(appointmentId);
+  const { appointment, capabilities, clinical, guest } = await getAppointmentWorkflowDetail(appointmentId);
   if (!appointment) return <WorkflowUnavailable flow="appointment" />;
 
   if (capabilities.canSchedule && !capabilities.canManageClinical) {
@@ -31,7 +31,7 @@ export async function AppointmentWorkflowPage({ appointmentId }: { appointmentId
 
   const timeZone = appointment.location?.timezone || 'UTC';
   const status = appointment.status || '';
-  const clientName = appointment.client?.user?.name || 'Client restricted';
+  const clientName = appointment.client?.user?.name || (guest?.name ? `${guest.name} (guest)` : 'Client restricted');
   const serviceNames = appointment.lineItems.map((item) => item.serviceTitle).filter(Boolean).join(', ') || appointment.services.map((service) => service.name).filter(Boolean).join(', ') || 'No treatment lines';
   const clinicalRequired = needsClinicalReview(appointment);
   const checkoutOpen = !appointment.transaction && !appointment.payment && ['confirmed', 'in_progress'].includes(status);
@@ -140,6 +140,8 @@ export async function AppointmentWorkflowPage({ appointmentId }: { appointmentId
                   <Fact label="Name">{clientName}</Fact>
                   {appointment.client?.user?.email && <Fact label="Email" wrap>{appointment.client.user.email}</Fact>}
                   {appointment.client?.user?.phone && <Fact label="Phone">{appointment.client.user.phone}</Fact>}
+                  {!appointment.client && guest?.email ? <Fact label="Email" wrap><a className="underline-offset-4 hover:underline" href={`mailto:${guest.email}`}>{guest.email}</a></Fact> : null}
+                  {!appointment.client && guest?.phone ? <Fact label="Phone"><a className="underline-offset-4 hover:underline" href={`tel:${guest.phone.replace(/[^\d+]/g, '')}`}>{guest.phone}</a></Fact> : null}
                   <div className="grid grid-cols-2 gap-3">
                     <Fact label="Visits">{appointment.client?.totalVisits || 0}</Fact>
                     <Fact label="Last visit">{appointment.client?.lastVisit ? new Date(appointment.client.lastVisit).toLocaleDateString('en-US', { timeZone, month: 'short', day: 'numeric', year: 'numeric' }) : 'None'}</Fact>

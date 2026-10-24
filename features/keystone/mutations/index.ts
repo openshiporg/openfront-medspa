@@ -36,6 +36,7 @@ import { scheduleAppointmentResources } from "./resourceReservationWorkflows";
 import { acceptStaffInvitation, createProviderProfile, inviteStaff, upsertAccessRole } from "./staffAccessWorkflows";
 import { publishStorefrontSettings } from "./storefrontSettings";
 import { registerCustomer } from "./registerCustomer";
+import { cancelGuestAppointment, clientIntakeForms, requestWaitlistSpot, storefrontAppointment, storefrontReviews, submitAppointmentReview } from "./storefrontClientWorkflows";
 
 const gql = String.raw;
 
@@ -57,6 +58,9 @@ export const extendGraphqlSchema = graphql.extend((base) => ({
     medspaAppointmentSchedule,
     medspaAppointmentClinicalHeader,
     clientPortal,
+    clientIntakeForms,
+    storefrontReviews,
+    storefrontAppointment,
   },
   mutation: {
     registerCustomer,
@@ -132,5 +136,8 @@ export const extendGraphqlSchema = graphql.extend((base) => ({
     createProviderProfile,
     publishStorefrontSettings,
     completeAppointmentCheckout,
+    submitAppointmentReview,
+    requestWaitlistSpot,
+    cancelGuestAppointment,
   },
 }));

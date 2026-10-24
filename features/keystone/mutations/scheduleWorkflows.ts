@@ -25,6 +25,7 @@ type ScheduleInput = {
   breakStart?: string | null;
   breakEnd?: string | null;
   isAvailable?: boolean | null;
+  isPublic?: boolean | null;
   reason?: string | null;
   effectiveFrom?: string | null;
   effectiveTo?: string | null;
@@ -85,6 +86,8 @@ function normalize(input: ScheduleInput) {
     breakStart,
     breakEnd,
     isAvailable: type === "time_off" ? false : input.isAvailable !== false,
+    // Online booking only sees hours that are explicitly public; omitted keeps the stored value.
+    ...(input.isPublic === undefined || input.isPublic === null ? {} : { isPublic: type !== "time_off" && input.isPublic === true }),
     reason,
     effectiveFrom: type === "recurring" ? timestampForDate(effectiveFrom) : null,
     effectiveTo: type === "recurring" ? timestampForDate(effectiveTo) : null,
@@ -213,7 +216,7 @@ export const upsertProviderSchedule = graphql.field({
     type: graphql.arg({ type: graphql.nonNull(graphql.String) }), dayOfWeek: graphql.arg({ type: graphql.Int }),
     localDate: graphql.arg({ type: graphql.String }), startTime: graphql.arg({ type: graphql.nonNull(graphql.String) }),
     endTime: graphql.arg({ type: graphql.nonNull(graphql.String) }), breakStart: graphql.arg({ type: graphql.String }),
-    breakEnd: graphql.arg({ type: graphql.String }), isAvailable: graphql.arg({ type: graphql.Boolean }),
+    breakEnd: graphql.arg({ type: graphql.String }), isAvailable: graphql.arg({ type: graphql.Boolean }), isPublic: graphql.arg({ type: graphql.Boolean }),
     reason: graphql.arg({ type: graphql.String }), effectiveFrom: graphql.arg({ type: graphql.String }),
     effectiveTo: graphql.arg({ type: graphql.String }), idempotencyKey: graphql.arg({ type: graphql.String }),
     expectedRevision: graphql.arg({ type: graphql.Int }),

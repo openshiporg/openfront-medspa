@@ -6,7 +6,7 @@ import { paymentRecordStatus } from "../payment-lifecycle";
 import { createProviderPaymentSession, paymentProviderFromRecord } from "../utils/paymentProviderAdapter";
 import { serializableWorkflow } from "./serializableWorkflow";
 import { assertPracticeRecord, bounded, evidenceHash, requireActorPractice, validIdempotencyKey } from "../workflowAuth";
-import { assertAppointmentSchedulingAuthority } from '../appointmentSchedulingAuthority';
+import { appointmentClientKey, assertAppointmentSchedulingAuthority } from '../appointmentSchedulingAuthority';
 import type { AppointmentScheduleScope, AppointmentTransitionInput, AppointmentTransitionReceipt } from '../../platform/appointments/types/appointmentSchedule';
 
 type AppointmentTransition = "confirmed" | "in_progress" | "cancelled" | "no_show";
@@ -65,7 +65,7 @@ export async function transitionAppointmentTransaction(
         where: { id: args.appointmentId },
         query: "id practice { id } revision status metadata consentsCount treatmentSessionsCount client { id user { id } } payment { id status refundedAmount totalAmount } transaction { id } resourceReservations(where: { status: { in: [reserved, in_use] } }) { id } supervisorReservations(where: { status: { equals: reserved } }) { id }",
       });
-      if (!appointment || appointment.practice?.id !== authority.scope.practiceId || appointment.client?.id !== authority.scope.clientId) throw new Error("Appointment not found");
+      if (!appointment || appointment.practice?.id !== authority.scope.practiceId || appointmentClientKey(appointment) !== authority.scope.clientId) throw new Error("Appointment not found");
       const planBooking = (appointment.metadata as any)?.planBooking;
       const requestHash = appointmentTransitionRequestHash(args, authority.scope.actorId);
       const receipted = authority.scope.purpose === 'scheduler' || Boolean(planBooking || args.idempotencyKey || args.expectedScope || args.expectedRevision != null);

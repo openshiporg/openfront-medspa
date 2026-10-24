@@ -15,10 +15,10 @@ export function getItemsFromJsonData(jsonData: any, sectionType: string): string
     case 'clients':
       return (jsonData.clients || []).map((client: any) => client.name || 'Unknown Client');
     case 'intakeForms':
-      return [
+      return [...new Set([
         ...(jsonData.intakeForms || []).map((form: any) => form.name || 'Unknown Intake Form'),
         ...(jsonData.formTemplates || []).map((form: any) => form.name || 'Unknown Form Template'),
-      ];
+      ])];
     case 'memberships':
       return [
         ...(jsonData.memberships || []).map((membership: any) => membership.name || 'Unknown Membership'),

@@ -73,7 +73,7 @@ export function AppointmentSchedulingPanel({ appointmentId, customerOnly = false
       }
       if (!saved) {
         if (intent || !data.allowedTransitions.length) throw new Error('Original command/readback requires review');
-        const original: AppointmentTransitionInput = { appointmentId: data.scope.appointmentId, expectedScope: data.scope, expectedRevision: data.revision, status: String(form.get('status')) as AppointmentTransitionInput['status'], reason: String(form.get('reason')).trim(), idempotencyKey: crypto.randomUUID() };
+        const original: AppointmentTransitionInput = { appointmentId: data.scope.appointmentId, expectedScope: data.scope, expectedRevision: data.revision, status: String(form.get('status')) as AppointmentTransitionInput['status'], reason: String(form.get('reason') || '').trim() || (customerOnly ? 'Cancelled by client' : ''), idempotencyKey: crypto.randomUUID() };
         saved = retainTransitionIntent(window.sessionStorage, original);
       }
       setIntent(saved);
@@ -82,6 +82,20 @@ export function AppointmentSchedulingPanel({ appointmentId, customerOnly = false
       else setMessage(result.error || 'Uncertain acknowledgement. Original command remains pending.');
     } catch (error) { setBlocked(true); setMessage(error instanceof Error ? error.message : 'Storage or acknowledgement unavailable; no NEW command is allowed.'); }
     finally { setBusy(false); }
+  }
+  if (customerOnly) {
+    const cancellable = Boolean(data?.allowedTransitions.includes('cancelled'));
+    // Clients see one plain control; nothing renders once there is nothing to do.
+    if (!cancellable && !intent) return message && message !== 'Scheduling loaded.' && message !== 'Loading scheduling…' ? <p role="status" className="text-sm text-muted-foreground">{message}</p> : null;
+    return <form onSubmit={event => { if (!intent && !window.confirm('Cancel this appointment?')) { event.preventDefault(); return; } void submit(event); }} className="grid gap-3" aria-label="Cancel appointment">
+      <input type="hidden" name="status" value="cancelled" />
+      {!intent ? <label className={fieldLabelClass}>Reason (optional)<input name="reason" className={inputClass} maxLength={1000} disabled={busy || blocked} /></label> : null}
+      {message && !['Scheduling loaded.', 'Loading scheduling…'].includes(message) ? <p role="status" className="text-sm text-muted-foreground">{message}</p> : null}
+      <div className={`${trackClass} w-fit`}>
+        <button className={pillClass('danger')} disabled={busy || blocked || !data}>{busy ? 'Cancelling…' : intent ? 'Retry cancellation' : 'Cancel appointment'}</button>
+        {intent && <button type="button" className={pillClass('quiet')} disabled={busy} onClick={retrieve}>Refresh</button>}
+      </div>
+    </form>;
   }
   const tone = data ? ({ pending: 'bg-amber-500', confirmed: 'bg-emerald-500', in_progress: 'bg-blue-500', completed: 'bg-zinc-400', cancelled: 'bg-rose-500', no_show: 'bg-orange-500' } as Record<string, string>)[data.status] || 'bg-zinc-400' : 'bg-zinc-300';
   return <section className="grid min-w-0 gap-4 rounded-2xl border bg-background p-4 text-foreground md:p-5" aria-label="Controlled appointment scheduling">

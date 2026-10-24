@@ -1,2 +1,5 @@
-import { MedSpaWorkspacePage } from '@/features/platform/workspaces/screens/MedSpaWorkspacePage';
-export default function IntegrationsPage() { return <MedSpaWorkspacePage section="integrations" />; }
+import { IntegrationsPage } from '@/features/platform/integrations/screens/IntegrationsPage';
+
+export const dynamic = 'force-dynamic';
+
+export default IntegrationsPage;

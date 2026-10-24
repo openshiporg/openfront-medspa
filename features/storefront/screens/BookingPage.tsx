@@ -35,6 +35,8 @@ const STEPS = [
 
 interface BookingPageProps {
   initialServices?: Service[]
+  /** Signed-in client's contact, prefilled into the details step. */
+  initialContact?: { name: string; email: string; phone: string } | null
 }
 
 const EMPTY_SERVICES: Service[] = []
@@ -50,7 +52,7 @@ function groupByCategory(services: Service[]) {
   return [...groups.entries()].map(([id, group]) => ({ id, ...group }))
 }
 
-export function BookingPage({ initialServices = EMPTY_SERVICES }: BookingPageProps) {
+export function BookingPage({ initialServices = EMPTY_SERVICES, initialContact = null }: BookingPageProps) {
   const searchParams = useSearchParams()
   const preselectedService = searchParams?.get("service") ?? null
   const preselectedProvider = searchParams?.get("provider") ?? null
@@ -60,7 +62,7 @@ export function BookingPage({ initialServices = EMPTY_SERVICES }: BookingPagePro
   const [selectedProvider, setSelectedProvider] = useState<string | null>(preselectedProvider)
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
   const [selectedTime, setSelectedTime] = useState<string | null>(null)
-  const [clientInfo, setClientInfo] = useState<ClientInfo>({ name: "", email: "", phone: "", notes: "" })
+  const [clientInfo, setClientInfo] = useState<ClientInfo>({ name: initialContact?.name || "", email: initialContact?.email || "", phone: initialContact?.phone || "", notes: "" })
 
   const services = initialServices
   const [providers, setProviders] = useState<Provider[]>([])
@@ -70,6 +72,7 @@ export function BookingPage({ initialServices = EMPTY_SERVICES }: BookingPagePro
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [bookingSuccess, setBookingSuccess] = useState(false)
+  const [visitHref, setVisitHref] = useState<string | null>(null)
   const bookingRequest = useRef<{ fingerprint: string; key: string } | null>(null)
 
   // Skip to provider choice when a known treatment is preselected.
@@ -222,6 +225,8 @@ export function BookingPage({ initialServices = EMPTY_SERVICES }: BookingPagePro
       const result = await createAppointment({ ...request, idempotencyKey: attempt.key })
 
       if (result.appointment) {
+        // Guests get a private link to view or cancel; signed-in clients use their account.
+        setVisitHref(result.accessToken ? `/booking/${result.appointment.id}?token=${encodeURIComponent(result.accessToken)}` : initialContact ? `/booking/${result.appointment.id}` : null)
         setBookingSuccess(true)
       } else {
         setError(result.error || "The request wasn't accepted. Review your selections and try again.")
@@ -260,10 +265,11 @@ export function BookingPage({ initialServices = EMPTY_SERVICES }: BookingPagePro
             <h1 id="booking-done" className="sf-display text-[length:var(--sf-text-display-s)]">Request sent</h1>
             <Status tone="wait">Awaiting confirmation</Status>
           </div>
-          <p className="text-[length:var(--sf-text-md)] text-[var(--sf-ink-2)]">Updates go to <span className="font-medium text-[var(--sf-ink)]">{clientInfo.email}</span></p>
+          {visitHref && !initialContact ? <p className="text-[length:var(--sf-text-md)] text-[var(--sf-ink-2)]">Save this link to view or cancel your request.</p> : null}
           <div className="w-full">{ticket}</div>
           <div className="sf-track">
-            <Link href="/account" className="sf-pill sf-pill-primary">My appointments</Link>
+            {visitHref ? <Link href={visitHref} className="sf-pill sf-pill-primary">View request</Link> : null}
+            {initialContact ? <Link href="/account" className="sf-pill">My appointments</Link> : null}
             <button type="button" onClick={() => window.location.reload()} className="sf-pill">Book another</button>
           </div>
         </section>
@@ -351,6 +357,7 @@ export function BookingPage({ initialServices = EMPTY_SERVICES }: BookingPagePro
                 onTimeSelect={setSelectedTime}
                 availableSlots={availableSlots}
                 loadingSlots={loadingSlots}
+                workingDays={provider?.workingDays}
               />
               <div className="sf-track self-start">
                 <button type="button" onClick={handleDateTimeConfirm} disabled={!selectedDate || !selectedTime} className="sf-pill sf-pill-primary">

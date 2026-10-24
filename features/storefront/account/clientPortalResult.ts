@@ -1,9 +1,12 @@
 export type ClientPortalProjection = {
   authenticated: boolean
-  client: { id: string; totalVisits: number; user?: { name?: string; email?: string } | null } | null
-  appointments: Array<{ id: string; startTime: string; status: string; lineItems?: Array<{ id: string; serviceTitle: string; price: number }> }>
-  benefits: { packages: unknown[]; memberships: unknown[] }
-  treatmentPlans: unknown[]
+  client: { id: string; totalVisits: number; user?: { name?: string; email?: string; phone?: string | null } | null } | null
+  appointments: Array<{ id: string; startTime: string; status: string; location?: { name?: string | null; timezone?: string | null } | null; provider?: { user?: { name?: string | null } | null } | null; lineItems?: Array<{ id: string; serviceTitle: string; price: number }>; transaction?: { id: string; status: string; paymentStatus: string; completedAt: string | null; lineItems: Array<{ id: string; itemType: string; quantity: number; unitPrice: number; discount: number | null; title: string | null }> } | null; payment?: { id: string; subtotal: number | null; tax: number | null; tip: number | null; discount: number | null; totalAmount: number | null; refundedAmount: number | null; paymentMethod: string | null; status: string | null } | null; reviewed?: boolean }>
+  benefits: {
+    packages: Array<{ id: string; status: string; expiresAt: string | null; totalValue: number; usedValue: number; remainingValue: number | null; package?: { name?: string | null } | null }>
+    memberships: Array<{ id: string; status: string; nextBillingDate: string | null; pausedUntil: string | null; membership?: { name?: string | null; monthlyPrice?: number | null } | null }>
+  }
+  treatmentPlans: Array<{ id: string; title: string; status: string; items: Array<{ serviceTitle: string; plannedSessions: number; completedSessions: number; status: string }> }>
   followUps: Array<{ id: string; dueAt: string; title: string; instructions?: string; status: string }>
   photoConsents: unknown[]
   rightsRequests: unknown[]

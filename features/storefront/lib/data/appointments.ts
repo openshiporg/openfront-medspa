@@ -147,7 +147,7 @@ function normalizeAppointment(appointment: Appointment): Appointment {
 /**
  * Create a new appointment request through the public-safe booking mutation.
  */
-export async function createAppointment(input: CreateAppointmentInput): Promise<{ appointment: Appointment | null; error: string | null }> {
+export async function createAppointment(input: CreateAppointmentInput): Promise<{ appointment: Appointment | null; error: string | null; accessToken?: string | null }> {
   const BOOK_APPOINTMENT = gql`
     mutation BookAppointment(
       $serviceIds: [ID!]!
@@ -172,12 +172,13 @@ export async function createAppointment(input: CreateAppointmentInput): Promise<
         success
         appointmentId
         error
+        accessToken
       }
     }
   `
 
   try {
-    const result = await medspaClient.request<{ bookAppointment: BookAppointmentResult }>(BOOK_APPOINTMENT, {
+    const result = await medspaClient.request<{ bookAppointment: BookAppointmentResult & { accessToken?: string | null } }>(BOOK_APPOINTMENT, {
       serviceIds: input.serviceIds,
       providerId: input.providerId,
       startTime: input.startTime,
@@ -206,7 +207,7 @@ export async function createAppointment(input: CreateAppointmentInput): Promise<
       client: null,
       provider: null,
       services: [],
-    }, error: null }
+    }, error: null, accessToken: result.bookAppointment.accessToken || null }
   } catch (error) {
     console.error("Error creating appointment:", error)
     return { appointment: null, error: "We could not submit your appointment request. Please try again." }

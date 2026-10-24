@@ -8474,6 +8474,7 @@ type Practice {
   name: String
   slug: String
   currencyCode: String
+  taxRate: Float
   isActive: Boolean
   isDemo: Boolean
   users(where: UserWhereInput! = {}, orderBy: [UserOrderByInput!]! = [], take: Int! = 5000, skip: Int! = 0, cursor: UserWhereUniqueInput): [User!]
@@ -8501,6 +8502,7 @@ input PracticeWhereInput {
   name: StringFilter
   slug: StringFilter
   currencyCode: StringFilter
+  taxRate: FloatFilter
   isActive: BooleanFilter
   isDemo: BooleanFilter
   users: UserManyRelationFilter
@@ -8528,6 +8530,7 @@ input PracticeOrderByInput {
   name: OrderDirection
   slug: OrderDirection
   currencyCode: OrderDirection
+  taxRate: OrderDirection
   isActive: OrderDirection
   isDemo: OrderDirection
   createdAt: OrderDirection
@@ -8538,6 +8541,7 @@ input PracticeUpdateInput {
   name: String
   slug: String
   currencyCode: String
+  taxRate: Float
   isActive: Boolean
   isDemo: Boolean
   users: UserRelateToManyForUpdateInput
@@ -8577,6 +8581,7 @@ input PracticeCreateInput {
   name: String
   slug: String
   currencyCode: String
+  taxRate: Float
   isActive: Boolean
   isDemo: Boolean
   users: UserRelateToManyForCreateInput
@@ -13845,7 +13850,7 @@ type Mutation {
   reverseClientPackageUsage(usageId: ID!, reason: String!, idempotencyKey: String!): RedeemClientPackageResult
   joinWaitlist(clientId: ID, guestName: String, guestPhone: String, serviceId: ID!, preferredProviderIds: [ID!], preferredDays: JSON, preferredTimeRange: String, dateRangeStart: String, dateRangeEnd: String, notes: String, idempotencyKey: String!): WaitlistWorkflowResult
   transitionWaitlistEntry(waitlistEntryId: ID!, action: String!, appointmentId: ID, reason: String): WaitlistWorkflowResult
-  upsertProviderSchedule(scheduleId: ID, providerId: ID!, locationId: ID!, type: String!, dayOfWeek: Int, localDate: String, startTime: String!, endTime: String!, breakStart: String, breakEnd: String, isAvailable: Boolean, reason: String, effectiveFrom: String, effectiveTo: String, idempotencyKey: String, expectedRevision: Int): ProviderScheduleWorkflowResult
+  upsertProviderSchedule(scheduleId: ID, providerId: ID!, locationId: ID!, type: String!, dayOfWeek: Int, localDate: String, startTime: String!, endTime: String!, breakStart: String, breakEnd: String, isAvailable: Boolean, isPublic: Boolean, reason: String, effectiveFrom: String, effectiveTo: String, idempotencyKey: String, expectedRevision: Int): ProviderScheduleWorkflowResult
   setProviderScheduleAvailability(scheduleId: ID!, isAvailable: Boolean!, reason: String, expectedRevision: Int!): ProviderScheduleWorkflowResult
   payoutCommissions(commissionIds: [ID!]!): CommissionPayoutResult
   adjustMedSpaInventory(productId: ID!, locationId: ID!, delta: Int!, reason: String!, idempotencyKey: String!): MedSpaInventoryResult
@@ -13902,6 +13907,9 @@ type Mutation {
   createProviderProfile(userId: ID!, role: String!, title: String, locationIds: [ID!]!, idempotencyKey: String!): StaffAccessWorkflowResult
   publishStorefrontSettings(displayName: String!, primaryLocationId: ID!, accentHue: Int!, logoSvg: String, logoHue: Int, isPublished: Boolean!, expectedRevision: Int!): StorefrontSettingsResult!
   completeAppointmentCheckout(appointmentId: ID!, paymentMethod: String!, tipAmount: Int!, discountAmount: Int!, discountReason: String, retailItems: JSON, clientPackageId: ID, clientMembershipId: ID, idempotencyKey: String!): CompleteAppointmentCheckoutResult
+  submitAppointmentReview(appointmentId: ID!, rating: Int!, comment: String, idempotencyKey: String!): SubmitAppointmentReviewResult!
+  requestWaitlistSpot(serviceId: ID!, providerId: ID, preferredDays: [String!], preferredTimeRange: String, notes: String, idempotencyKey: String!): RequestWaitlistSpotResult!
+  cancelGuestAppointment(appointmentId: ID!, token: String!, reason: String): CancelGuestAppointmentResult!
 }
 
 type CustomerRegistrationResult {
@@ -13913,6 +13921,7 @@ type BookAppointmentResult {
   success: Boolean!
   appointmentId: ID
   error: String
+  accessToken: String
 }
 
 type ProcessPaymentResult {
@@ -14130,6 +14139,24 @@ type CompleteAppointmentCheckoutResult {
   success: Boolean!
   transactionId: ID
   paymentId: ID
+  error: String
+}
+
+type SubmitAppointmentReviewResult {
+  success: Boolean!
+  recordId: ID
+  error: String
+}
+
+type RequestWaitlistSpotResult {
+  success: Boolean!
+  recordId: ID
+  error: String
+}
+
+type CancelGuestAppointmentResult {
+  success: Boolean!
+  recordId: ID
   error: String
 }
 
@@ -14464,6 +14491,7 @@ type Query {
   calculateCommission(providerId: ID!, startDate: String!, endDate: String!): CommissionResult
   storefrontProviders(practiceSlug: String!, serviceId: ID, take: Int): [StorefrontProvider!]!
   storefrontProvider(id: ID!, practiceSlug: String!): StorefrontProvider
+  storefrontServices(ids: [ID!]!): JSON
   publicStorefrontSettings(practiceSlug: String!): StorefrontPublicSettings!
   medspaOperationsWorkspace(section: String!): MedSpaOperationsWorkspace
   medspaPlanJourney(consultationId: ID!, planPage: Int, appointmentPage: Int, historyPage: Int): JSON
@@ -14471,6 +14499,9 @@ type Query {
   medspaAppointmentSchedule(appointmentId: ID!, original: JSON, purpose: String): JSON
   medspaAppointmentClinicalHeader(appointmentId: ID!): JSON
   clientPortal: JSON
+  clientIntakeForms(appointmentId: ID!): [ClientIntakeTemplate!]!
+  storefrontReviews(serviceId: ID, providerId: ID, take: Int): [StorefrontReview!]!
+  storefrontAppointment(appointmentId: ID!, token: String): StorefrontGuestAppointment
 }
 
 type AvailabilityResult {
@@ -14529,6 +14560,7 @@ type StorefrontProvider {
   isActive: Boolean!
   photo: StorefrontProviderPhoto
   specializations: [StorefrontSpecialization!]!
+  workingDays: [Int!]!
 }
 
 type StorefrontProviderUser {
@@ -14601,6 +14633,39 @@ type MedSpaWorkspaceRecord {
   occurredAt: String
   href: String
   action: String
+}
+
+type ClientIntakeTemplate {
+  id: ID!
+  name: String!
+  type: String!
+  description: String
+  fields: JSON
+  submitted: Boolean!
+  status: String
+}
+
+type StorefrontReview {
+  id: ID!
+  rating: Int!
+  comment: String
+  author: String!
+  serviceName: String
+  providerName: String
+  createdAt: String
+}
+
+type StorefrontGuestAppointment {
+  id: ID!
+  status: String!
+  startTime: String!
+  duration: Int
+  timezone: String
+  serviceNames: [String!]!
+  providerName: String
+  locationName: String
+  price: Int
+  cancellable: Boolean!
 }
 
 union AuthenticatedItem = User

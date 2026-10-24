@@ -8,6 +8,7 @@ import { computeProviderAvailability, getRuntimeLocation, zonedDateKey } from ".
 import { evaluateProviderAuthority, recordAuthorityDecision } from "../clinicalAuthority";
 import { assertActiveActor, bounded, evidenceHash, requireActorPractice } from "../workflowAuth";
 import { serializableWorkflow } from "./serializableWorkflow";
+import { guestAccessToken } from "../lib/guestAccess";
 import { assertPlanStaffMembership } from "./treatmentPlanApproval";
 import { assertNewPlanBooking, loadPlanBookingEvidence, planBookingSnapshot, type PlanBookingInput } from "./planBookingEvidence";
 
@@ -15,12 +16,15 @@ const BookAppointmentResult = graphql.object<{
   success: boolean;
   appointmentId: string | null;
   error: string | null;
+  accessToken?: string | null;
 }>()({
   name: "BookAppointmentResult",
   fields: {
     success: graphql.field({ type: graphql.nonNull(graphql.Boolean) }),
     appointmentId: graphql.field({ type: graphql.ID }),
     error: graphql.field({ type: graphql.String }),
+    // Guest requests only: the bearer link token for viewing and cancelling this request.
+    accessToken: graphql.field({ type: graphql.String }),
   },
 });
 
@@ -435,7 +439,9 @@ export async function bookAppointmentTransaction(context: Context, args: Booking
         console.error("Failed to send appointment request receipt:", emailError);
       }
 
-      return { success: true, appointmentId: booking.appointmentId, error: null };
+      const booked = await context.sudo().query.Appointment.findOne({ where: { id: booking.appointmentId }, query: "id client { id }" });
+      const accessToken = booked && !booked.client?.id ? guestAccessToken(booking.appointmentId) : null;
+      return { success: true, appointmentId: booking.appointmentId, error: null, accessToken };
     } catch (error) {
       return {
         success: false,

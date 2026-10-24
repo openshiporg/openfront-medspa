@@ -46,6 +46,7 @@ const StorefrontProvider = graphql.object<{
   isActive: boolean
   photo: { image: { url: string } | null; imagePath: string | null; altText: string | null } | null
   specializations: { id: string; name: string }[]
+  schedules?: { dayOfWeek: number | null }[]
 }>()({
   name: 'StorefrontProvider',
   fields: {
@@ -56,6 +57,11 @@ const StorefrontProvider = graphql.object<{
     specializations: graphql.field({
       type: graphql.nonNull(graphql.list(graphql.nonNull(StorefrontSpecialization))),
     }),
+    // Weekdays (0 = Sunday) with published recurring hours; lets the booking calendar mark days off.
+    workingDays: graphql.field({
+      type: graphql.nonNull(graphql.list(graphql.nonNull(graphql.Int))),
+      resolve: (provider) => [...new Set((provider.schedules || []).map((schedule) => schedule.dayOfWeek).filter((day): day is number => Number.isInteger(day)))].sort(),
+    }),
   },
 })
 
@@ -65,6 +71,7 @@ const PUBLIC_PROVIDER_SELECTION = `
   isActive
   photo { image { url } imagePath altText }
   specializations(where: { status: { equals: active }, isPublic: { equals: true } }, take: 50, orderBy: { name: asc }) { id name }
+  schedules(where: { type: { equals: recurring }, isAvailable: { equals: true }, isPublic: { equals: true } }, take: 50) { dayOfWeek }
 `
 
 async function activePractice(context: Context, practiceSlug: string) {

@@ -1795,6 +1795,7 @@ model Practice {
   name                                           String                             @default("")
   slug                                           String                             @unique @default("")
   currencyCode                                   String                             @default("USD")
+  taxRate                                        Float                              @default(0)
   isActive                                       Boolean                            @default(true)
   isDemo                                         Boolean                            @default(false)
   users                                          User[]                             @relation("User_practice")

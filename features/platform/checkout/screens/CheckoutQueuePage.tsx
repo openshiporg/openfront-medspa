@@ -70,7 +70,7 @@ export function CheckoutCard({ appointment, products }: { appointment: CheckoutA
     !['confirmed', 'in_progress'].includes(status) && 'Confirm or check in the appointment first.',
     appointment.depositPaid && 'A recorded deposit needs reconciliation first.',
     appointment.benefitsUnavailable && 'Client benefits could not be verified. Reload the appointment.',
-    totals.tax === null && 'Tax rate is not configured.',
+    totals.tax === null && 'Set a tax rate in Storefront settings.',
   ].filter((reason): reason is string => Boolean(reason));
   const packageOptions = getPackageRedemptionOptions(appointment);
   const membershipOptions = getMembershipDiscountOptions(appointment);

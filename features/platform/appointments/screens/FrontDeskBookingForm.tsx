@@ -99,13 +99,7 @@ export function FrontDeskBookingForm({ services, locations, clients }: { service
       <Panel title="Client">
         <div className="grid gap-4">
           {clients.length ? (
-            <label className={fieldLabelClass}>Client
-              <select className={inputClass} value={clientId} onChange={(event) => setClientId(event.target.value)} required>
-                <option value="" disabled>Choose a client</option>
-                <option value={NEW_CLIENT}>New client</option>
-                {clients.map((item) => <option key={item.id} value={item.id}>{item.user?.name} · {item.user?.email}</option>)}
-              </select>
-            </label>
+            <ClientPicker clients={clients} value={clientId} onChange={setClientId} />
           ) : null}
           {clientId === NEW_CLIENT ? (
             <div className="grid gap-4 sm:grid-cols-2">
@@ -176,5 +170,46 @@ export function FrontDeskBookingForm({ services, locations, clients }: { service
         </div>
       </div>
     </form>
+  );
+}
+
+/** Search existing clients by name, email or phone, or start a new client. */
+function ClientPicker({ clients, value, onChange }: { clients: FrontDeskClient[]; value: string; onChange: (id: string) => void }) {
+  const [query, setQuery] = useState('');
+  const selected = clients.find((client) => client.id === value);
+  const needle = query.trim().toLowerCase();
+  const digits = needle.replace(/\D/g, '');
+  const matches = needle
+    ? clients.filter((client) => {
+        const user = client.user;
+        return Boolean(user && (user.name.toLowerCase().includes(needle) || user.email.toLowerCase().includes(needle) || (digits.length >= 3 && (user.phone || '').replace(/\D/g, '').includes(digits))));
+      }).slice(0, 8)
+    : [];
+  if (value && (selected || value === NEW_CLIENT)) {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2">
+        <span className="min-w-0 text-sm"><span className="font-medium">{value === NEW_CLIENT ? 'New client' : selected?.user?.name}</span>{selected?.user?.email ? <span className="ml-2 text-muted-foreground">{selected.user.email}</span> : null}</span>
+        <div className={trackClass}><button type="button" className={pillClass('quiet', 'sm')} onClick={() => { onChange(''); setQuery(''); }}>Change</button></div>
+      </div>
+    );
+  }
+  return (
+    <div className="grid gap-2">
+      <label className={fieldLabelClass}>Client
+        <input className={inputClass} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name, email or phone" autoComplete="off" aria-controls="client-matches" />
+      </label>
+      <ul id="client-matches" role="listbox" aria-label="Matching clients" className="grid gap-1">
+        {matches.map((client) => (
+          <li key={client.id}>
+            <button type="button" role="option" aria-selected={false} onClick={() => onChange(client.id)} className="flex w-full min-w-0 items-center justify-between gap-3 rounded-xl border bg-background px-3 py-2 text-left text-sm hover:bg-muted/50">
+              <span className="truncate font-medium">{client.user?.name}</span>
+              <span className="truncate text-xs text-muted-foreground">{client.user?.email}{client.user?.phone ? ` · ${client.user.phone}` : ''}</span>
+            </button>
+          </li>
+        ))}
+        {needle && !matches.length ? <li className="px-1 text-xs text-muted-foreground">No matching client</li> : null}
+      </ul>
+      <div className={`${trackClass} self-start`}><button type="button" className={pillClass('raised', 'sm')} onClick={() => onChange(NEW_CLIENT)}>New client</button></div>
+    </div>
   );
 }

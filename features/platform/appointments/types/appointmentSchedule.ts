@@ -16,4 +16,6 @@ export type AppointmentScheduleReadback = {
   scope: AppointmentScheduleScope; timezone: string; revision: number; status: string; startTime: string;
   endTime: string | null; simpleCorrectionAllowed: boolean; allowedTransitions: AppointmentTransitionInput['status'][];
   receipt: AppointmentTransitionReceipt | null;
+  /** Storefront guest contact, for staff only. */
+  guest?: { name: string; email: string; phone: string } | null;
 };

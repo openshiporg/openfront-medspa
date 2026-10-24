@@ -66,7 +66,7 @@ export async function completeAppointmentCheckoutTransaction(
       const appointment = await sudo.query.Appointment.findOne({
         where: { id: args.appointmentId },
         query: `
-          id status depositAmount depositPaid payment { id } transaction { id } practice { id } location { id name isActive }
+          id status depositAmount depositPaid payment { id } transaction { id } practice { id taxRate } location { id name isActive }
           client { id lifetimeValue totalVisits user { id email } }
           provider { id baseCommissionRate user { id } }
           consultation { id status staffDecisionRecorded service { id } }
@@ -188,7 +188,7 @@ export async function completeAppointmentCheckoutTransaction(
       const subtotal = serviceSubtotal + retailSubtotal;
       const taxable = Math.max(0, subtotal - discount);
       if (discount > serviceSubtotal) throw new Error("Discounts and benefits cannot exceed the service subtotal");
-      const tax = Math.round(taxable * configuredTaxRate());
+      const tax = Math.round(taxable * configuredTaxRate(process.env.TAX_RATE, appointment.practice?.taxRate));
       const tip = Math.max(0, args.tipAmount || 0);
       if (appointment.depositPaid) throw new Error("Deposit allocation is unavailable until payment-allocation reconciliation is implemented");
       const depositCredit = 0;

@@ -30,6 +30,9 @@ export async function main() {
       if (!match) throw new Error(`Unregistered dashboard field view: ${view}`)
       return match[1]
     })
+      // The dashboard resolver prepends the id view itself (['id', ...VIEW_ORDER]),
+      // so emitting it here would shift every field type by one.
+      .filter(name => name !== 'id')
     writeFileSync(join(dirname(fileURLToPath(import.meta.url)), 'index.ts'), `/** Generated from the pinned native Keystone model graph. Do not edit. */\nexport const VIEW_ORDER = ${JSON.stringify(names, null, 2)};\n`)
     console.log(`Generated native view order (${names.length}): ${names.join(', ')}`)
   } finally {

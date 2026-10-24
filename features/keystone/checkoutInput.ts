@@ -1,9 +1,15 @@
-/** Shared quote/commit configuration; absence is not a zero-rate instruction. */
-export function configuredTaxRate(value: string | undefined = process.env.TAX_RATE): number {
-  if (typeof value !== 'string' || !value.trim()) throw new Error('TAX_RATE must be explicitly configured between 0 and 1');
-  const rate = Number(value.trim());
-  if (!Number.isFinite(rate) || rate < 0 || rate > 1) throw new Error('TAX_RATE must be explicitly configured between 0 and 1');
-  return rate;
+/**
+ * Checkout tax rate (fraction). TAX_RATE, when set, overrides the practice's own
+ * rate; otherwise the practice rate applies. Absence of both is not zero tax.
+ */
+export function configuredTaxRate(value: string | undefined = process.env.TAX_RATE, practiceRate?: number | null): number {
+  if (typeof value === 'string' && value.trim()) {
+    const rate = Number(value.trim());
+    if (!Number.isFinite(rate) || rate < 0 || rate > 1) throw new Error('TAX_RATE must be between 0 and 1');
+    return rate;
+  }
+  if (typeof practiceRate === 'number' && Number.isFinite(practiceRate) && practiceRate >= 0 && practiceRate <= 1) return practiceRate;
+  throw new Error('Set a tax rate for the practice before checkout');
 }
 
 export type RetailInput = { productId: string; quantity: number };

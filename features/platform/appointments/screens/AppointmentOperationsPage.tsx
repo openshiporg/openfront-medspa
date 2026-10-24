@@ -1,7 +1,7 @@
 import { CalendarHeart, ShieldAlert } from 'lucide-react';
 import { statusFilter } from '@/features/platform/lib/queryParams';
 import {
-  appointmentLabel, appointmentTone, Chip, EmptyState, ErrorState, MetricStrip, PageHeader, PillLink,
+  appointmentLabel, appointmentTone, Chip, EmptyState, ErrorState, MetricStrip, Notice, PageHeader, PillLink,
   PlatformPage, SegmentTabs, StatusDot, Track, usd,
 } from '@/features/platform/components/medspa-ui';
 import { getAppointmentOperations, PlatformAppointment } from '../actions/appointments';
@@ -106,6 +106,12 @@ export async function AppointmentOperationsPage({ searchParams }: PageProps) {
         { label: 'No-shows', value: counts.no_show ?? 0, tone: 'orange', href: '/dashboard/platform/appointments?status=no_show' },
       ]} />
 
+      {activeStatus !== 'pending' && (counts.pending ?? 0) > 0 ? (
+        <Notice tone="amber" title={`${counts.pending} ${counts.pending === 1 ? 'request needs' : 'requests need'} confirmation`}>
+          <Track><PillLink href="/dashboard/platform/appointments?status=pending" size="sm">Review requests</PillLink></Track>
+        </Notice>
+      ) : null}
+
       <SegmentTabs label="Appointment status filters" tabs={tabs} active={activeStatus} />
 
       {appointments.length === 0 ? (
@@ -131,7 +137,7 @@ export async function AppointmentOperationsPage({ searchParams }: PageProps) {
 
 function AppointmentRow({ appointment }: { appointment: PlatformAppointment }) {
   const timeZone = zoneOf(appointment);
-  const clientName = appointment.client?.user?.name || 'Client unavailable';
+  const clientName = appointment.client?.user?.name || (appointment.client ? 'Client unavailable' : 'Guest request');
   const providerName = appointment.provider?.user?.name || 'Unassigned';
   const tone = appointmentTone[appointment.status] || 'zinc';
   const total = serviceTotal(appointment);
