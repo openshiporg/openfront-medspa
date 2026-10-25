@@ -152,6 +152,7 @@
     },
     {
       "key": "signature-facial",
+      "imagePath": "/images/salon/facial-treatment.webp",
       "name": "Signature hydrating facial",
       "category": "Facials & peels",
       "description": "Cleanse, exfoliation, extraction and hydration.",
@@ -172,6 +173,7 @@
     },
     {
       "key": "glow-peel",
+      "imagePath": "/images/services/custom-clinical-facial.svg",
       "name": "Glow chemical peel",
       "category": "Facials & peels",
       "description": "Light resurfacing peel for tone and texture.",
@@ -192,6 +194,7 @@
     },
     {
       "key": "dermaplaning",
+      "imagePath": "/images/gallery/clinical-facial-ritual.svg",
       "name": "Dermaplaning",
       "category": "Facials & peels",
       "description": "Gentle exfoliation for smoother skin.",
@@ -234,6 +237,7 @@
   "providers": [
     {
       "key": "maya-ortiz",
+      "imagePath": "/images/salon/provider-maya.webp",
       "name": "Maya Ortiz",
       "email": "maya.ortiz@juniper-vale.example",
       "phone": "+1 (212) 555-0162",
@@ -254,6 +258,7 @@
     },
     {
       "key": "lena-park",
+      "imagePath": "/images/salon/provider-priya.webp",
       "name": "Lena Park",
       "email": "lena.park@juniper-vale.example",
       "phone": "+1 (212) 555-0163",
