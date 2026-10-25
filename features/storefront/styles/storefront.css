@@ -758,3 +758,145 @@ textarea.sf-input { min-height: 7rem; resize: vertical; }
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ══ Night linen ═════════════════════════════════════════════════════════
+   The storefront is a stack of charcoal-dyed spa linen: the page is the
+   darkest fold, every band and card is a fold a tone lighter whose top edge
+   catches the light, colour pages are linen dyed in the practice hue, and
+   one face (EB Garamond) sets everything. These rules restate the shared
+   components in that world; see .impeccable/surfaces/features-storefront.md. */
+
+.sf-display { font-weight: 400; letter-spacing: -0.02em; line-height: 0.95; }
+.sf-display em { color: inherit; }
+
+/* Side notes and labels: small italic, never tracked capitals. */
+.sf-eyebrow,
+.sf-status {
+  font-family: var(--sf-font-display);
+  font-size: var(--sf-text-sm);
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--sf-ink-3);
+}
+.sf-status { color: var(--sf-ink-2); }
+.sf-num { font-family: var(--sf-font-display); font-variant-numeric: tabular-nums lining-nums; letter-spacing: 0; }
+
+/* Pills stand on the linen without a track; the chosen one is ink. */
+.sf-track { gap: 6px; padding: 0; border-radius: 0; background: none; }
+.sf-pill {
+  border-radius: var(--sf-radius-sm);
+  background: var(--sf-paper-3);
+  box-shadow: var(--sf-fold);
+  font-size: var(--sf-text-md);
+  transition: background-color var(--sf-dur-short) var(--sf-ease-out), color var(--sf-dur-short) var(--sf-ease-out), transform 140ms var(--sf-ease-out);
+}
+.sf-pill:active { transform: scale(0.97); }
+@media (hover: hover) and (pointer: fine) {
+  .sf-pill:hover { background: color-mix(in oklch, var(--sf-paper-3) 70%, var(--sf-ink-3)); box-shadow: var(--sf-fold); }
+}
+.sf-pill-primary,
+.sf-pill-primary:hover { background: var(--sf-accent); color: var(--sf-accent-ink); }
+@media (hover: hover) and (pointer: fine) {
+  .sf-pill-primary:hover { background: color-mix(in oklch, var(--sf-accent) 86%, white); }
+}
+.sf-pill-quiet { background: transparent; box-shadow: none; }
+.sf-pill[aria-current="page"],
+.sf-pill[aria-current="step"],
+.sf-pill[aria-pressed="true"] { background: var(--sf-ink); color: var(--sf-paper); box-shadow: none; }
+
+/* Folds: cards, wells and states are filled linen, never outlined. */
+.sf-card { border: 0; background: var(--sf-card); box-shadow: var(--sf-fold); }
+.sf-card-link { transition: background-color var(--sf-dur-short) var(--sf-ease-out), transform 140ms var(--sf-ease-out); }
+.sf-card-link:active { transform: scale(0.99); }
+@media (hover: hover) and (pointer: fine) {
+  .sf-card-link:hover { background: var(--sf-paper-3); }
+}
+.sf-well { border: 0; background: var(--sf-paper-2); box-shadow: var(--sf-fold); }
+.sf-state { border: 0; background: var(--sf-paper-2); box-shadow: var(--sf-fold); }
+.sf-state[role="alert"] { background: var(--sf-wait-ring); }
+.sf-alert { background: var(--sf-stop-ring); }
+
+/* A colour page: linen dyed in the practice hue. */
+.sf-band { border-block: 0; background: var(--sf-accent-soft); box-shadow: var(--sf-fold); }
+.sf-band .sf-eyebrow { color: color-mix(in oklch, var(--sf-ink) 72%, var(--sf-accent)); }
+
+/* Frames: soft-cornered folds instead of dewdrops; no gradients. */
+.sf-dew { background: var(--sf-accent-soft); }
+.sf-lens, .sf-capsule { border-radius: var(--sf-radius-md); background: var(--sf-paper-2); }
+.sf-lens::after, .sf-capsule::after { box-shadow: none; }
+.sf-monogram { color: var(--sf-accent); font-size: clamp(2.5rem, 7vw, 4.5rem); }
+
+/* Header: the top fold, solid. */
+.sf-header { border-bottom: 0; background: var(--sf-paper); box-shadow: var(--sf-fold); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.sf-sheet { border-top: 0; background: var(--sf-paper-2); }
+.sf-sheet-link { border-bottom: 0; box-shadow: var(--sf-fold); font-size: var(--sf-text-2xl); }
+.sf-mobile-bar { border-top: 0; background: var(--sf-paper-2); box-shadow: var(--sf-fold); -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+/* Hero on the axis: side notes left of 42%, the name and booking right of it. */
+.sf-hero { border-bottom: 0; }
+.sf-hero::before { content: none; }
+@media (min-width: 1024px) {
+  .sf-hero-grid { grid-template-columns: minmax(0, 42fr) minmax(0, 58fr); align-items: end; }
+}
+.sf-hero-notes { display: grid; align-content: end; gap: var(--sf-space-md); }
+.sf-hero-media { width: min(100%, 22rem); justify-self: start; }
+.sf-hero-media .sf-lens { border-color: var(--sf-paper); }
+.sf-facts { grid-template-columns: minmax(0, 1fr); gap: 6px; border-top: 0; }
+.sf-facts > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.875rem 1.125rem;
+  border-radius: var(--sf-radius-sm);
+  background: var(--sf-paper-2);
+  box-shadow: var(--sf-fold);
+}
+.sf-facts dt { margin-bottom: 0; }
+
+/* The treatment ledger: each category is a folded band. */
+.sf-ledger { display: grid; gap: 6px; border-top: 0; }
+.sf-ledger-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 0;
+  border-radius: var(--sf-radius-md);
+  background: var(--sf-paper-2);
+  box-shadow: var(--sf-fold);
+}
+.sf-ledger-index { display: none; }
+.sf-ledger-name { font-size: var(--sf-text-2xl); }
+.sf-ledger-figures { font-family: var(--sf-font-display); }
+a.sf-ledger-row:hover { background: var(--sf-paper-3); }
+a.sf-ledger-row:active { transform: scale(0.99); }
+@media (max-width: 599px) {
+  .sf-ledger-row { grid-template-columns: minmax(0, 1fr); padding: 1rem 1.125rem; }
+  .sf-ledger-figures { grid-column: 1; }
+}
+
+.sf-chip { border: 0; border-radius: var(--sf-radius-sm); background: var(--sf-paper-2); box-shadow: var(--sf-fold); font-size: var(--sf-text-md); }
+a.sf-chip:hover { color: var(--sf-ink); background: var(--sf-paper-3); }
+@media (min-width: 1024px) {
+  .sf-jump-list .sf-chip { padding-inline: 0.875rem; border-radius: var(--sf-radius-sm); }
+}
+
+.sf-input { border-radius: var(--sf-radius-sm); background: var(--sf-paper-2); }
+.sf-input:focus { box-shadow: 0 0 0 3px var(--sf-accent-soft); }
+
+/* Folds open once as they arrive. */
+@media (prefers-reduced-motion: no-preference) {
+  .sf-ledger > *,
+  .sf-hero-grid > * {
+    animation: sf-unfold 640ms var(--sf-ease-out) both;
+  }
+  .sf-ledger > :nth-child(2), .sf-hero-grid > :nth-child(2) { animation-delay: 70ms; }
+  .sf-ledger > :nth-child(3) { animation-delay: 140ms; }
+  .sf-ledger > :nth-child(4) { animation-delay: 210ms; }
+  .sf-ledger > :nth-child(n + 5) { animation-delay: 260ms; }
+}
+@keyframes sf-unfold {
+  from { opacity: 0; clip-path: inset(0 0 60% 0); transform: translateY(-8px); }
+  to { opacity: 1; clip-path: inset(0 0 0 0); transform: none; }
+}
