@@ -1,0 +1,582 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-25T22:29:05+00:00",
+  "title": "Design System: Openfront Med Spa Storefront",
+  "extensions": {
+    "colorMeta": {
+      "paper": {
+        "role": "neutral",
+        "displayName": "Night Linen",
+        "canonical": "oklch(16.5% 0.007 70)",
+        "tonalRamp": [
+          "oklch(15% 0.007 70)",
+          "oklch(26% 0.007 70)",
+          "oklch(37% 0.007 70)",
+          "oklch(48% 0.007 70)",
+          "oklch(59% 0.007 70)",
+          "oklch(70% 0.007 70)",
+          "oklch(82% 0.007 70)",
+          "oklch(95% 0.007 70)"
+        ]
+      },
+      "paper-2": {
+        "role": "neutral",
+        "displayName": "Second Fold",
+        "canonical": "oklch(20.5% 0.009 70)",
+        "tonalRamp": [
+          "oklch(15% 0.009 70)",
+          "oklch(26% 0.009 70)",
+          "oklch(37% 0.009 70)",
+          "oklch(48% 0.009 70)",
+          "oklch(59% 0.009 70)",
+          "oklch(70% 0.009 70)",
+          "oklch(82% 0.009 70)",
+          "oklch(95% 0.009 70)"
+        ]
+      },
+      "paper-3": {
+        "role": "neutral",
+        "displayName": "Third Fold",
+        "canonical": "oklch(24.5% 0.01 70)",
+        "tonalRamp": [
+          "oklch(15% 0.01 70)",
+          "oklch(26% 0.01 70)",
+          "oklch(37% 0.01 70)",
+          "oklch(48% 0.01 70)",
+          "oklch(59% 0.01 70)",
+          "oklch(70% 0.01 70)",
+          "oklch(82% 0.01 70)",
+          "oklch(95% 0.01 70)"
+        ]
+      },
+      "card": {
+        "role": "neutral",
+        "displayName": "Card Fold",
+        "canonical": "oklch(22% 0.009 70)",
+        "tonalRamp": [
+          "oklch(15% 0.009 70)",
+          "oklch(26% 0.009 70)",
+          "oklch(37% 0.009 70)",
+          "oklch(48% 0.009 70)",
+          "oklch(59% 0.009 70)",
+          "oklch(70% 0.009 70)",
+          "oklch(82% 0.009 70)",
+          "oklch(95% 0.009 70)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Linen White",
+        "canonical": "oklch(94.5% 0.012 82)",
+        "tonalRamp": [
+          "oklch(15% 0.012 82)",
+          "oklch(26% 0.012 82)",
+          "oklch(37% 0.012 82)",
+          "oklch(48% 0.012 82)",
+          "oklch(59% 0.012 82)",
+          "oklch(70% 0.012 82)",
+          "oklch(82% 0.012 82)",
+          "oklch(95% 0.012 82)"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Soft Ink",
+        "canonical": "oklch(80% 0.013 80)",
+        "tonalRamp": [
+          "oklch(15% 0.013 80)",
+          "oklch(26% 0.013 80)",
+          "oklch(37% 0.013 80)",
+          "oklch(48% 0.013 80)",
+          "oklch(59% 0.013 80)",
+          "oklch(70% 0.013 80)",
+          "oklch(82% 0.013 80)",
+          "oklch(95% 0.013 80)"
+        ]
+      },
+      "ink-3": {
+        "role": "neutral",
+        "displayName": "Faint Ink",
+        "canonical": "oklch(67% 0.012 78)",
+        "tonalRamp": [
+          "oklch(15% 0.012 78)",
+          "oklch(26% 0.012 78)",
+          "oklch(37% 0.012 78)",
+          "oklch(48% 0.012 78)",
+          "oklch(59% 0.012 78)",
+          "oklch(70% 0.012 78)",
+          "oklch(82% 0.012 78)",
+          "oklch(95% 0.012 78)"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Fold Rule",
+        "canonical": "oklch(30% 0.009 70)",
+        "tonalRamp": [
+          "oklch(15% 0.009 70)",
+          "oklch(26% 0.009 70)",
+          "oklch(37% 0.009 70)",
+          "oklch(48% 0.009 70)",
+          "oklch(59% 0.009 70)",
+          "oklch(70% 0.009 70)",
+          "oklch(82% 0.009 70)",
+          "oklch(95% 0.009 70)"
+        ]
+      },
+      "rule-strong": {
+        "role": "neutral",
+        "displayName": "Strong Rule",
+        "canonical": "oklch(40% 0.01 70)",
+        "tonalRamp": [
+          "oklch(15% 0.01 70)",
+          "oklch(26% 0.01 70)",
+          "oklch(37% 0.01 70)",
+          "oklch(48% 0.01 70)",
+          "oklch(59% 0.01 70)",
+          "oklch(70% 0.01 70)",
+          "oklch(82% 0.01 70)",
+          "oklch(95% 0.01 70)"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Practice Hue",
+        "canonical": "oklch(76% 0.09 300)",
+        "tonalRamp": [
+          "oklch(15% 0.09 300)",
+          "oklch(26% 0.09 300)",
+          "oklch(37% 0.09 300)",
+          "oklch(48% 0.09 300)",
+          "oklch(59% 0.09 300)",
+          "oklch(70% 0.09 300)",
+          "oklch(82% 0.09 300)",
+          "oklch(95% 0.09 300)"
+        ],
+        "note": "Runtime: brandHueColor(logoHue, 76%, 0.09) in MainLayout; value shown is the hue-300 fallback."
+      },
+      "accent-ink": {
+        "role": "primary",
+        "displayName": "Hue Ink",
+        "canonical": "oklch(17% 0.03 300)",
+        "tonalRamp": [
+          "oklch(15% 0.03 300)",
+          "oklch(26% 0.03 300)",
+          "oklch(37% 0.03 300)",
+          "oklch(48% 0.03 300)",
+          "oklch(59% 0.03 300)",
+          "oklch(70% 0.03 300)",
+          "oklch(82% 0.03 300)",
+          "oklch(95% 0.03 300)"
+        ],
+        "note": "Runtime-derived from the practice logo hue in MainLayout."
+      },
+      "accent-soft": {
+        "role": "primary",
+        "displayName": "Dyed Linen",
+        "canonical": "oklch(28% 0.05 300)",
+        "tonalRamp": [
+          "oklch(15% 0.05 300)",
+          "oklch(26% 0.05 300)",
+          "oklch(37% 0.05 300)",
+          "oklch(48% 0.05 300)",
+          "oklch(59% 0.05 300)",
+          "oklch(70% 0.05 300)",
+          "oklch(82% 0.05 300)",
+          "oklch(95% 0.05 300)"
+        ],
+        "note": "Runtime-derived from the practice logo hue in MainLayout."
+      },
+      "focus": {
+        "role": "primary",
+        "displayName": "Hue Focus",
+        "canonical": "oklch(80% 0.1 300)",
+        "tonalRamp": [
+          "oklch(15% 0.1 300)",
+          "oklch(26% 0.1 300)",
+          "oklch(37% 0.1 300)",
+          "oklch(48% 0.1 300)",
+          "oklch(59% 0.1 300)",
+          "oklch(70% 0.1 300)",
+          "oklch(82% 0.1 300)",
+          "oklch(95% 0.1 300)"
+        ],
+        "note": "Runtime-derived from the practice logo hue in MainLayout."
+      },
+      "ok": {
+        "role": "status",
+        "displayName": "Open",
+        "canonical": "oklch(78% 0.13 160)",
+        "tonalRamp": [
+          "oklch(15% 0.13 160)",
+          "oklch(26% 0.13 160)",
+          "oklch(37% 0.13 160)",
+          "oklch(48% 0.13 160)",
+          "oklch(59% 0.13 160)",
+          "oklch(70% 0.13 160)",
+          "oklch(82% 0.13 160)",
+          "oklch(95% 0.13 160)"
+        ]
+      },
+      "ok-ring": {
+        "role": "status",
+        "displayName": "Open Ring",
+        "canonical": "oklch(32% 0.05 160)",
+        "tonalRamp": [
+          "oklch(15% 0.05 160)",
+          "oklch(26% 0.05 160)",
+          "oklch(37% 0.05 160)",
+          "oklch(48% 0.05 160)",
+          "oklch(59% 0.05 160)",
+          "oklch(70% 0.05 160)",
+          "oklch(82% 0.05 160)",
+          "oklch(95% 0.05 160)"
+        ]
+      },
+      "wait": {
+        "role": "status",
+        "displayName": "Waiting",
+        "canonical": "oklch(82% 0.13 80)",
+        "tonalRamp": [
+          "oklch(15% 0.13 80)",
+          "oklch(26% 0.13 80)",
+          "oklch(37% 0.13 80)",
+          "oklch(48% 0.13 80)",
+          "oklch(59% 0.13 80)",
+          "oklch(70% 0.13 80)",
+          "oklch(82% 0.13 80)",
+          "oklch(95% 0.13 80)"
+        ]
+      },
+      "wait-ring": {
+        "role": "status",
+        "displayName": "Waiting Ring",
+        "canonical": "oklch(34% 0.05 80)",
+        "tonalRamp": [
+          "oklch(15% 0.05 80)",
+          "oklch(26% 0.05 80)",
+          "oklch(37% 0.05 80)",
+          "oklch(48% 0.05 80)",
+          "oklch(59% 0.05 80)",
+          "oklch(70% 0.05 80)",
+          "oklch(82% 0.05 80)",
+          "oklch(95% 0.05 80)"
+        ]
+      },
+      "stop": {
+        "role": "status",
+        "displayName": "Stopped",
+        "canonical": "oklch(72% 0.16 25)",
+        "tonalRamp": [
+          "oklch(15% 0.16 25)",
+          "oklch(26% 0.16 25)",
+          "oklch(37% 0.16 25)",
+          "oklch(48% 0.16 25)",
+          "oklch(59% 0.16 25)",
+          "oklch(70% 0.16 25)",
+          "oklch(82% 0.16 25)",
+          "oklch(95% 0.16 25)"
+        ]
+      },
+      "stop-ring": {
+        "role": "status",
+        "displayName": "Stopped Ring",
+        "canonical": "oklch(32% 0.06 25)",
+        "tonalRamp": [
+          "oklch(15% 0.06 25)",
+          "oklch(26% 0.06 25)",
+          "oklch(37% 0.06 25)",
+          "oklch(48% 0.06 25)",
+          "oklch(59% 0.06 25)",
+          "oklch(70% 0.06 25)",
+          "oklch(82% 0.06 25)",
+          "oklch(95% 0.06 25)"
+        ]
+      },
+      "off": {
+        "role": "status",
+        "displayName": "Off",
+        "canonical": "oklch(62% 0.01 70)",
+        "tonalRamp": [
+          "oklch(15% 0.01 70)",
+          "oklch(26% 0.01 70)",
+          "oklch(37% 0.01 70)",
+          "oklch(48% 0.01 70)",
+          "oklch(59% 0.01 70)",
+          "oklch(70% 0.01 70)",
+          "oklch(82% 0.01 70)",
+          "oklch(95% 0.01 70)"
+        ]
+      },
+      "off-ring": {
+        "role": "status",
+        "displayName": "Off Ring",
+        "canonical": "oklch(30% 0.008 70)",
+        "tonalRamp": [
+          "oklch(15% 0.008 70)",
+          "oklch(26% 0.008 70)",
+          "oklch(37% 0.008 70)",
+          "oklch(48% 0.008 70)",
+          "oklch(59% 0.008 70)",
+          "oklch(70% 0.008 70)",
+          "oklch(82% 0.008 70)",
+          "oklch(95% 0.008 70)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The practice name in the home hero only."
+      },
+      "display-s": {
+        "displayName": "Display S",
+        "purpose": "Page titles and full-page states."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Section heads on home and content pages."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Treatment ledger names; provider names on portrait cards."
+      },
+      "title-s": {
+        "displayName": "Title S",
+        "purpose": "State titles and the booking calendar date numerals."
+      },
+      "lead": {
+        "displayName": "Lead",
+        "purpose": "Intro paragraphs, max 54ch in Soft Ink."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Running text, buttons, chips and inputs."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Italic side notes and labels, sentence case, never tracked capitals."
+      },
+      "figures": {
+        "displayName": "Figures",
+        "purpose": "Tabular lining figures for prices, durations, hours and counts."
+      }
+    },
+    "shadows": [
+      {
+        "name": "fold-crease",
+        "value": "inset 0 1px 0 oklch(100% 0 0 / 0.1)",
+        "purpose": "The only elevation: a 1px light crease along the top edge of every fold (--sf-fold)."
+      },
+      {
+        "name": "ledger-crease",
+        "value": "1px solid oklch(100% 0 0 / 0.1)",
+        "purpose": "Bottom border between treatment ledger lines (a printed menu rule)."
+      },
+      {
+        "name": "status-ring",
+        "value": "0 0 0 3px var(--sf-<tone>-ring)",
+        "purpose": "Ring around status dots only."
+      },
+      {
+        "name": "field-focus-ring",
+        "value": "0 0 0 3px var(--sf-accent-soft)",
+        "purpose": "Focus ring on text fields."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.23, 1, 0.32, 1)",
+        "purpose": "All storefront transitions and the unfold entrance."
+      },
+      {
+        "name": "duration-short",
+        "value": "160ms",
+        "purpose": "Hover and press tone changes."
+      },
+      {
+        "name": "duration-medium",
+        "value": "320ms",
+        "purpose": "Longer state transitions."
+      },
+      {
+        "name": "press",
+        "value": "140ms",
+        "purpose": "Press feedback on pills and cards."
+      },
+      {
+        "name": "unfold",
+        "value": "640ms; from opacity 0, clip-path inset(0 0 60% 0), translateY(-8px); stagger 70ms, cap 260ms",
+        "purpose": "Hero columns and ledger rows open once on arrival; disabled under prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "ledger-stack",
+        "value": "599px (max)"
+      },
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      }
+    ],
+    "containers": [
+      {
+        "name": "container",
+        "value": "76rem"
+      },
+      {
+        "name": "container-narrow",
+        "value": "44rem"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The booking action, filled in the practice hue.",
+      "html": "<button class=\"ds-btn-primary\">Book an appointment</button>",
+      "css": ".ds-btn-primary { font-family: var(--sf-font-display, 'EB Garamond', Georgia, serif); display: inline-flex; align-items: center; min-height: 2.75rem; padding: 0 1.125rem; border: 0; border-radius: var(--sf-radius-sm, 4px); background: var(--sf-accent, oklch(76% 0.09 300)); color: var(--sf-accent-ink, oklch(17% 0.03 300)); box-shadow: inset 0 1px 0 oklch(100% 0 0 / 0.1); font-size: 1.125rem; font-weight: 500; line-height: 1; cursor: pointer; transition: background-color 160ms cubic-bezier(0.23,1,0.32,1); } .ds-btn-primary:hover { background: color-mix(in oklch, var(--sf-accent, oklch(76% 0.09 300)) 86%, white); } .ds-btn-primary:focus-visible { outline: 2px solid var(--sf-focus, oklch(80% 0.1 300)); outline-offset: 2px; }"
+    },
+    {
+      "name": "Fold Button",
+      "kind": "button",
+      "refersTo": "button-fold",
+      "description": "Default action: a Third Fold tab that darkens when pressed.",
+      "html": "<button class=\"ds-btn-fold\">View treatments</button>",
+      "css": ".ds-btn-fold { font-family: var(--sf-font-display, 'EB Garamond', Georgia, serif); display: inline-flex; align-items: center; min-height: 2.75rem; padding: 0 1.125rem; border: 0; border-radius: 4px; background: oklch(24.5% 0.01 70); color: oklch(94.5% 0.012 82); box-shadow: inset 0 1px 0 oklch(100% 0 0 / 0.1); font-size: 1.125rem; font-weight: 500; line-height: 1; cursor: pointer; transition: background-color 160ms cubic-bezier(0.23,1,0.32,1); } .ds-btn-fold:hover { background: color-mix(in oklch, oklch(24.5% 0.01 70) 70%, oklch(67% 0.012 78)); } .ds-btn-fold:active { background: oklch(20.5% 0.009 70); } .ds-btn-fold:focus-visible { outline: 2px solid oklch(80% 0.1 300); outline-offset: 2px; }"
+    },
+    {
+      "name": "Step Track",
+      "kind": "nav",
+      "refersTo": "button-selected",
+      "description": "Booking step indicator: the current step is filled Linen White.",
+      "html": "<div class=\"ds-track\"><span class=\"ds-step ds-step-on\">1 Treatment</span><span class=\"ds-step\">2 Provider</span><span class=\"ds-step\">3 Time</span></div>",
+      "css": ".ds-track { display: inline-flex; gap: 6px; } .ds-step { font-family: var(--sf-font-display, 'EB Garamond', Georgia, serif); display: inline-flex; align-items: center; min-height: 2.75rem; padding: 0 1.125rem; border-radius: 4px; color: oklch(80% 0.013 80); font-size: 1.125rem; } .ds-step-on { background: oklch(94.5% 0.012 82); color: oklch(16.5% 0.007 70); }"
+    },
+    {
+      "name": "Category Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Treatment category link on a Second Fold.",
+      "html": "<a class=\"ds-chip\" href=\"#\">Facials &amp; peels</a>",
+      "css": ".ds-chip { font-family: var(--sf-font-display, 'EB Garamond', Georgia, serif); display: inline-flex; align-items: center; min-height: 2.25rem; padding: 0 0.875rem; border-radius: 4px; background: oklch(20.5% 0.009 70); box-shadow: inset 0 1px 0 oklch(100% 0 0 / 0.1); color: oklch(80% 0.013 80); font-size: 1.125rem; text-decoration: none; } .ds-chip:hover { background: oklch(24.5% 0.01 70); color: oklch(94.5% 0.012 82); } .ds-chip:focus-visible { outline: 2px solid oklch(80% 0.1 300); outline-offset: 2px; }"
+    },
+    {
+      "name": "Fold Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "A linked card: Card Fold with a crease, lifts a tone on hover.",
+      "html": "<a class=\"ds-card\" href=\"#\"><span class=\"ds-card-t\">Maya Ortiz</span><span class=\"ds-card-m\">Glow chemical peel · LED light therapy</span></a>",
+      "css": ".ds-card { font-family: var(--sf-font-display, 'EB Garamond', Georgia, serif); display: grid; gap: 0.25rem; padding: 1rem 1.25rem; border-radius: 8px; background: oklch(22% 0.009 70); box-shadow: inset 0 1px 0 oklch(100% 0 0 / 0.1); color: oklch(94.5% 0.012 82); text-decoration: none; transition: background-color 160ms cubic-bezier(0.23,1,0.32,1); } .ds-card:hover { background: oklch(24.5% 0.01 70); } .ds-card:active { background: oklch(20.5% 0.009 70); } .ds-card-t { font-size: 1.3125rem; } .ds-card-m { font-size: 0.9375rem; color: oklch(67% 0.012 78); }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Second Fold field with a Strong Rule stroke and a hue ring on focus.",
+      "html": "<label class=\"ds-field\">Email<input class=\"ds-input\" placeholder=\"you@example.com\"></label>",
+      "css": ".ds-field { font-family: var(--sf-font-display, 'EB Garamond', Georgia, serif); display: grid; gap: 0.5rem; font-size: 1rem; font-weight: 500; color: oklch(80% 0.013 80); } .ds-input { font: inherit; min-height: 3rem; padding: 0.75rem 0.95rem; border: 1px solid oklch(40% 0.01 70); border-radius: 4px; background: oklch(20.5% 0.009 70); color: oklch(94.5% 0.012 82); font-size: 1.125rem; font-weight: 400; transition: border-color 160ms, box-shadow 160ms; } .ds-input::placeholder { color: oklch(67% 0.012 78); } .ds-input:focus { outline: none; border-color: oklch(76% 0.09 300); box-shadow: 0 0 0 3px oklch(28% 0.05 300); }"
+    },
+    {
+      "name": "Treatment Ledger Row",
+      "kind": "custom",
+      "refersTo": "ledger-row",
+      "description": "Printed-menu line: Garamond name, italic category, tabular figures in one column.",
+      "html": "<a class=\"ds-ledger\" href=\"#\"><span><span class=\"ds-ledger-n\">Glow chemical peel</span><span class=\"ds-ledger-c\">Facials &amp; peels</span></span><span class=\"ds-ledger-f\"><span class=\"ds-ledger-d\">45 min</span><span>$140</span><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M7 7h10v10\"/><path d=\"M7 17 17 7\"/></svg></span></a>",
+      "css": ".ds-ledger { font-family: var(--sf-font-display, 'EB Garamond', Georgia, serif); display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: baseline; padding: 1.125rem 0.25rem; border-bottom: 1px solid oklch(100% 0 0 / 0.1); color: oklch(94.5% 0.012 82); text-decoration: none; transition: background-color 160ms cubic-bezier(0.23,1,0.32,1), padding-inline 160ms cubic-bezier(0.23,1,0.32,1); } .ds-ledger:hover { padding-inline: 0.75rem; background: oklch(100% 0 0 / 0.03); } .ds-ledger:active { background: oklch(0% 0 0 / 0.22); } .ds-ledger:focus-visible { outline: 2px solid oklch(80% 0.1 300); outline-offset: 2px; } .ds-ledger-n { display: block; font-size: 2rem; line-height: 1.15; } .ds-ledger-c { display: block; font-size: 1rem; font-style: italic; color: oklch(67% 0.012 78); } .ds-ledger-f { display: grid; grid-template-columns: auto 5.5rem auto; gap: 1.5rem; justify-items: end; align-items: baseline; font-size: 1.3125rem; font-variant-numeric: tabular-nums lining-nums; } .ds-ledger-d { color: oklch(80% 0.013 80); } .ds-ledger svg { align-self: center; color: oklch(67% 0.012 78); }"
+    },
+    {
+      "name": "Fact Band",
+      "kind": "custom",
+      "refersTo": "fact-band",
+      "description": "Hero fact: italic label left, figure right, on a creased Second Fold.",
+      "html": "<dl class=\"ds-facts\"><div><dt>Treatments</dt><dd>6</dd></div><div><dt>Today</dt><dd>10am – 5pm</dd></div></dl>",
+      "css": ".ds-facts { font-family: var(--sf-font-display, 'EB Garamond', Georgia, serif); display: grid; gap: 6px; margin: 0; } .ds-facts > div { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; padding: 0.875rem 1.125rem; border-radius: 4px; background: oklch(20.5% 0.009 70); box-shadow: inset 0 1px 0 oklch(100% 0 0 / 0.1); } .ds-facts dt { font-style: italic; font-size: 1rem; color: oklch(67% 0.012 78); } .ds-facts dd { margin: 0; font-size: 1.125rem; color: oklch(94.5% 0.012 82); font-variant-numeric: tabular-nums lining-nums; }"
+    },
+    {
+      "name": "Status",
+      "kind": "custom",
+      "refersTo": "",
+      "description": "Open or closed: a toned dot with an italic Soft Ink label.",
+      "html": "<span class=\"ds-status\"><span class=\"ds-dot\"></span>Open · until 5pm</span>",
+      "css": ".ds-status { font-family: var(--sf-font-display, 'EB Garamond', Georgia, serif); display: inline-flex; align-items: center; gap: 0.5rem; font-style: italic; font-size: 1rem; color: oklch(80% 0.013 80); } .ds-dot { width: 0.5rem; height: 0.5rem; border-radius: 999px; background: oklch(78% 0.13 160); box-shadow: 0 0 0 3px oklch(32% 0.05 160); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Night Linen",
+    "overview": "The storefront is a stack of charcoal-dyed spa linen. The page is the darkest fold. Every band, card, pill and fact sits one fold up, a tone lighter, and its top edge catches the light in a single 1px crease. Depth comes from tone and that crease alone: nothing is outlined, nothing glows, nothing blurs. Colour arrives as whole flat fields of linen dyed in the practice's hue, never as a wash or gradient.\n\nOne face, EB Garamond, sets everything, from the 136px practice name to the tabular prices. Its italic carries the side notes and labels. The treatment menu reads like a printed annual: names on the left, figures in one tabular column on the right, a crease between lines. Layout registers against one off-centre axis (42/58 on the home hero) rather than a centred hero.\n\nThe density is calm but factual. Treatment facts (duration, price, provider) sit beside the names in full-size figures, not behind a hover. The accent belongs to the practice: its logo hue is resolved at runtime, so no storefront hardcodes a brand colour.",
+    "keyCharacteristics": [
+      "Warm charcoal ground (hue 70) with three fold tones and a white 10% crease along each fold's top edge.",
+      "A single accent derived from the practice's logo hue, used for the primary action, dyed bands and the focus ring.",
+      "EB Garamond only (vendored, OFL, roman and italic, variable 400–800), with lining figures everywhere and tabular figures for numbers.",
+      "Small, soft corners (4, 6, 8px). No pills at 999px, no circles.",
+      "Folds open once as they arrive (clip from the top) and darken a tone when pressed."
+    ],
+    "rules": [
+      {
+        "name": "The Practice Owns the Hue Rule",
+        "body": "The accent is always derived from the practice's logo hue at runtime. Never hardcode a hue into a component; reference the accent tokens.",
+        "section": "colors"
+      },
+      {
+        "name": "The Whole Field Rule",
+        "body": "Colour comes as a whole flat field: a dyed band, a filled primary button. No gradients, radial glows or washes anywhere in the storefront.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Face Rule",
+        "body": "EB Garamond sets everything. Do not introduce a sans, a mono or a system display face.",
+        "section": "typography"
+      },
+      {
+        "name": "The Side Note Rule",
+        "body": "Small labels are italic at 16px in sentence case. Never tracked uppercase capitals.",
+        "section": "typography"
+      },
+      {
+        "name": "The Figure Column Rule",
+        "body": "Numbers are tabular lining figures and align in one right-hand column (ledger figures are a fixed `auto 5.5rem auto` grid).",
+        "section": "typography"
+      },
+      {
+        "name": "The Fold Rule",
+        "body": "A surface is raised by being one tone lighter with a crease on its top edge, never by an outline, drop shadow, glow or blur.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Press Darkens Rule",
+        "body": "Pressing a fold drops it a tone (to Second Fold, or to black 22% on a ledger row). Hover lifts it a tone.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** raise a surface by one fold tone plus the crease (`inset 0 1px 0 oklch(100% 0 0 / 0.1)`).",
+      "**Do** derive every accent from the practice's logo hue through the `--sf-accent*` tokens.",
+      "**Do** set every word in EB Garamond, with italic 16px for side notes and labels.",
+      "**Do** align prices, durations and hours as tabular lining figures in one right-hand column.",
+      "**Do** use 4px for controls, 6px for frames and wells, 8px for cards.",
+      "**Do** mark a chosen pill, step or date with a Linen White fill and Night Linen text.",
+      "**Do** use hairline rules only between list lines (ledger, hours, footer), under text links, and around text fields."
+    ],
+    "donts": [
+      "**Don't** outline cards, options, chips or pills; the fold is the edge.",
+      "**Don't** use drop shadows, glows, gradients, radial washes or backdrop blur.",
+      "**Don't** use tracked uppercase labels or a second typeface.",
+      "**Don't** use fully rounded 999px pills or circular frames; corners stop at 8px.",
+      "**Don't** hardcode a brand hue or a bone or blush light ground; the ground is Night Linen.",
+      "**Don't** show an empty image placeholder where a photo is missing; omit the frame."
+    ]
+  }
+}
