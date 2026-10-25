@@ -826,7 +826,9 @@ textarea.sf-input { min-height: 7rem; resize: vertical; }
 .sf-dew { background: var(--sf-accent-soft); }
 .sf-lens, .sf-capsule { border-radius: var(--sf-radius-md); background: var(--sf-paper-2); }
 .sf-lens::after, .sf-capsule::after { box-shadow: none; }
-.sf-monogram { color: var(--sf-accent); font-size: clamp(2.5rem, 7vw, 4.5rem); }
+/* The monogram scales with its frame, from a 52px booking thumbnail to the hero. */
+.sf-lens, .sf-capsule { container-type: inline-size; }
+.sf-monogram { color: var(--sf-accent); font-size: clamp(1rem, 38cqi, 4.5rem); letter-spacing: -0.04em; }
 
 /* Header: the top fold, solid. */
 .sf-header { border-bottom: 0; background: var(--sf-paper); box-shadow: var(--sf-fold); -webkit-backdrop-filter: none; backdrop-filter: none; }
