@@ -8,7 +8,7 @@ import { ServiceCard } from "../components/ServiceCard"
 import { ProviderCard } from "../components/ProviderCard"
 import { ProviderProfilesUnavailable } from "../components/ProviderProfilesUnavailable"
 import { ServiceCatalogUnavailable } from "../components/ServiceCatalogUnavailable"
-import { Capsule, Lens, PillLink, Status, Track } from "../components/ui/primitives"
+import { Capsule, PillLink, Status, Track } from "../components/ui/primitives"
 import { getStorefrontImageSrc } from "../lib/images"
 import { openStatus, publishedHours } from "../lib/hours"
 
@@ -32,7 +32,6 @@ export async function HomePage() {
   const status = openStatus(brand.hours, brand.timezone)
   const today = publishedHours(brand.hours, "short").find((day) => day.key === status?.todayKey)
   const heroPortrait = providers.map((provider) => getStorefrontImageSrc(provider.photo)).find(Boolean) || null
-  const heroLens = services.map((service) => getStorefrontImageSrc(service.image)).find(Boolean) || null
   const locality = [brand.city, brand.state].filter(Boolean).join(", ")
 
   return (
@@ -49,10 +48,9 @@ export async function HomePage() {
               {today ? <div><dt className="sf-eyebrow">Today</dt><dd className="sf-num">{today.hours}</dd></div> : null}
               {brand.phone && brand.phoneHref ? <div><dt className="sf-eyebrow">Call</dt><dd><a className="sf-link sf-num" href={brand.phoneHref}>{brand.phone}</a></dd></div> : null}
             </dl>
-            <div className="sf-hero-media hidden sm:block" aria-hidden="true">
+            {heroPortrait ? <div className="sf-hero-media hidden sm:block" aria-hidden="true">
               <Capsule src={heroPortrait} />
-              <Lens src={heroLens} />
-            </div>
+            </div> : null}
           </div>
           <div className="order-1 grid min-w-0 content-end gap-7 lg:order-2">
             <h1 id="sf-home-title" className="sf-display text-[length:var(--sf-text-display)]">{brand.name}</h1>
@@ -81,12 +79,12 @@ export async function HomePage() {
         <section className="sf-container sf-section" aria-labelledby="featured-heading">
           <div className="mb-[var(--sf-space-lg)] flex flex-wrap items-end justify-between gap-4">
             <div className="grid gap-3">
-              <h2 id="featured-heading" className="sf-display text-[length:var(--sf-text-3xl)]">Most booked</h2>
+              <h2 id="featured-heading" className="sf-display text-[length:var(--sf-text-3xl)]">Treatments</h2>
             </div>
             <Track><PillLink href="/services" size="sm">Full menu <ArrowUpRight /></PillLink></Track>
           </div>
-          <div className="grid gap-[var(--sf-space-sm)] sm:grid-cols-2 lg:grid-cols-4">
-            {services.map((service) => <ServiceCard key={service.id} service={service} variant="feature" showCategory />)}
+          <div className="sf-ledger sf-ledger-menu">
+            {services.map((service) => <ServiceCard key={service.id} service={service} showCategory />)}
           </div>
         </section>
       ) : null}

@@ -65,7 +65,6 @@ export async function AccountPage() {
   if (result.status !== "loaded") return (
     <div className="sf-container-narrow sf-page-pad">
       <header className="mb-[var(--sf-space-lg)] grid gap-4">
-        <p className="sf-eyebrow">Account</p>
         <h1 className="sf-display text-[length:var(--sf-text-display-s)]">{result.status === "unauthenticated" ? "Your appointments" : "No client profile"}</h1>
       </header>
       {result.status === "unauthenticated" ? (
@@ -98,8 +97,8 @@ export async function AccountPage() {
     <div className="sf-container sf-page-pad">
       <header className="mb-[var(--sf-space-lg)] flex flex-wrap items-end justify-between gap-4">
         <div className="grid gap-4">
-          <p className="sf-eyebrow">Account{portal.client.totalVisits ? ` · ${portal.client.totalVisits} ${portal.client.totalVisits === 1 ? "visit" : "visits"}` : ""}</p>
           <h1 className="sf-display text-[length:var(--sf-text-display-s)]">{firstName ? `Hello, ${firstName}` : "Your account"}</h1>
+          {portal.client.totalVisits ? <p className="sf-eyebrow">{portal.client.totalVisits} {portal.client.totalVisits === 1 ? "visit" : "visits"}</p> : null}
         </div>
         <Track><PillLink href="/book" variant="primary">Book</PillLink><SignOut /></Track>
       </header>

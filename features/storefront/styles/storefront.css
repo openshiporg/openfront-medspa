@@ -766,7 +766,7 @@ textarea.sf-input { min-height: 7rem; resize: vertical; }
    one face (EB Garamond) sets everything. These rules restate the shared
    components in that world; see .impeccable/surfaces/features-storefront.md. */
 
-.sf-display { font-weight: 400; letter-spacing: -0.02em; line-height: 0.95; }
+.sf-display { font-weight: 400; letter-spacing: -0.02em; line-height: 1.04; padding-block: 0.02em; }
 .sf-display em { color: inherit; }
 
 /* Side notes and labels: small italic, never tracked capitals. */
@@ -792,7 +792,7 @@ textarea.sf-input { min-height: 7rem; resize: vertical; }
   font-size: var(--sf-text-md);
   transition: background-color var(--sf-dur-short) var(--sf-ease-out), color var(--sf-dur-short) var(--sf-ease-out), transform 140ms var(--sf-ease-out);
 }
-.sf-pill:active { transform: scale(0.97); }
+.sf-pill:active { background: var(--sf-paper-2); }
 @media (hover: hover) and (pointer: fine) {
   .sf-pill:hover { background: color-mix(in oklch, var(--sf-paper-3) 70%, var(--sf-ink-3)); box-shadow: var(--sf-fold); }
 }
@@ -809,7 +809,7 @@ textarea.sf-input { min-height: 7rem; resize: vertical; }
 /* Folds: cards, wells and states are filled linen, never outlined. */
 .sf-card { border: 0; background: var(--sf-card); box-shadow: var(--sf-fold); }
 .sf-card-link { transition: background-color var(--sf-dur-short) var(--sf-ease-out), transform 140ms var(--sf-ease-out); }
-.sf-card-link:active { transform: scale(0.99); }
+.sf-card-link:active { background: var(--sf-paper-2); }
 @media (hover: hover) and (pointer: fine) {
   .sf-card-link:hover { background: var(--sf-paper-3); }
 }
@@ -858,25 +858,41 @@ textarea.sf-input { min-height: 7rem; resize: vertical; }
 }
 .sf-facts dt { margin-bottom: 0; }
 
-/* The treatment ledger: each category is a folded band. */
-.sf-ledger { display: grid; gap: 6px; border-top: 0; }
+/* The treatment ledger: printed menu lines, a crease between each, figures in one column. */
+.sf-ledger { display: grid; gap: 0; border-top: 0; }
 .sf-ledger-row {
   grid-template-columns: minmax(0, 1fr) auto;
-  padding: 1.25rem 1.5rem;
-  border-bottom: 0;
-  border-radius: var(--sf-radius-md);
-  background: var(--sf-paper-2);
-  box-shadow: var(--sf-fold);
+  padding: 1.125rem 0.25rem;
+  border-bottom: 1px solid oklch(100% 0 0 / 0.1); /* taste-skill-ignore: printed menu rule */
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  transition: background-color var(--sf-dur-short) var(--sf-ease-out), padding-inline var(--sf-dur-short) var(--sf-ease-out);
 }
 .sf-ledger-index { display: none; }
 .sf-ledger-name { font-size: var(--sf-text-2xl); }
-.sf-ledger-figures { font-family: var(--sf-font-display); }
-a.sf-ledger-row:hover { background: var(--sf-paper-3); }
-a.sf-ledger-row:active { transform: scale(0.99); }
-@media (max-width: 599px) {
-  .sf-ledger-row { grid-template-columns: minmax(0, 1fr); padding: 1rem 1.125rem; }
-  .sf-ledger-figures { grid-column: 1; }
+.sf-ledger-figures {
+  display: grid;
+  grid-template-columns: auto 5.5rem auto;
+  align-items: baseline;
+  justify-items: end;
+  gap: 1.5rem;
+  font-family: var(--sf-font-display);
+  font-size: var(--sf-text-lg);
+  font-variant-numeric: tabular-nums lining-nums;
 }
+.sf-ledger-figures .sf-muted { font-size: var(--sf-text-lg); color: var(--sf-ink-2); }
+@media (hover: hover) and (pointer: fine) {
+  a.sf-ledger-row:hover { padding-inline: 0.75rem; background: oklch(100% 0 0 / 0.03); }
+}
+a.sf-ledger-row:active { background: var(--sf-paper-2); }
+@media (max-width: 599px) {
+  .sf-ledger-row { grid-template-columns: minmax(0, 1fr); padding: 1rem 0.25rem; }
+  .sf-ledger-figures { grid-column: 1; justify-content: start; justify-items: start; grid-template-columns: auto auto auto; }
+}
+
+/* A booking option without a photo closes the gap. */
+.sf-option:not(:has(> .sf-lens)) { grid-template-columns: minmax(0, 1fr) auto; }
 
 .sf-chip { border: 0; border-radius: var(--sf-radius-sm); background: var(--sf-paper-2); box-shadow: var(--sf-fold); font-size: var(--sf-text-md); }
 a.sf-chip:hover { color: var(--sf-ink); background: var(--sf-paper-3); }

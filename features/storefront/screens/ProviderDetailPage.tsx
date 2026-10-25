@@ -36,7 +36,6 @@ export async function ProviderDetailPage({ params }: ProviderDetailPageProps) {
 
         <div className="grid min-w-0 content-start gap-[var(--sf-space-lg)]">
           <header className="grid gap-4">
-            <p className="sf-eyebrow">Provider</p>
             <h1 className="sf-display text-[length:var(--sf-text-display-s)]">{name}</h1>
           </header>
 

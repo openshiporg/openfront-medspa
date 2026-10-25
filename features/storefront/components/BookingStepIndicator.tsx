@@ -21,8 +21,8 @@ export function BookingStepIndicator({ currentStep, steps, onStepSelect }: Booki
           const current = currentStep === step.number
           const content = (
             <>
-              <span className="sf-num text-[length:var(--sf-text-2xs)] opacity-70">{done ? <Check className="!size-3.5" aria-hidden="true" /> : `0${step.number}`}</span>
-              {step.title}
+              <span className="sf-num text-[length:var(--sf-text-2xs)] opacity-70">{done ? <Check className="!size-3.5" aria-hidden="true" /> : step.number}</span>
+              <span className={current ? undefined : "max-sm:sr-only"}>{step.title}</span>
             </>
           )
           return (

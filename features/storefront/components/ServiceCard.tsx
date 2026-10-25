@@ -39,8 +39,8 @@ export function ServiceCard({ service, showCategory = false, variant = "row", in
     <>
       <span className="sf-ledger-index">{index !== undefined ? pad2(index + 1) : "·"}</span>
       <span className="min-w-0">
-        {showCategory && service.category ? <span className="sf-eyebrow mb-1 block">{service.category.name}</span> : null}
-        <span className="sf-ledger-name">{service.name}</span>
+        <span className="sf-ledger-name block">{service.name}</span>
+        {showCategory && service.category ? <span className="sf-eyebrow mt-1 block">{service.category.name}</span> : null}
       </span>
       <span className="sf-ledger-figures">
         <span className="sf-muted">{formatDuration(service.baseDuration)}</span>

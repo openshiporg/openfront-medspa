@@ -67,7 +67,6 @@ export function MainNotFound() {
   return (
     <div className="sf-container sf-page-pad flex min-h-[60vh] flex-col items-center justify-center gap-5 text-center">
       <span className="sf-lens sf-dew block w-24" aria-hidden="true" />
-      <p className="sf-eyebrow">404</p>
       <h1 className="sf-display text-[length:var(--sf-text-display-s)]">Page not found</h1>
       <Track>
         <PillLink href="/">Home</PillLink>

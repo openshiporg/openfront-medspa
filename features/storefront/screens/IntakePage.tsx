@@ -16,7 +16,6 @@ export async function IntakePage({ params }: { params: Promise<{ appointmentId: 
   return (
     <div className="sf-container-narrow sf-page-pad">
       <header className="mb-[var(--sf-space-lg)] grid gap-4">
-        <p className="sf-eyebrow">Before your visit</p>
         <h1 className="sf-display text-[length:var(--sf-text-display-s)]">Intake</h1>
       </header>
       {forms.length === 0 ? <StateCard title="No forms needed for this visit" action={<Track><PillLink href="/account">My appointments</PillLink></Track>} /> : (

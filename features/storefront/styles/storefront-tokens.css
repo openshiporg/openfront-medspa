@@ -69,7 +69,7 @@
   --sf-shadow-raised-hover: none;
   --sf-shadow-recessed: none;
   --sf-shadow-card: none;
-  --sf-fold: inset 0 1px 0 oklch(100% 0 0 / 0.06);
+  --sf-fold: inset 0 1px 0 oklch(100% 0 0 / 0.1);
 
   font-family: var(--sf-font-body);
   color: var(--sf-ink);

@@ -12,7 +12,6 @@ export function CustomerAuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
   return <div className="sf-container-narrow sf-page-pad">
     <div className="mx-auto grid max-w-md gap-[var(--sf-space-lg)]">
       <header className="grid gap-4">
-        <p className="sf-eyebrow">Account</p>
         <h1 className="sf-display text-[length:var(--sf-text-display-s)]">{creating ? 'Create account' : 'Sign in'}</h1>
       </header>
       <form action={action} className="sf-card grid gap-5 p-[var(--sf-space-md)]">

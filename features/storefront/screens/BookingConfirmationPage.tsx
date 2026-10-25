@@ -26,11 +26,11 @@ export async function BookingConfirmationPage({ params, searchParams }: Props) {
   return (
     <div className="sf-container-narrow sf-page-pad">
       <header className="mb-[var(--sf-space-lg)] grid gap-4">
-        <p className="sf-eyebrow">Appointment · <span className="sf-num">{visit.id.slice(-6).toUpperCase()}</span></p>
         <div className="sf-title-line">
           <h1 className="sf-display text-[length:var(--sf-text-display-s)]">{visit.serviceNames.join(", ") || "Your visit"}</h1>
           <Status tone={status.tone}>{status.label}</Status>
         </div>
+        <p className="sf-eyebrow">Appointment <span className="sf-num">{visit.id.slice(-6).toUpperCase()}</span></p>
       </header>
 
       <div className="sf-card p-[var(--sf-space-md)]">

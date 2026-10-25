@@ -38,8 +38,8 @@ export async function ServiceDetailPage({ params }: ServiceDetailPageProps) {
       <div className="mt-[var(--sf-space-lg)] grid gap-[var(--sf-space-xl)] lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)]">
         <div className="grid min-w-0 content-start gap-[var(--sf-space-lg)]">
           <header className="grid gap-5">
-            {service.category ? <p className="sf-eyebrow">{service.category.name}</p> : null}
             <h1 className="sf-display text-[length:var(--sf-text-display-s)]">{service.name}</h1>
+            {service.category ? <p className="sf-eyebrow">{service.category.name}</p> : null}
             {reviews.length ? <a href="#reviews" className="flex items-center gap-2 text-[length:var(--sf-text-sm)] text-[var(--sf-ink-2)] no-underline"><Stars rating={averageRating(reviews)} /><span className="sf-num">{averageRating(reviews).toFixed(1)} · {reviews.length} {reviews.length === 1 ? "review" : "reviews"}</span></a> : null}
           </header>
 

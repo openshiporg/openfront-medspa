@@ -42,11 +42,11 @@ export function Actions({ children, block = false }: { children: ReactNode; bloc
 export function PageHead({ eyebrow, title, status, children }: { eyebrow?: ReactNode; title: ReactNode; status?: ReactNode; children?: ReactNode }) {
   return (
     <header className="mb-[var(--sf-space-lg)] grid gap-4">
-      {eyebrow ? <p className="sf-eyebrow">{eyebrow}</p> : null}
       <div className="sf-title-line">
         <h1 className="sf-display text-[length:var(--sf-text-display-s)]">{title}</h1>
         {status}
       </div>
+      {eyebrow ? <p className="sf-eyebrow">{eyebrow}</p> : null}
       {children}
     </header>
   )
@@ -71,19 +71,22 @@ export function Monogram({ name }: { name: string }) {
 }
 
 /** Circular frame: a service or provider image, or the practice's dew gradient. */
-export function Lens({ src, alt, name, className = "" }: { src?: string | null; alt?: string; name?: string; className?: string }) {
+export function Lens({ src, alt, className = "" }: { src?: string | null; alt?: string; name?: string; className?: string }) {
+  // No image, no frame: a placeholder tile would stand in for content that doesn't exist.
+  if (!src) return null
   return (
     <span className={`sf-lens sf-dew block ${className}`}>
-      {src ? <img src={src} alt={alt || ""} loading="lazy" /> : name ? <Monogram name={name} /> : null}
+      <img src={src} alt={alt || ""} loading="lazy" />
     </span>
   )
 }
 
 /** Tall capsule frame used for provider portraits. */
-export function Capsule({ src, alt, name, className = "" }: { src?: string | null; alt?: string; name?: string; className?: string }) {
+export function Capsule({ src, alt, className = "" }: { src?: string | null; alt?: string; name?: string; className?: string }) {
+  if (!src) return null
   return (
     <span className={`sf-capsule sf-dew block ${className}`}>
-      {src ? <img src={src} alt={alt || ""} loading="lazy" /> : name ? <Monogram name={name} /> : null}
+      <img src={src} alt={alt || ""} loading="lazy" />
     </span>
   )
 }

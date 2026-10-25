@@ -281,7 +281,6 @@ export function BookingPage({ initialServices = EMPTY_SERVICES, initialContact =
   return (
     <div className="sf-container sf-page-pad">
       <header className="mb-[var(--sf-space-lg)] grid gap-4">
-        <p className="sf-eyebrow">Book</p>
         <h1 className="sf-display text-[length:var(--sf-text-display-s)]">Book an appointment</h1>
       </header>
 
