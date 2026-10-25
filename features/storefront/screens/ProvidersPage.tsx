@@ -15,7 +15,7 @@ export async function ProvidersPage() {
   if (result.status === "unavailable") {
     return (
       <div className="sf-container sf-page-pad">
-        <PageIntro eyebrow="Practice" title="Providers" />
+        <PageIntro title="Providers" />
         <ProviderProfilesUnavailable retryHref="/team" />
       </div>
     )
@@ -24,7 +24,7 @@ export async function ProvidersPage() {
 
   return (
     <div className="sf-container sf-page-pad">
-      <PageIntro eyebrow={providers.length ? `Practice · ${providers.length}` : "Practice"} title="Providers" />
+      <PageIntro eyebrow={providers.length ? `${providers.length} ${providers.length === 1 ? "provider" : "providers"}` : undefined} title="Providers" />
       {providers.length === 0 ? (
         <StateCard title="No providers listed yet" action={<Track><PillLink href="/services">View treatments</PillLink></Track>} />
       ) : (

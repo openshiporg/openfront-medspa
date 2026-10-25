@@ -18,7 +18,7 @@ export async function ContactPage() {
 
   return (
     <div className="sf-container sf-page-pad">
-      <PageIntro eyebrow="Visit" title={brand.name} status={status ? <Status tone={status.open ? "ok" : "off"}>{status.label}</Status> : undefined} />
+      <PageIntro title={brand.name} status={status ? <Status tone={status.open ? "ok" : "off"}>{status.label}</Status> : undefined} />
 
       <div className="grid gap-[var(--sf-space-lg)] lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
         <section aria-labelledby="find-heading" className="grid content-start gap-[var(--sf-space-md)]">

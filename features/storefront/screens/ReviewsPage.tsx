@@ -14,7 +14,7 @@ export async function ReviewsPage() {
   const average = averageRating(reviews)
   return (
     <div className="sf-container sf-page-pad">
-      <PageIntro eyebrow={reviews.length ? `Reviews · ${reviews.length}` : "Reviews"} title="Reviews" status={reviews.length ? <span className="flex items-center gap-2"><Stars rating={average} size="md" /><span className="sf-num text-[length:var(--sf-text-sm)]">{average.toFixed(1)}</span></span> : undefined} />
+      <PageIntro eyebrow={reviews.length ? `${reviews.length} ${reviews.length === 1 ? "review" : "reviews"}` : undefined} title="Reviews" status={reviews.length ? <span className="flex items-center gap-2"><Stars rating={average} size="md" /><span className="sf-num text-[length:var(--sf-text-sm)]">{average.toFixed(1)}</span></span> : undefined} />
       {reviews.length ? (
         <div className="grid gap-[var(--sf-space-lg)]">
           <ReviewList reviews={reviews} />

@@ -10,7 +10,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export async function GiftCardsPage() {
   return (
     <div className="sf-container sf-page-pad">
-      <PageIntro eyebrow="Gift cards" title="Gift cards" />
+      <PageIntro title="Gift cards" />
       <StateCard title="Gift cards aren't sold online" action={<Track><PillLink href="/contact">Contact the practice</PillLink></Track>} />
     </div>
   )

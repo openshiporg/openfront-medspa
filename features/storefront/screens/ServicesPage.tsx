@@ -15,7 +15,7 @@ export async function ServicesPage() {
   if (catalog.status === "unavailable") {
     return (
       <div className="sf-container sf-page-pad">
-        <PageIntro eyebrow="Menu" title="Treatments" />
+        <PageIntro title="Treatments" />
         <ServiceCatalogUnavailable retryHref="/services" />
       </div>
     )
@@ -25,7 +25,7 @@ export async function ServicesPage() {
 
   return (
     <div className="sf-container sf-page-pad">
-      <PageIntro eyebrow={total ? `Menu · ${total} ${total === 1 ? "treatment" : "treatments"}` : "Menu"} title="Treatments" />
+      <PageIntro eyebrow={total ? `${total} ${total === 1 ? "treatment" : "treatments"}` : undefined} title="Treatments" />
 
       {categories.length === 0 ? (
         <StateCard title="No treatments listed yet" action={<Track><PillLink href="/contact">Contact the practice</PillLink></Track>} />

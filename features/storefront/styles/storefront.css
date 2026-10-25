@@ -766,7 +766,7 @@ textarea.sf-input { min-height: 7rem; resize: vertical; }
    one face (EB Garamond) sets everything. These rules restate the shared
    components in that world; see .impeccable/surfaces/features-storefront.md. */
 
-.sf-display { font-weight: 400; letter-spacing: -0.02em; line-height: 1.04; padding-block: 0.02em; }
+.sf-display { font-weight: 400; letter-spacing: -0.02em; line-height: 1.04; padding-block: 0.02em; padding-inline-start: 0.05em; }
 .sf-display em { color: inherit; }
 
 /* Side notes and labels: small italic, never tracked capitals. */
@@ -885,7 +885,7 @@ textarea.sf-input { min-height: 7rem; resize: vertical; }
 @media (hover: hover) and (pointer: fine) {
   a.sf-ledger-row:hover { padding-inline: 0.75rem; background: oklch(100% 0 0 / 0.03); }
 }
-a.sf-ledger-row:active { background: var(--sf-paper-2); }
+a.sf-ledger-row:active { background: oklch(0% 0 0 / 0.22); }
 @media (max-width: 599px) {
   .sf-ledger-row { grid-template-columns: minmax(0, 1fr); padding: 1rem 0.25rem; }
   .sf-ledger-figures { grid-column: 1; justify-content: start; justify-items: start; grid-template-columns: auto auto auto; }

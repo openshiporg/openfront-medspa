@@ -11,7 +11,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export async function GalleryPage() {
   return (
     <div className="sf-container sf-page-pad">
-      <PageIntro eyebrow="Gallery" title="Gallery" />
+      <PageIntro title="Gallery" />
       <StateCard title="No gallery published" action={<Track><PillLink href="/services">View treatments</PillLink></Track>} />
     </div>
   )
