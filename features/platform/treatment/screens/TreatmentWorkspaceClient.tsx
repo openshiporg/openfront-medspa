@@ -100,7 +100,7 @@ export function TreatmentWorkspaceClient({ data }: { data: TreatmentWorkspace })
   return (
     <div className="grid gap-4">
       {data.services.length > 1 ? (
-        <nav aria-label="Treatment" className="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] md:mx-0 md:px-0">
+        <nav aria-label="Treatment" className="relative -mx-4 overflow-x-auto px-4 [scrollbar-width:none] md:mx-0 md:px-0">
           <div className={cn(trackClass, 'w-max max-w-none')}>
             {data.services.map((item) => (
               <button key={item.id} type="button" aria-pressed={item.id === serviceId} onClick={() => setServiceId(item.id)} className={pillClass(item.id === serviceId ? 'raised' : 'quiet')}>{item.name}</button>

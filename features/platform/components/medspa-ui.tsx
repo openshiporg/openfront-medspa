@@ -73,7 +73,7 @@ export function PillLink({ href, children, variant = 'raised', size }: { href: s
 /** Filter tabs: underline tabs on one ruled baseline; the current tab is underlined. */
 export function SegmentTabs({ label, tabs, active }: { label: string; active: string; tabs: Array<{ value: string; label: string; href: string; count?: number | null }> }) {
   return (
-    <nav aria-label={label} className="min-w-0 overflow-x-auto border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <nav aria-label={label} className="relative min-w-0 overflow-x-auto border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <div className="flex w-max gap-5">
         {tabs.map((tab) => {
           const isActive = tab.value === active;

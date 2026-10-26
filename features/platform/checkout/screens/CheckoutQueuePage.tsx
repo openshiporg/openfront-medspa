@@ -235,7 +235,7 @@ function RecordedCheckout({ appointment }: { appointment: CheckoutAppointment })
         </dl>
       ) : <p role="status" className="text-sm text-muted-foreground">Transaction recorded; payment receipt unavailable.</p>}
       {lines.length ? (
-        <div className="overflow-x-auto rounded-[6px] border">
+        <div className="relative overflow-x-auto rounded-[6px] border">
           <table className="w-full min-w-[22rem] text-sm">
             <caption className="sr-only">Sale lines</caption>
             <thead className="bg-muted/40 text-xs text-muted-foreground"><tr><th className="px-3 py-2 text-left font-medium">Item</th><th className="px-3 py-2 text-center font-medium">Qty</th><th className="px-3 py-2 text-right font-medium">Net</th></tr></thead>
