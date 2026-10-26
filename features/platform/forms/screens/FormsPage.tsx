@@ -70,7 +70,7 @@ export async function FormsPage({ searchParams }: { searchParams?: Promise<{ tab
         overview.intakeForms.length ? (
           <ul className="grid gap-3">
             {overview.intakeForms.map((row) => (
-              <li key={row.id} className="flex flex-col gap-3 rounded-2xl border bg-background p-4 md:flex-row md:items-center md:justify-between md:p-5">
+              <li key={row.id} className="flex flex-col gap-3 rounded-[6px] border bg-background p-4 md:flex-row md:items-center md:justify-between md:p-5">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <h2 className="min-w-0 break-words text-base font-semibold">{row.name}</h2>
@@ -90,7 +90,7 @@ export async function FormsPage({ searchParams }: { searchParams?: Promise<{ tab
         overview.templates.length ? (
           <ul className="grid gap-3">
             {overview.templates.map((row) => (
-              <li key={row.id} className="flex flex-col gap-3 rounded-2xl border bg-background p-4 md:flex-row md:items-center md:justify-between md:p-5">
+              <li key={row.id} className="flex flex-col gap-3 rounded-[6px] border bg-background p-4 md:flex-row md:items-center md:justify-between md:p-5">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <h2 className="min-w-0 break-words text-base font-semibold">{row.name}</h2>
@@ -112,7 +112,7 @@ export async function FormsPage({ searchParams }: { searchParams?: Promise<{ tab
             {overview.consentTemplates.map((row) => {
               const state = consentState(row);
               return (
-                <li key={row.id} className="flex flex-col gap-3 rounded-2xl border bg-background p-4 md:flex-row md:items-center md:justify-between md:p-5">
+                <li key={row.id} className="flex flex-col gap-3 rounded-[6px] border bg-background p-4 md:flex-row md:items-center md:justify-between md:p-5">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                       <h2 className="min-w-0 break-words text-base font-semibold">{row.service?.name || 'Treatment'} · v{row.version}</h2>
@@ -132,7 +132,7 @@ export async function FormsPage({ searchParams }: { searchParams?: Promise<{ tab
         overview.submissions.length ? (
           <ul className="grid gap-3">
             {overview.submissions.map((row) => (
-              <li key={row.id} className="flex flex-col gap-3 rounded-2xl border bg-background p-4 md:flex-row md:items-center md:justify-between md:p-5">
+              <li key={row.id} className="flex flex-col gap-3 rounded-[6px] border bg-background p-4 md:flex-row md:items-center md:justify-between md:p-5">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <h2 className="min-w-0 break-words text-base font-semibold">{row.client?.name || 'Client'}</h2>

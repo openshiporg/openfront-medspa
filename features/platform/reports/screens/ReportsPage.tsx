@@ -19,7 +19,7 @@ function RevenueBars({ daily }: { daily: Array<{ day: string; net: number }> }) 
         {daily.map((entry) => (
           <div key={entry.day} className="group relative flex h-full min-w-0 flex-1 items-end" title={`${dayLabel(entry.day, 'long')} · ${usd(entry.net)}`}>
             <div className="w-full rounded-t-[4px] bg-violet-500 transition-opacity group-hover:opacity-80 dark:bg-violet-400" style={{ height: max > 0 ? `${Math.max((entry.net / max) * 100, entry.net > 0 ? 2 : 0)}%` : '0%' }} />
-            <span className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded-md border bg-background px-2 py-1 text-xs shadow-sm group-hover:block">{dayLabel(entry.day, 'long')} · {usd(entry.net)}</span>
+            <span className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded-[6px] border bg-background px-2 py-1 text-xs shadow-sm group-hover:block">{dayLabel(entry.day, 'long')} · {usd(entry.net)}</span>
           </div>
         ))}
       </div>

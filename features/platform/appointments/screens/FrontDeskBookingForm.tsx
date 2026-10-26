@@ -148,7 +148,7 @@ export function FrontDeskBookingForm({ services, locations, clients }: { service
                 <div className="flex flex-wrap gap-2">
                   {openSlots.map((slot) => (
                     <button key={slot.startTime} type="button" aria-pressed={slot.startTime === startTime} onClick={() => setStartTime(slot.startTime)}
-                      className={cn('h-9 rounded-full border px-3 text-sm tabular-nums transition-colors', slot.startTime === startTime ? 'border-violet-600 bg-violet-600 text-white' : 'bg-background hover:border-foreground/40')}>
+                      className={cn('h-9 rounded-[5px] border px-3 text-sm tabular-nums transition-colors', slot.startTime === startTime ? 'border-violet-600 bg-violet-600 text-white' : 'bg-background hover:border-foreground/40')}>
                       {slot.time}
                     </button>
                   ))}
@@ -192,7 +192,7 @@ function ClientPicker({ clients, value, onChange }: { clients: FrontDeskClient[]
   const selected = picked || clients.find((client) => client.id === value) || null;
   if (value && (selected || value === NEW_CLIENT)) {
     return (
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border px-3 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-[6px] border px-3 py-2">
         <span className="min-w-0 text-sm"><span className="font-medium">{value === NEW_CLIENT ? 'New client' : selected?.user?.name}</span>{value !== NEW_CLIENT && selected?.user?.email ? <span className="ml-2 text-muted-foreground">{selected.user.email}</span> : null}</span>
         <div className={trackClass}><button type="button" className={pillClass('quiet', 'sm')} onClick={() => { onChange(''); setPicked(null); setQuery(''); }}>Change</button></div>
       </div>
@@ -207,7 +207,7 @@ function ClientPicker({ clients, value, onChange }: { clients: FrontDeskClient[]
       <ul id="client-matches" role="listbox" aria-label="Matching clients" className="grid gap-1">
         {found.map((client) => (
           <li key={client.id}>
-            <button type="button" role="option" aria-selected={false} onClick={() => { setPicked(client); onChange(client.id, client); }} className="flex w-full min-w-0 items-center justify-between gap-3 rounded-xl border bg-background px-3 py-2 text-left text-sm hover:bg-muted/50">
+            <button type="button" role="option" aria-selected={false} onClick={() => { setPicked(client); onChange(client.id, client); }} className="flex w-full min-w-0 items-center justify-between gap-3 rounded-[6px] border bg-background px-3 py-2 text-left text-sm hover:bg-muted/50">
               <span className="truncate font-medium">{client.user?.name}</span>
               <span className="truncate text-xs text-muted-foreground">{client.user?.email}{client.user?.phone ? ` · ${client.user.phone}` : ''}</span>
             </button>

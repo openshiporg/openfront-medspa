@@ -62,7 +62,7 @@ export async function SafetyPage({ searchParams }: { searchParams?: Promise<{ ta
             <ul className="grid gap-3">
               {records.incidents.map((row) => (
                 <li key={row.id}>
-                  <Link href={`/dashboard/platform/safety/incidents/${row.id}`} className="flex flex-col gap-2 rounded-2xl border bg-background p-4 transition-colors hover:bg-muted/30 md:flex-row md:items-center md:justify-between md:p-5">
+                  <Link href={`/dashboard/platform/safety/incidents/${row.id}`} className="flex flex-col gap-2 rounded-[6px] border bg-background p-4 transition-colors hover:bg-muted/30 md:flex-row md:items-center md:justify-between md:p-5">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                         <h2 className="min-w-0 break-words text-base font-semibold">{row.summary}</h2>
@@ -86,7 +86,7 @@ export async function SafetyPage({ searchParams }: { searchParams?: Promise<{ ta
             <ul className="grid gap-3">
               {records.recalls.map((row) => (
                 <li key={row.id}>
-                  <Link href={`/dashboard/platform/safety/recalls/${row.id}`} className="flex flex-col gap-2 rounded-2xl border bg-background p-4 transition-colors hover:bg-muted/30 md:flex-row md:items-center md:justify-between md:p-5">
+                  <Link href={`/dashboard/platform/safety/recalls/${row.id}`} className="flex flex-col gap-2 rounded-[6px] border bg-background p-4 transition-colors hover:bg-muted/30 md:flex-row md:items-center md:justify-between md:p-5">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                         <h2 className="min-w-0 break-words text-base font-semibold">{row.lot ? `${row.lot.product?.name || 'Product'} · lot ${row.lot.lotNumber}` : row.device?.name || 'Recall'}</h2>
@@ -105,7 +105,7 @@ export async function SafetyPage({ searchParams }: { searchParams?: Promise<{ ta
       {tab === 'devices' ? (
         overview.deviceEvents === 'restricted' ? <EmptyState icon={Wrench} title="Scheduling access required" />
           : overview.deviceEvents.length ? (
-            <ul className="divide-y overflow-hidden rounded-2xl border bg-background">
+            <ul className="divide-y overflow-hidden rounded-[6px] border bg-background">
               {overview.deviceEvents.map((row) => (
                 <li key={row.id} className="flex flex-col gap-1 px-4 py-3 md:flex-row md:items-center md:justify-between md:px-5">
                   <div className="min-w-0">

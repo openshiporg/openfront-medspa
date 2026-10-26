@@ -20,7 +20,7 @@ const emptyTitles: Record<WorkspaceSection, string> = {
   reports: 'No settled activity', integrations: 'No integration exceptions',
 };
 
-const smallInput = 'h-9 w-full min-w-0 rounded-lg border bg-background px-2.5 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring';
+const smallInput = 'h-9 w-full min-w-0 rounded-[5px] border bg-background px-2.5 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
 function formatDate(value?: string | null) {
   if (!value) return null;
@@ -71,7 +71,7 @@ export async function MedSpaWorkspacePage({ section }: { section: WorkspaceSecti
 
       {records.length === 0 ? <EmptyState icon={Icon} title={emptyTitles[section]} /> : (
         <section aria-label={`${data.title} queue`} className="min-w-0">
-          <ul className="divide-y overflow-hidden rounded-2xl border bg-background">
+          <ul className="divide-y overflow-hidden rounded-[6px] border bg-background">
             {records.map((record) => <WorkspaceRow key={record.id} section={section} record={record} locations={locations} />)}
           </ul>
         </section>
@@ -112,7 +112,7 @@ function WorkspaceRow({ section, record, locations }: { section: WorkspaceSectio
 
 function InventoryForm({ record, locations }: { record: WorkspaceRecord; locations: WorkspaceRecord[] }) {
   if (!locations.length) return null;
-  return <form action={adjustInventoryFromWorkspace} className="grid min-w-0 grid-cols-2 gap-2 rounded-xl border bg-muted/30 p-3">
+  return <form action={adjustInventoryFromWorkspace} className="grid min-w-0 grid-cols-2 gap-2 rounded-[6px] border bg-muted/30 p-3">
     <input type="hidden" name="productId" value={record.id.replace('product:', '')} />
     <input type="hidden" name="idempotencyKey" value={`platform:inventory:${record.id}:${crypto.randomUUID()}`} />
     <label className={`${fieldLabelClass} col-span-2`}>Stock location<select name="locationId" required className={smallInput}>{locations.map((location) => <option key={location.id} value={location.id.replace('location:', '')}>{location.title}</option>)}</select></label>
@@ -124,7 +124,7 @@ function InventoryForm({ record, locations }: { record: WorkspaceRecord; locatio
 
 function WaitlistForm({ record }: { record: WorkspaceRecord }) {
   const action = record.action === 'notify_waitlist' ? 'notify' : 'remove';
-  return <form action={transitionWaitlistFromWorkspace} className="grid min-w-0 gap-2 rounded-xl border bg-muted/30 p-3">
+  return <form action={transitionWaitlistFromWorkspace} className="grid min-w-0 gap-2 rounded-[6px] border bg-muted/30 p-3">
     <input type="hidden" name="waitlistEntryId" value={record.id} /><input type="hidden" name="action" value={action} />
     <label className={fieldLabelClass}>Note<input name="reason" maxLength={500} placeholder={action === 'notify' ? 'Slot offered by phone' : 'Removal reason'} className={smallInput} /></label>
     <span className={`${trackClass} w-fit`}><button type="submit" className={pillClass(action === 'notify' ? 'primary' : 'danger', 'sm')}>{action === 'notify' ? 'Mark client notified' : 'Remove from waitlist'}</button></span>

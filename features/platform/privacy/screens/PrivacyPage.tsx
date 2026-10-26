@@ -76,7 +76,7 @@ export async function PrivacyPage({ searchParams }: { searchParams?: Promise<{ t
               const due = dueTone(row);
               return (
                 <li key={row.id}>
-                  <Link href={`/dashboard/platform/privacy/requests/${row.id}`} className="flex flex-col gap-2 rounded-2xl border bg-background p-4 transition-colors hover:bg-muted/30 md:flex-row md:items-center md:justify-between md:p-5">
+                  <Link href={`/dashboard/platform/privacy/requests/${row.id}`} className="flex flex-col gap-2 rounded-[6px] border bg-background p-4 transition-colors hover:bg-muted/30 md:flex-row md:items-center md:justify-between md:p-5">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                         <h2 className="min-w-0 break-words text-base font-semibold">{row.client?.user?.name || 'Client'} · {requestTypeLabel[row.type] || humanize(row.type)}</h2>
@@ -97,7 +97,7 @@ export async function PrivacyPage({ searchParams }: { searchParams?: Promise<{ t
         overview.holds.length ? (
           <ul className="grid gap-3">
             {overview.holds.map((row) => (
-              <li key={row.id} className="flex flex-col gap-3 rounded-2xl border bg-background p-4 md:flex-row md:items-center md:justify-between md:p-5">
+              <li key={row.id} className="flex flex-col gap-3 rounded-[6px] border bg-background p-4 md:flex-row md:items-center md:justify-between md:p-5">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <h2 className="min-w-0 break-words text-base font-semibold">{row.client?.user?.name || row.incident?.summary || row.asset?.originalFilename || 'Record'}</h2>
@@ -120,7 +120,7 @@ export async function PrivacyPage({ searchParams }: { searchParams?: Promise<{ t
             {overview.policies.map((row) => {
               const ended = row.effectiveUntil && new Date(row.effectiveUntil).getTime() <= Date.now();
               return (
-                <li key={row.id} className="rounded-2xl border bg-background p-4 md:p-5">
+                <li key={row.id} className="rounded-[6px] border bg-background p-4 md:p-5">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <h2 className="min-w-0 break-words text-base font-semibold">{row.recordClass} · {row.retainMonths} months</h2>
                     <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><StatusDot tone={ended ? 'zinc' : 'emerald'} />{ended ? 'Ended' : 'Effective'}</span>
@@ -136,7 +136,7 @@ export async function PrivacyPage({ searchParams }: { searchParams?: Promise<{ t
 
       {tab === 'access' ? (
         overview.breakGlass.length ? (
-          <ul className="divide-y overflow-hidden rounded-2xl border bg-background">
+          <ul className="divide-y overflow-hidden rounded-[6px] border bg-background">
             {overview.breakGlass.map((row) => (
               <li key={row.id} className="flex flex-col gap-1 px-4 py-3 md:flex-row md:items-center md:justify-between md:px-5">
                 <div className="min-w-0">

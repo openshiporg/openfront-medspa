@@ -92,7 +92,7 @@ export async function CatalogPage({ searchParams }: PageProps) {
       {data.treatments.length === 0 ? (
         <EmptyState icon={Sparkles} title={filtered || status !== 'all' ? 'No treatments match' : 'No treatments yet'} action={!filtered && status === 'all' ? <Track><TreatmentFormSheet options={data.options} /></Track> : undefined} />
       ) : (
-        <section aria-label="Treatments" className="overflow-hidden rounded-2xl border bg-background">
+        <section aria-label="Treatments" className="overflow-hidden rounded-[6px] border bg-background">
           <ul className="divide-y">
             {data.treatments.map((treatment) => <TreatmentRow key={treatment.id} treatment={treatment} options={data.options} />)}
           </ul>

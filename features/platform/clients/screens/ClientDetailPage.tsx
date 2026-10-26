@@ -102,7 +102,7 @@ export async function ClientDetailPage({ clientId }: { clientId: string }) {
           <Fact label="Marketing">{client.marketingConsent ? 'Opted in' : 'Not opted in'}</Fact>
           <Fact label="Contact preferences" wrap>{client.contactPreferences || '—'}</Fact>
         </dl>
-        {client.operationalNotes ? <p className="mt-4 whitespace-pre-wrap rounded-xl bg-muted/50 px-3 py-2 text-sm">{client.operationalNotes}</p> : null}
+        {client.operationalNotes ? <p className="mt-4 whitespace-pre-wrap rounded-[6px] bg-muted/50 px-3 py-2 text-sm">{client.operationalNotes}</p> : null}
       </Panel>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
@@ -117,7 +117,7 @@ export async function ClientDetailPage({ clientId }: { clientId: string }) {
             {record.notes === null ? <Restricted /> : record.notes.length ? (
               <ul className="grid gap-3">
                 {record.notes.map((note) => (
-                  <li key={note.id} className="rounded-xl border p-3">
+                  <li key={note.id} className="rounded-[6px] border p-3">
                     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       <span className="font-medium text-foreground">{humanize(note.type || 'note')}</span>
                       <span>{note.author || 'Unknown author'}</span>

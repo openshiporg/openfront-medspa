@@ -63,8 +63,8 @@ export async function AdministrationHubPage() {
 
       <nav aria-label="Practice administration" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {tiles.map((tile) => (
-          <Link key={tile.href} href={tile.href} className="flex items-center gap-3 rounded-2xl border bg-background p-4 transition-colors hover:bg-muted/40">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground"><tile.icon className="size-[18px]" /></span>
+          <Link key={tile.href} href={tile.href} className="flex items-center gap-3 rounded-[6px] border bg-background p-4 transition-colors hover:bg-muted/40">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-[6px] bg-muted text-muted-foreground"><tile.icon className="size-[18px]" /></span>
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-semibold">{tile.title}</span>
               <span className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">{tile.tone ? <StatusDot tone={tile.tone} /> : null}{tile.value}</span>

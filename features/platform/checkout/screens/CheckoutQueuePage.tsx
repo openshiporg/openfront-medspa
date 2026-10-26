@@ -76,7 +76,7 @@ export function CheckoutCard({ appointment, products }: { appointment: CheckoutA
   const membershipOptions = getMembershipDiscountOptions(appointment);
 
   return (
-    <article className="grid min-w-0 overflow-hidden rounded-2xl border bg-background xl:grid-cols-[minmax(0,1fr)_22rem]">
+    <article className="grid min-w-0 overflow-hidden rounded-[6px] border bg-background xl:grid-cols-[minmax(0,1fr)_22rem]">
       <div className="min-w-0 p-4 md:p-5">
         <div className="flex items-start gap-3">
           <Avatar name={clientName} />
@@ -91,7 +91,7 @@ export function CheckoutCard({ appointment, products }: { appointment: CheckoutA
 
         {appointment.depositPaid ? <div className="mt-3"><Chip tone="amber">Deposit recorded</Chip></div> : null}
 
-        <div className="mt-5 overflow-hidden rounded-xl border">
+        <div className="mt-5 overflow-hidden rounded-[6px] border">
           <ul className="divide-y">
             {totals.lineItems.map((item) => (
               <li key={`${item.id}-${item.serviceId}`} className="flex items-start justify-between gap-3 px-3 py-3 text-sm">
@@ -146,7 +146,7 @@ export function CheckoutCard({ appointment, products }: { appointment: CheckoutA
             </label>
           )}
           {products.length > 0 && (
-            <fieldset className="grid min-w-0 gap-2 rounded-xl border bg-background p-3">
+            <fieldset className="grid min-w-0 gap-2 rounded-[6px] border bg-background p-3">
               <legend className="flex items-center gap-1.5 px-1 text-xs font-medium text-muted-foreground"><ShoppingBag className="size-3.5" /> Retail add-ons</legend>
               {products.slice(0, 6).map((product) => (
                 <div key={product.id} className="grid grid-cols-[minmax(0,1fr)_4.5rem] items-center gap-2 text-sm">
@@ -155,7 +155,7 @@ export function CheckoutCard({ appointment, products }: { appointment: CheckoutA
                     <span className="block truncate font-medium">{product.name}</span>
                     <span className="block text-xs text-muted-foreground">{formatCurrency(product.price || 0)} · {product.quantity || 0} in stock</span>
                   </div>
-                  <input aria-label={`${product.name || 'Product'} quantity`} name="retailQuantity" type="number" min="0" max={product.quantity || 0} defaultValue="0" className="h-9 w-full min-w-0 rounded-lg border bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+                  <input aria-label={`${product.name || 'Product'} quantity`} name="retailQuantity" type="number" min="0" max={product.quantity || 0} defaultValue="0" className="h-9 w-full min-w-0 rounded-[5px] border bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" />
                 </div>
               ))}
             </fieldset>
@@ -216,7 +216,7 @@ function RecordedCheckout({ appointment }: { appointment: CheckoutAppointment })
   }
   const clientName = appointment.client?.user?.name || 'Client unavailable';
   return (
-    <article className="grid min-w-0 gap-4 rounded-2xl border bg-background p-4 md:p-5">
+    <article className="grid min-w-0 gap-4 rounded-[6px] border bg-background p-4 md:p-5">
       <div className="flex items-start gap-3">
         <Avatar name={clientName} />
         <div className="min-w-0 flex-1">
@@ -229,13 +229,13 @@ function RecordedCheckout({ appointment }: { appointment: CheckoutAppointment })
         {payment ? <Track><PillLink href={`/dashboard/payments/${payment.id}`} size="sm">Payment record</PillLink></Track> : null}
       </div>
       {payment ? (
-        <dl className="grid grid-cols-2 gap-3 rounded-xl border p-3 sm:grid-cols-3">
+        <dl className="grid grid-cols-2 gap-3 rounded-[6px] border p-3 sm:grid-cols-3">
           <Fact label="Tender">{payment.paymentMethod || 'Unavailable'}</Fact>
           {([['Subtotal', payment.subtotal], ['Discount', payment.discount], ['Tax', payment.tax], ['Tip', payment.tip], ['Total', payment.totalAmount], ['Refunded', payment.refundedAmount]] as const).map(([label, value]) => <Fact key={label} label={label}><span className="tabular-nums">{amount(value)}</span></Fact>)}
         </dl>
       ) : <p role="status" className="text-sm text-muted-foreground">Transaction recorded; payment receipt unavailable.</p>}
       {lines.length ? (
-        <div className="overflow-x-auto rounded-xl border">
+        <div className="overflow-x-auto rounded-[6px] border">
           <table className="w-full min-w-[22rem] text-sm">
             <caption className="sr-only">Sale lines</caption>
             <thead className="bg-muted/40 text-xs text-muted-foreground"><tr><th className="px-3 py-2 text-left font-medium">Item</th><th className="px-3 py-2 text-center font-medium">Qty</th><th className="px-3 py-2 text-right font-medium">Net</th></tr></thead>

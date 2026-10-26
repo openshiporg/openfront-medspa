@@ -36,14 +36,14 @@ export async function ConsultationPlanQueuePage({ page, search }: { page: number
         <label className="grid min-w-0 flex-1 gap-1.5 text-xs font-medium text-muted-foreground">Search treatment
           <input className={inputClass} name="search" defaultValue={search} maxLength={100} />
         </label>
-        <div className="inline-flex rounded-full bg-muted p-1 shadow-[inset_0_1px_2px_rgb(0_0_0/0.08)]"><button className={pillClass('raised')}><Search /> Search</button></div>
+        <div className="inline-flex gap-2"><button className={pillClass('raised')}><Search /> Search</button></div>
       </form>
       {!data ? (
         practiceReady === false ? <PracticeSetupState /> : <ErrorState id="consultations-unavailable" title="Consultation queue unavailable" message="The queue could not be loaded." action={<Track><PillLink href={href(page)}>Retry</PillLink></Track>} />
       ) : (
         <>
           {!data.items.length ? <EmptyState icon={ClipboardList} title="No matching consultations" /> : (
-            <ul className="divide-y overflow-hidden rounded-2xl border bg-background">
+            <ul className="divide-y overflow-hidden rounded-[6px] border bg-background">
               {data.items.map((item) => (
                 <li key={item.id}>
                   <Link href={`/dashboard/platform/appointments/plans/${item.id}`} className="flex min-w-0 flex-col gap-1 p-4 transition-colors hover:bg-muted/40 sm:flex-row sm:items-center sm:justify-between md:px-5">

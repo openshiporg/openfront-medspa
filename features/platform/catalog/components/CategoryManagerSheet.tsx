@@ -15,7 +15,7 @@ function CategoryForm({ category, onDone }: { category?: CatalogCategory; onDone
   const [state, action, pending] = useActionState(saveCategory, initialState);
   useEffect(() => { if (state.status === 'saved') onDone(); }, [state, onDone]);
   return (
-    <form action={action} className="grid gap-3 rounded-2xl border bg-muted/20 p-4">
+    <form action={action} className="grid gap-3 rounded-[6px] border bg-muted/20 p-4">
       <input type="hidden" name="id" value={category?.id || ''} />
       <div className="grid gap-3 sm:grid-cols-[1fr_6rem]">
         <label className={fieldLabelClass}>Name<input className={inputClass} name="name" required maxLength={80} defaultValue={category?.name || ''} /></label>
@@ -62,7 +62,7 @@ export function CategoryManagerSheet({ categories }: { categories: CatalogCatego
             )}
             {error ? <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{error}</p> : null}
             {categories.length ? (
-              <ul className="divide-y rounded-2xl border">
+              <ul className="divide-y rounded-[6px] border">
                 {categories.map((category) => (
                   <li key={category.id} className="grid gap-3 p-3">
                     {editing === category.id ? <CategoryForm category={category} onDone={() => setEditing(null)} /> : (

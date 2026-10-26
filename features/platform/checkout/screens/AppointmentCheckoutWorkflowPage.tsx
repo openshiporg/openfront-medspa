@@ -36,7 +36,7 @@ export async function AppointmentCheckoutWorkflowPage({ appointmentId, checkoutN
       ) : checkout.status === 'request-failed' ? (
         <ErrorState id="checkout-load-failed" title="Checkout could not be loaded" action={<Track><PillLink href={`/dashboard/platform/checkout/${encodeURIComponent(appointmentId)}`}>Retry</PillLink><PillLink href="/dashboard/platform/checkout" variant="quiet">Checkout queue</PillLink></Track>} />
       ) : (
-        <section role="status" className="rounded-2xl border bg-background p-5 md:p-6">
+        <section role="status" className="rounded-[6px] border bg-background p-5 md:p-6">
           <h2 className="text-base font-semibold">Checkout unavailable</h2>
           <div className="mt-4"><Track><PillLink href="/dashboard/platform/checkout">Checkout queue</PillLink></Track></div>
         </section>

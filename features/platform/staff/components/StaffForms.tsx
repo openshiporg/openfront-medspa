@@ -62,9 +62,9 @@ export function InviteStaffSheet({ roles, locations }: { roles: StaffRole[]; loc
         </label>
       </WorkflowSheet>
       {link ? (
-        <div role="status" className="flex w-full min-w-0 flex-col gap-2 rounded-2xl border bg-background p-3 sm:w-auto">
+        <div role="status" className="flex w-full min-w-0 flex-col gap-2 rounded-[6px] border bg-background p-3 sm:w-auto">
           <p className="flex items-center gap-2 text-sm font-medium"><StatusDot tone="emerald" />Invitation link</p>
-          <code className="block max-w-full truncate rounded-lg bg-muted px-2 py-1 text-xs">{link}</code>
+          <code className="block max-w-full truncate rounded-[5px] bg-muted px-2 py-1 text-xs">{link}</code>
           <div className={cn(trackClass, 'self-start')}>
             <button type="button" className={pillClass('raised', 'sm')} onClick={async () => { try { await navigator.clipboard.writeText(link); setCopied(true); } catch { setCopied(false); } }}>{copied ? <Check /> : <Copy />}{copied ? 'Copied' : 'Copy link'}</button>
             <button type="button" className={pillClass('quiet', 'sm')} onClick={() => setLink(null)}>Done</button>

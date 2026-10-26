@@ -38,22 +38,23 @@ export async function HomePage() {
     <div>
       <section className="sf-hero" aria-labelledby="sf-home-title">
         <div className="sf-container sf-hero-grid">
-          <div className="sf-hero-notes order-2 lg:order-1">
-            <div className="sf-title-line">
-              {locality ? <p className="sf-eyebrow">{locality}</p> : null}
-              {status ? <Status tone={status.open ? "ok" : "off"}>{status.label}</Status> : null}
+          <div className="grid min-w-0 content-start gap-6">
+            <div className="grid gap-4">
+              <h1 id="sf-home-title" className="sf-display text-[length:var(--sf-text-display)]">{brand.name}</h1>
+              <div className="sf-title-line">
+                {locality ? <p className="sf-eyebrow">{locality}</p> : null}
+                {status ? <Status tone={status.open ? "ok" : "off"}>{status.label}</Status> : null}
+              </div>
             </div>
+            <Track>
+              {canBook ? <PillLink href="/book" variant="primary">Book an appointment</PillLink> : null}
+              <PillLink href="/services">Treatments</PillLink>
+            </Track>
             <dl className="sf-facts">
-              {catalogLoaded ? <div><dt className="sf-eyebrow">Treatments</dt><dd className="sf-num">{brand.serviceCount}</dd></div> : null}
               {today ? <div><dt className="sf-eyebrow">Today</dt><dd className="sf-num">{today.hours}</dd></div> : null}
               {brand.phone && brand.phoneHref ? <div><dt className="sf-eyebrow">Call</dt><dd><a className="sf-link sf-num" href={brand.phoneHref}>{brand.phone}</a></dd></div> : null}
+              {catalogLoaded ? <div><dt className="sf-eyebrow">Treatments</dt><dd className="sf-num">{brand.serviceCount}</dd></div> : null}
             </dl>
-            {heroPortrait ? <div className="sf-hero-media hidden sm:block" aria-hidden="true">
-              <Capsule src={heroPortrait} />
-            </div> : null}
-          </div>
-          <div className="order-1 grid min-w-0 content-end gap-7 lg:order-2">
-            <h1 id="sf-home-title" className="sf-display text-[length:var(--sf-text-display)]">{brand.name}</h1>
             {categories.length ? (
               <ul className="sf-chip-row" aria-label="Treatment categories">
                 {categories.slice(0, 6).map((category) => (
@@ -61,10 +62,10 @@ export async function HomePage() {
                 ))}
               </ul>
             ) : null}
-            <Track>
-              {canBook ? <PillLink href="/book" variant="primary">Book an appointment</PillLink> : null}
-              <PillLink href="/services">View treatments</PillLink>
-            </Track>
+          </div>
+          <div className="sf-mirror order-first lg:order-none" aria-hidden="true">
+            <span className="sf-bulbs">{Array.from({ length: 9 }, (_, index) => <span key={index} className="sf-bulb" />)}</span>
+            {heroPortrait ? <Capsule src={heroPortrait} /> : <span className="sf-capsule sf-dew block" />}
           </div>
         </div>
       </section>

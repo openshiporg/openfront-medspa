@@ -85,7 +85,7 @@ export async function StaffSchedulePage({ searchParams }: { searchParams?: Promi
       )}
 
       {dated.length ? (
-        <section aria-labelledby="dated-heading" className="overflow-hidden rounded-2xl border bg-background">
+        <section aria-labelledby="dated-heading" className="overflow-hidden rounded-[6px] border bg-background">
           <h2 id="dated-heading" className="border-b px-4 py-3 text-sm font-semibold md:px-5">Dates & time off</h2>
           <ul className="divide-y">
             {dated.map((item) => (
@@ -119,7 +119,7 @@ function ProviderRoster({ provider, options, locations }: { provider: PlatformPr
   const zone = provider.appointments[0]?.location?.timezone || weekly[0]?.location?.timezone || 'UTC';
 
   return (
-    <article className="min-w-0 overflow-hidden rounded-2xl border bg-background">
+    <article className="min-w-0 overflow-hidden rounded-[6px] border bg-background">
       <div className="flex flex-wrap items-start justify-between gap-3 p-4 md:p-5">
         <div className="flex min-w-0 items-start gap-3">
           <Avatar name={name} />
@@ -177,7 +177,7 @@ function ProviderRoster({ provider, options, locations }: { provider: PlatformPr
 function ScheduleBlock({ schedule, providerId, options, locations }: { schedule: PlatformSchedule; providerId: string; options: ProviderOption[]; locations: ScheduleLocation[] }) {
   const blocked = schedule.isAvailable === false;
   return (
-    <div className={`min-w-0 rounded-xl border p-2 text-xs ${blocked ? 'border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-100' : 'bg-background'}`}>
+    <div className={`min-w-0 rounded-[6px] border p-2 text-xs ${blocked ? 'border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-100' : 'bg-background'}`}>
       <div className="flex items-center gap-1.5 font-medium tabular-nums"><StatusDot tone={blocked ? 'rose' : schedule.isPublic ? 'emerald' : 'zinc'} />{hoursLabel(schedule)}</div>
       {schedule.breakStart && schedule.breakEnd && <div className="mt-1 text-muted-foreground">Break {schedule.breakStart}–{schedule.breakEnd}</div>}
       {!schedule.isPublic && !blocked ? <div className="mt-1 text-muted-foreground">Staff only</div> : null}
@@ -191,7 +191,7 @@ function ScheduleBlock({ schedule, providerId, options, locations }: { schedule:
             aria-label={`Reason for blocking ${days[schedule.dayOfWeek ?? 0]} ${hoursLabel(schedule)}`}
             name="reason"
             placeholder="Reason"
-            className="h-7 w-full min-w-0 rounded-lg border bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="h-7 w-full min-w-0 rounded-[5px] border bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         )}
         <span className={`${trackClass} w-fit`}>

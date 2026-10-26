@@ -64,7 +64,7 @@ export function SubmissionReviewSheet({ submission }: { submission: SubmissionRo
       ]}
       onSubmit={(values, idempotencyKey) => reviewFormSubmission({ submissionId: submission.id, disposition: String(values.disposition), rationale: String(values.rationale), notes: String(values.notes || ''), idempotencyKey })}
     >
-      <dl className="grid gap-3 rounded-xl border bg-muted/20 p-4 text-sm">
+      <dl className="grid gap-3 rounded-[6px] border bg-muted/20 p-4 text-sm">
         {[...fields.map((field) => ({ key: field.id, label: field.label })), ...extra.map((key) => ({ key, label: key }))].map((item) => (
           <div key={item.key} className="min-w-0">
             <dt className="text-xs text-muted-foreground">{item.label}</dt>

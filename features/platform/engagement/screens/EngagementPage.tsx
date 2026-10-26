@@ -47,7 +47,7 @@ export async function EngagementPage({ searchParams }: { searchParams?: Promise<
         ) : (
           <section aria-label="Message templates" className="grid gap-3 md:grid-cols-2">
             {templates.map((template) => (
-              <article key={template.id} className="flex min-w-0 flex-col gap-3 rounded-2xl border bg-background p-4 md:p-5">
+              <article key={template.id} className="flex min-w-0 flex-col gap-3 rounded-[6px] border bg-background p-4 md:p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
@@ -58,7 +58,7 @@ export async function EngagementPage({ searchParams }: { searchParams?: Promise<
                   </div>
                   <TemplateDrawer template={template} />
                 </div>
-                <p className="line-clamp-4 whitespace-pre-wrap rounded-xl bg-muted/50 px-3 py-2 text-sm">{template.content}</p>
+                <p className="line-clamp-4 whitespace-pre-wrap rounded-[6px] bg-muted/50 px-3 py-2 text-sm">{template.content}</p>
                 {template.variables.length ? <div className="flex flex-wrap gap-1.5">{template.variables.map((variable) => <Chip key={variable}>{variable}</Chip>)}</div> : null}
               </article>
             ))}
@@ -90,7 +90,7 @@ export async function EngagementPage({ searchParams }: { searchParams?: Promise<
           <>
             <SegmentTabs label="Delivery status" active={status} tabs={MESSAGE_STATUSES.map((value) => ({ value, label: messageLabels[value], href: href({ status: value, page: 0 }), count: value === 'failed' ? log.failed : undefined }))} />
             {log.items.length === 0 ? <EmptyState icon={Send} title="No messages" /> : (
-              <section aria-label="Message log" className="overflow-hidden rounded-2xl border bg-background">
+              <section aria-label="Message log" className="overflow-hidden rounded-[6px] border bg-background">
                 <ul className="divide-y">
                   {log.items.map((item) => (
                     <li key={item.id} className="flex flex-col gap-1.5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 md:px-5">
@@ -152,7 +152,7 @@ export async function EngagementPage({ searchParams }: { searchParams?: Promise<
                 const name = entry.name || 'Client';
                 const range = [day(entry.dateRangeStart), day(entry.dateRangeEnd)].filter(Boolean).join(' – ');
                 return (
-                  <article key={entry.id} className="flex min-w-0 flex-col gap-3 rounded-2xl border bg-background p-4 md:flex-row md:items-start md:justify-between md:p-5">
+                  <article key={entry.id} className="flex min-w-0 flex-col gap-3 rounded-[6px] border bg-background p-4 md:flex-row md:items-start md:justify-between md:p-5">
                     <div className="min-w-0 flex-1">
                       <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
                         {entry.clientRecordId

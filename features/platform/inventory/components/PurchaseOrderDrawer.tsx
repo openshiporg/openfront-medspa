@@ -86,7 +86,7 @@ export function PurchaseOrderDrawer({ vendors, locations, products }: { vendors:
           <fieldset className="grid gap-3">
             <legend className="mb-1 text-xs font-medium text-muted-foreground">Lines</legend>
             {lines.map((line, index) => (
-              <div key={index} className="grid grid-cols-[1fr_auto] gap-2 rounded-xl border p-3">
+              <div key={index} className="grid grid-cols-[1fr_auto] gap-2 rounded-[6px] border p-3">
                 <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_5rem_6rem]">
                   <select aria-label={`Line ${index + 1} product`} className={inputClass} value={line.productId} required onChange={(event) => setLine(index, { productId: event.target.value })}>
                     <option value="" disabled>Product</option>

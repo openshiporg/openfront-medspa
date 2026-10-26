@@ -88,7 +88,7 @@ export async function IntegrationsPage({ searchParams }: { searchParams?: Promis
         <h2 id="events-heading" className="text-sm font-semibold">Event log</h2>
         <SegmentTabs label="Event status" tabs={tabs} active={eventStatus} />
         {result.events.length ? (
-          <ul className="divide-y overflow-hidden rounded-2xl border bg-background">
+          <ul className="divide-y overflow-hidden rounded-[6px] border bg-background">
             {result.events.map((event) => (
               <li key={event.id} className="grid gap-1 px-4 py-3 sm:grid-cols-[1fr_auto] sm:items-center">
                 <div className="min-w-0">

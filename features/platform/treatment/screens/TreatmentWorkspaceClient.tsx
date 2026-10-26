@@ -148,7 +148,7 @@ export function TreatmentWorkspaceClient({ data }: { data: TreatmentWorkspace })
 
       <Step index={2} title="Contraindications" tone={!consultation ? 'zinc' : openFindings.length ? 'rose' : 'emerald'} status={!consultation ? 'Needs consultation' : findings.length ? `${findings.length} finding${findings.length === 1 ? '' : 's'} · ${openFindings.length} open` : 'None recorded'}>
         {findings.map((finding) => (
-          <div key={finding.id} className="grid gap-3 rounded-xl border p-3">
+          <div key={finding.id} className="grid gap-3 rounded-[6px] border p-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-medium">{finding.ruleCode} <span className="text-muted-foreground">v{finding.ruleVersion}</span></span>
               <Chip tone={finding.severity === 'hard_stop' ? 'rose' : finding.severity === 'clinician_review' ? 'amber' : 'zinc'}>{humanize(finding.severity)}</Chip>
@@ -185,7 +185,7 @@ export function TreatmentWorkspaceClient({ data }: { data: TreatmentWorkspace })
 
       <Step index={3} title="Clinical order" tone={activeOrders.length ? 'emerald' : orders.length ? 'amber' : 'zinc'} status={activeOrders.length ? humanize(activeOrders[0].status) : orders.length ? humanize(orders[0].status) : 'None'}>
         {orders.map((order) => (
-          <div key={order.id} className="grid gap-3 rounded-xl border p-3">
+          <div key={order.id} className="grid gap-3 rounded-[6px] border p-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-medium">{order.indication || 'Order'}</span>
               <Chip tone={['active', 'partially_fulfilled'].includes(order.status) ? 'emerald' : order.status === 'held' ? 'amber' : 'zinc'}>{humanize(order.status)}</Chip>
@@ -232,7 +232,7 @@ export function TreatmentWorkspaceClient({ data }: { data: TreatmentWorkspace })
 
       <Step index={4} title="Consent" tone={effectiveConsents.length ? 'emerald' : consents.length ? 'amber' : 'zinc'} status={effectiveConsents.length ? 'Effective' : consents.length ? humanize(consents[0].status) : 'Not signed'}>
         {consents.map((consent) => (
-          <div key={consent.id} className="grid gap-3 rounded-xl border p-3">
+          <div key={consent.id} className="grid gap-3 rounded-[6px] border p-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-medium">{consent.signerName || 'Signer'}</span>
               <Chip tone={consent.status === 'effective' ? 'emerald' : 'zinc'}>{humanize(consent.status)}</Chip>
@@ -273,7 +273,7 @@ export function TreatmentWorkspaceClient({ data }: { data: TreatmentWorkspace })
 
       <Step index={5} title="Session" tone={liveSession ? 'blue' : readySession ? 'amber' : sessions.some((item) => item.status === 'completed') ? 'emerald' : 'zinc'} status={sessions[0] ? humanize(sessions[0].status) : 'Not prepared'}>
         {sessions.map((session) => (
-          <div key={session.id} className="flex flex-wrap items-center gap-2 rounded-xl border p-3 text-sm">
+          <div key={session.id} className="flex flex-wrap items-center gap-2 rounded-[6px] border p-3 text-sm">
             <span className="font-medium">{session.serviceTitle || service.name}</span>
             <Chip tone={session.status === 'in_progress' ? 'blue' : session.status === 'completed' ? 'emerald' : session.status === 'stopped' || session.status === 'cancelled' ? 'rose' : 'amber'}>{humanize(session.status)}</Chip>
             <span className="text-xs text-muted-foreground">{session.durationMinutes || 0} min · started {when(session.startedAt, tz)}</span>
@@ -314,7 +314,7 @@ export function TreatmentWorkspaceClient({ data }: { data: TreatmentWorkspace })
 
       <Step index={6} title="Administration" tone={administrations.length ? 'emerald' : liveSession ? 'amber' : 'zinc'} status={administrations.length ? `${administrations.length} recorded` : liveSession ? 'Ready to record' : 'Needs a started session'}>
         {administrations.map((item) => (
-          <div key={item.id} className="flex flex-wrap items-center gap-2 rounded-xl border p-3 text-sm">
+          <div key={item.id} className="flex flex-wrap items-center gap-2 rounded-[6px] border p-3 text-sm">
             <Chip tone={item.status === 'completed' ? 'emerald' : 'rose'}>{humanize(item.status)}</Chip>
             <span className="text-muted-foreground">{when(item.completedAt, tz)} · {item.lotCount} lot{item.lotCount === 1 ? '' : 's'}</span>
             {item.immediateOutcome ? <span className="w-full text-muted-foreground">{item.immediateOutcome}</span> : null}
@@ -355,7 +355,7 @@ export function TreatmentWorkspaceClient({ data }: { data: TreatmentWorkspace })
             <fieldset className="grid gap-3">
               <legend className="mb-1 text-xs font-medium text-muted-foreground">Lots</legend>
               {lots.length ? Array.from({ length: lotRows }, (_, index) => (
-                <div key={index} className="grid gap-3 rounded-xl border p-3 sm:grid-cols-3">
+                <div key={index} className="grid gap-3 rounded-[6px] border p-3 sm:grid-cols-3">
                   <Field label="Lot"><Select name={`lot-${index}`} required={false} empty="—" options={lots.map((lot) => ({ value: lot.id, label: `${lot.productName} · ${lot.lotNumber} · ${lot.remainingQuantity} left` }))} /></Field>
                   <Field label="Quantity"><input name={`qty-${index}`} type="number" min={1} step={1} className={inputClass} /></Field>
                   <Field label="Unit"><input name={`unit-${index}`} maxLength={30} placeholder="units" className={inputClass} /></Field>
@@ -378,7 +378,7 @@ export function TreatmentWorkspaceClient({ data }: { data: TreatmentWorkspace })
 
       <Step index={7} title="Signed note" tone={data.notes.length ? 'emerald' : 'zinc'} status={data.notes.length ? `${data.notes.length} signed` : 'None'}>
         {data.notes.map((note) => (
-          <div key={note.id} className="grid gap-1 rounded-xl border p-3 text-sm">
+          <div key={note.id} className="grid gap-1 rounded-[6px] border p-3 text-sm">
             <span className="text-xs font-medium text-muted-foreground">{humanize(note.type)} · {when(note.signedAt, tz)}</span>
             <p className="whitespace-pre-wrap">{note.content}</p>
           </div>
@@ -395,7 +395,7 @@ export function TreatmentWorkspaceClient({ data }: { data: TreatmentWorkspace })
 
       <Step index={8} title="Follow-up" tone={data.followUps.length ? 'emerald' : 'zinc'} status={data.followUps.length ? `${data.followUps.length} scheduled` : 'None'}>
         {data.followUps.map((task) => (
-          <div key={task.id} className="flex flex-wrap items-center gap-2 rounded-xl border p-3 text-sm">
+          <div key={task.id} className="flex flex-wrap items-center gap-2 rounded-[6px] border p-3 text-sm">
             <span className="font-medium">{task.title}</span>
             <Chip tone={task.status === 'completed' ? 'emerald' : task.status === 'cancelled' ? 'zinc' : 'amber'}>{humanize(task.status)}</Chip>
             <span className="text-xs text-muted-foreground">Due {when(task.dueAt, tz)}</span>

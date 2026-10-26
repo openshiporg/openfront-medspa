@@ -54,10 +54,10 @@ export function ScheduleSheet({
       }}
     >
       {!editing ? (
-        <div role="radiogroup" aria-label="Type" className="inline-flex max-w-full flex-wrap items-center gap-1 self-start rounded-full bg-muted p-1">
+        <div role="radiogroup" aria-label="Type" className="inline-flex max-w-full flex-wrap items-center gap-1 self-start rounded-[5px] bg-muted p-1">
           {TYPES.map(([value, label]) => (
             <button key={value} type="button" role="radio" aria-checked={type === value} onClick={() => setType(value)}
-              className={type === value ? 'h-8 rounded-full bg-background px-3.5 text-sm font-medium shadow-sm' : 'h-8 rounded-full px-3.5 text-sm text-muted-foreground'}>
+              className={type === value ? 'h-8 rounded-[4px] bg-background px-3 text-[13px] font-medium shadow-sm' : 'h-8 rounded-[4px] px-3 text-sm text-muted-foreground'}>
               {label}
             </button>
           ))}
@@ -90,7 +90,7 @@ export function ScheduleSheet({
             <legend className="mb-1.5 text-xs font-medium text-muted-foreground">Days</legend>
             <div className="flex flex-wrap gap-2">
               {DAYS.map(([value, label]) => (
-                <label key={value} className="flex h-9 items-center gap-1.5 rounded-full border px-3 text-sm"><input type="checkbox" name="days" value={value} className="size-3.5" />{label}</label>
+                <label key={value} className="flex h-9 items-center gap-1.5 rounded-[5px] border px-3 text-sm"><input type="checkbox" name="days" value={value} className="size-3.5" />{label}</label>
               ))}
             </div>
           </fieldset>

@@ -45,7 +45,7 @@ export async function FollowUpsPage({ searchParams }: { searchParams?: Promise<{
             const isOverdue = ['open', 'in_progress'].includes(task.status) && Boolean(task.dueAt) && new Date(task.dueAt!).getTime() < now;
             const flag = task.lastAction?.redFlag;
             return (
-              <li key={task.id} className="grid min-w-0 gap-4 rounded-2xl border bg-background p-4 md:p-5">
+              <li key={task.id} className="grid min-w-0 gap-4 rounded-[6px] border bg-background p-4 md:p-5">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div className="min-w-0">
                     <h2 className="flex flex-wrap items-center gap-2 text-base font-semibold">

@@ -21,7 +21,7 @@ export function VisitReviewForm({ appointmentId }: { appointmentId: string }) {
     <div className="grid gap-3">
       <div className="flex items-center gap-1" role="radiogroup" aria-label="Rating">
         {[1, 2, 3, 4, 5].map((value) => (
-          <button key={value} type="button" role="radio" aria-checked={rating === value} aria-label={`${value} star${value === 1 ? "" : "s"}`} onClick={() => setRating(value)} className="grid size-10 place-items-center rounded-full text-[var(--sf-accent)]">
+          <button key={value} type="button" role="radio" aria-checked={rating === value} aria-label={`${value} star${value === 1 ? "" : "s"}`} onClick={() => setRating(value)} className="grid size-10 place-items-center rounded-[4px] text-[var(--sf-accent)]">
             <Star className="size-5" fill={value <= rating ? "currentColor" : "none"} />
           </button>
         ))}

@@ -62,7 +62,7 @@ export function TemplateDrawer({ template }: { template?: MessageTemplateView })
           <label className={fieldLabelClass}>Message<textarea className={cn(textareaClass, 'min-h-36')} required maxLength={5000} value={form.content} onChange={(event) => set('content', event.target.value)} /></label>
           <div className="flex flex-wrap gap-1.5" aria-label="Insert variable">
             {KNOWN_VARIABLES.map((variable) => (
-              <button key={variable} type="button" className="h-7 rounded-full border bg-background px-2.5 font-mono text-[11px] text-muted-foreground hover:border-foreground/40 hover:text-foreground" onClick={() => set('content', `${form.content}{{${variable}}}`)}>{`{{${variable}}}`}</button>
+              <button key={variable} type="button" className="h-7 rounded-[5px] border bg-background px-2.5 font-mono text-[11px] text-muted-foreground hover:border-foreground/40 hover:text-foreground" onClick={() => set('content', `${form.content}{{${variable}}}`)}>{`{{${variable}}}`}</button>
             ))}
           </div>
           <label className="flex min-h-10 cursor-pointer items-center gap-3 text-sm font-medium">

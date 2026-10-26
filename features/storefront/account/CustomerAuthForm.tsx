@@ -19,7 +19,7 @@ export function CustomerAuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
         <label className="sf-field">Email<input className="sf-input" name="email" type="email" autoComplete="email" required maxLength={254} /></label>
         <label className="sf-field">Password{creating ? <span className="font-normal text-[var(--sf-ink-3)]">12 characters minimum</span> : null}
           <span className="relative block"><input className="sf-input !pr-12" name="password" type={show ? 'text' : 'password'} autoComplete={creating ? 'new-password' : 'current-password'} required minLength={creating ? 12 : 1} maxLength={200} />
-            <button aria-label={show ? 'Hide password' : 'Show password'} aria-pressed={show} type="button" onClick={() => setShow(!show)} className="absolute right-1 top-1/2 grid size-10 -translate-y-1/2 place-items-center rounded-full text-[var(--sf-ink-3)] hover:text-[var(--sf-ink)]">{show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button>
+            <button aria-label={show ? 'Hide password' : 'Show password'} aria-pressed={show} type="button" onClick={() => setShow(!show)} className="absolute right-1 top-1/2 grid size-10 -translate-y-1/2 place-items-center rounded-[4px] text-[var(--sf-ink-3)] hover:text-[var(--sf-ink)]">{show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button>
           </span>
         </label>
         {state.message ? <p role="alert" className="sf-alert"><span className="sf-dot" data-tone="stop" aria-hidden="true" />{state.message}</p> : null}

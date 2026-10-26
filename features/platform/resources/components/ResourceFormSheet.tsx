@@ -60,9 +60,9 @@ export function ResourceFormSheet({ resource, options }: { resource?: PlatformRe
             <fieldset className="grid gap-2">
               <legend className="mb-1 text-xs font-medium text-muted-foreground">Treatments that need it</legend>
               {options.services.length ? (
-                <div className="grid max-h-48 gap-1 overflow-y-auto rounded-xl border p-2">
+                <div className="grid max-h-48 gap-1 overflow-y-auto rounded-[6px] border p-2">
                   {options.services.map((service) => (
-                    <label key={service.id} className="flex min-h-9 items-center gap-2.5 rounded-lg px-2 text-sm hover:bg-muted/50">
+                    <label key={service.id} className="flex min-h-9 items-center gap-2.5 rounded-[5px] px-2 text-sm hover:bg-muted/50">
                       <input type="checkbox" name="serviceIds" value={service.id} defaultChecked={selected.has(service.id)} className="size-4" />
                       {service.name}
                     </label>
@@ -74,7 +74,7 @@ export function ResourceFormSheet({ resource, options }: { resource?: PlatformRe
               <input type="checkbox" name="isPublic" defaultChecked={resource ? resource.isPublic === true : true} className="size-4" />Bookable online
             </label>
             {isDevice ? (
-              <div className="grid gap-4 rounded-2xl border bg-muted/20 p-4">
+              <div className="grid gap-4 rounded-[6px] border bg-muted/20 p-4">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className={fieldLabelClass}>Manufacturer<input className={inputClass} name="manufacturer" maxLength={120} defaultValue={resource?.manufacturer || ''} /></label>
                   <label className={fieldLabelClass}>Model<input className={inputClass} name="model" maxLength={120} defaultValue={resource?.model || ''} /></label>

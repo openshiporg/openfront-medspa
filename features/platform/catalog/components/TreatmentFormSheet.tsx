@@ -18,9 +18,9 @@ function dollars(cents?: number | null) {
 function CheckList({ name, items, selected, empty }: { name: string; items: Array<{ id: string; label: string; meta?: string | null }>; selected: Set<string>; empty: string }) {
   if (!items.length) return <p className="text-sm text-muted-foreground">{empty}</p>;
   return (
-    <div className="grid max-h-44 gap-1 overflow-y-auto rounded-xl border p-2">
+    <div className="grid max-h-44 gap-1 overflow-y-auto rounded-[6px] border p-2">
       {items.map((item) => (
-        <label key={item.id} className="flex min-h-9 items-center gap-2.5 rounded-lg px-2 text-sm hover:bg-muted/50">
+        <label key={item.id} className="flex min-h-9 items-center gap-2.5 rounded-[5px] px-2 text-sm hover:bg-muted/50">
           <input type="checkbox" name={name} value={item.id} defaultChecked={selected.has(item.id)} className="size-4" />
           <span className="min-w-0 truncate">{item.label}</span>
           {item.meta ? <span className="ml-auto shrink-0 text-xs text-muted-foreground">{item.meta}</span> : null}
@@ -77,14 +77,14 @@ export function TreatmentFormSheet({ treatment, options, size = 'md' }: { treatm
               <label className={fieldLabelClass}>Cleanup (min)<input className={inputClass} name="cleanupBufferMinutes" type="number" min={0} max={240} step={5} defaultValue={treatment?.cleanupBufferMinutes ?? 15} /></label>
             </div>
 
-            <div className="grid gap-3 rounded-2xl border p-4">
+            <div className="grid gap-3 rounded-[6px] border p-4">
               <label className="flex min-h-9 items-center gap-2.5 text-sm font-medium">
                 <input type="checkbox" name="depositRequired" checked={deposit} onChange={(event) => setDeposit(event.target.checked)} className="size-4" />Deposit required
               </label>
               {deposit ? <label className={fieldLabelClass}>Deposit ($)<input className={inputClass} name="depositAmount" type="number" min={0} step="0.01" inputMode="decimal" defaultValue={dollars(treatment?.depositAmount)} /></label> : null}
             </div>
 
-            <fieldset className="grid gap-2 rounded-2xl border p-4">
+            <fieldset className="grid gap-2 rounded-[6px] border p-4">
               <legend className="px-1 text-xs font-medium text-muted-foreground">Clinical requirements</legend>
               {CLINICAL_FLAGS.map((flag) => (
                 <label key={flag.key} className="flex min-h-9 items-center gap-2.5 text-sm">
@@ -94,7 +94,7 @@ export function TreatmentFormSheet({ treatment, options, size = 'md' }: { treatm
               ))}
             </fieldset>
 
-            <div className="grid gap-3 rounded-2xl border p-4">
+            <div className="grid gap-3 rounded-[6px] border p-4">
               <label className={fieldLabelClass}>Status
                 <select className={inputClass} name="status" value={active ? 'active' : 'inactive'} onChange={(event) => { const next = event.target.value === 'active'; setActive(next); if (!next) setIsPublic(false); }}>
                   <option value="active">Active</option>

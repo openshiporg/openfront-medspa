@@ -7,9 +7,9 @@ import { pillClass, trackClass, type PillVariant } from './pill';
 export { pillClass, trackClass, fieldLabelClass, inputClass, textareaClass } from './pill';
 
 /*
- * Med spa platform kit. Status dots sit on the title line, in-page buttons are
- * raised pills in a recessed track, and every list has explicit empty and
- * failure states.
+ * Med spa platform kit. Status reads as a coloured dot and label in its own column or on
+ * the title line, filters are underline tabs, buttons are flat 5px blocks, surfaces are
+ * bordered with corners of 6px or less, and every list has explicit empty and failure states.
  */
 
 export type Tone = 'emerald' | 'amber' | 'blue' | 'violet' | 'rose' | 'zinc' | 'sky' | 'orange';
@@ -23,6 +23,11 @@ const dotTones: Record<Tone, string> = {
   zinc: 'bg-zinc-400 outline-zinc-100 dark:bg-zinc-500 dark:outline-zinc-800/60',
   sky: 'bg-sky-500 outline-sky-100 dark:bg-sky-400 dark:outline-sky-900/50',
   orange: 'bg-orange-500 outline-orange-100 dark:bg-orange-400 dark:outline-orange-900/50',
+};
+
+const textTones: Record<Tone, string> = {
+  emerald: 'text-emerald-700 dark:text-emerald-400', amber: 'text-amber-700 dark:text-amber-400', blue: 'text-blue-700 dark:text-blue-400', violet: 'text-violet-700 dark:text-violet-400',
+  rose: 'text-rose-700 dark:text-rose-400', zinc: 'text-muted-foreground', sky: 'text-sky-700 dark:text-sky-400', orange: 'text-orange-700 dark:text-orange-400',
 };
 
 export const appointmentTone: Record<string, Tone> = {
@@ -48,34 +53,34 @@ export function humanize(value?: string | null) {
 }
 
 export function StatusDot({ tone, className }: { tone: Tone; className?: string }) {
-  return <span aria-hidden="true" className={cn('inline-block size-2 shrink-0 rounded-full outline-3 -outline-offset-1', dotTones[tone], className)} />;
+  return <span aria-hidden="true" className={cn('inline-block size-1.5 shrink-0 rounded-full', dotTones[tone], className)} />;
 }
 
 /** A status label for the title line: dot + text. */
 export function TitleStatus({ tone, children }: { tone: Tone; children: ReactNode }) {
-  return <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-muted-foreground"><StatusDot tone={tone} />{children}</span>;
+  return <span className={cn('inline-flex items-center gap-1.5 whitespace-nowrap text-[13px] font-medium', textTones[tone])}><StatusDot tone={tone} />{children}</span>;
 }
 
-/** Recessed track that holds one or more raised pills. */
+/** A row of buttons. */
 export function Track({ children, className, label }: { children: ReactNode; className?: string; label?: string }) {
-  return <div role={label ? 'group' : undefined} aria-label={label} className={cn(trackClass, 'flex-wrap', className)}>{children}</div>;
+  return <div role={label ? 'group' : undefined} aria-label={label} className={cn(trackClass, className)}>{children}</div>;
 }
 
 export function PillLink({ href, children, variant = 'raised', size }: { href: string; children: ReactNode; variant?: PillVariant; size?: 'sm' | 'md' }) {
   return <Link href={href} className={pillClass(variant, size)}>{children}</Link>;
 }
 
-/** Filter tabs: the active tab is the raised pill; the rest sit quiet in the track. */
+/** Filter tabs: underline tabs on one ruled baseline; the current tab is underlined. */
 export function SegmentTabs({ label, tabs, active }: { label: string; active: string; tabs: Array<{ value: string; label: string; href: string; count?: number | null }> }) {
   return (
-    <nav aria-label={label} className="-mx-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [mask-image:linear-gradient(to_right,black_calc(100%-2.5rem),transparent)] md:mx-0 md:px-0 md:[mask-image:none]">
-      <div className={cn(trackClass, 'w-max max-w-none pr-1')}>
+    <nav aria-label={label} className="min-w-0 overflow-x-auto border-b border-border [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex w-max gap-5">
         {tabs.map((tab) => {
           const isActive = tab.value === active;
           return (
-            <Link key={tab.value} href={tab.href} aria-current={isActive ? 'page' : undefined} className={pillClass(isActive ? 'raised' : 'quiet')}>
+            <Link key={tab.value} href={tab.href} aria-current={isActive ? 'page' : undefined} className="-mb-px inline-flex min-h-9 shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 border-transparent pb-2 pt-1.5 text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground aria-[current=page]:border-foreground aria-[current=page]:text-foreground max-sm:min-h-10">
               {tab.label}
-              {tab.count !== undefined && tab.count !== null ? <span className={cn('tabular-nums', isActive ? 'text-muted-foreground' : 'opacity-70')}>{tab.count}</span> : null}
+              {tab.count !== undefined && tab.count !== null ? <span className="text-xs font-normal tabular-nums text-muted-foreground">{tab.count}</span> : null}
             </Link>
           );
         })}
@@ -89,7 +94,7 @@ export function PlatformPage({ breadcrumbs, children, width = 'wide' }: { breadc
     <>
       <PlatformBreadcrumbs items={breadcrumbs} />
       <div className="min-w-0">
-        <div className={cn('mx-auto flex w-full min-w-0 flex-col gap-6 px-4 py-6 md:px-6 md:py-8', width === 'wide' ? 'max-w-7xl' : 'max-w-4xl')}>{children}</div>
+        <div className={cn('mx-auto flex w-full min-w-0 flex-col gap-5 px-4 py-5 md:px-6 md:py-6', width === 'wide' ? 'max-w-7xl' : 'max-w-4xl')}>{children}</div>
       </div>
     </>
   );
@@ -99,13 +104,11 @@ export function PageHeader({ title, status, meta, actions, icon: Icon, eyebrow }
   return (
     <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div className="min-w-0">
-        {eyebrow ? <div className="mb-2 text-xs font-medium text-muted-foreground">{eyebrow}</div> : null}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          {Icon ? <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"><Icon className="size-[18px]" /></span> : null}
-          <h1 className="min-w-0 break-words text-2xl font-semibold tracking-tight md:text-[1.75rem]">{title}</h1>
+          <h1 className="min-w-0 break-words text-lg font-semibold tracking-tight">{title}</h1>
           {status}
         </div>
-        {meta ? <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">{meta}</div> : null}
+        {meta ? <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">{eyebrow ? <span>{eyebrow}</span> : null}{meta}</div> : eyebrow ? <div className="mt-1 text-xs text-muted-foreground">{eyebrow}</div> : null}
       </div>
       {actions ? <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
     </header>
@@ -115,15 +118,15 @@ export function PageHeader({ title, status, meta, actions, icon: Icon, eyebrow }
 export function MetricStrip({ items }: { items: Array<{ label: string; value: ReactNode; tone?: Tone; href?: string }> }) {
   if (!items.length) return null;
   return (
-    <dl className="grid grid-cols-2 overflow-hidden rounded-2xl border bg-border sm:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] [&>*]:bg-background max-sm:[&>*:last-child:nth-child(odd)]:col-span-2" style={{ gap: 1 }}>
+    <dl className="grid grid-cols-2 overflow-hidden rounded-[6px] border bg-border sm:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] [&>*]:bg-background max-sm:[&>*:last-child:nth-child(odd)]:col-span-2" style={{ gap: 1 }}>
       {items.map((item, index) => {
         const body = <>
           <dt className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">{item.tone ? <StatusDot tone={item.tone} /> : null}<span className="truncate">{item.label}</span></dt>
-          <dd className="mt-1.5 truncate text-xl font-semibold tabular-nums tracking-tight">{item.value}</dd>
+          <dd className="mt-0.5 truncate text-lg font-semibold tabular-nums tracking-tight">{item.value}</dd>
         </>;
         return item.href
-          ? <Link key={`${item.label}-${index}`} href={item.href} className="block min-w-0 p-4 transition-colors hover:bg-muted/40">{body}</Link>
-          : <div key={`${item.label}-${index}`} className="min-w-0 p-4">{body}</div>;
+          ? <Link key={`${item.label}-${index}`} href={item.href} className="block min-w-0 px-3 py-2 transition-colors hover:bg-muted/40">{body}</Link>
+          : <div key={`${item.label}-${index}`} className="min-w-0 px-3 py-2">{body}</div>;
       })}
     </dl>
   );
@@ -131,14 +134,14 @@ export function MetricStrip({ items }: { items: Array<{ label: string; value: Re
 
 export function Panel({ title, icon: Icon, actions, children, className, padded = true, id }: { title?: ReactNode; icon?: ComponentType<{ className?: string }>; actions?: ReactNode; children: ReactNode; className?: string; padded?: boolean; id?: string }) {
   return (
-    <section id={id} className={cn('min-w-0 overflow-hidden rounded-2xl border bg-background', className)}>
+    <section id={id} className={cn('min-w-0 overflow-hidden rounded-[6px] border bg-card', className)}>
       {title ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 md:px-5">
-          <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold">{Icon ? <Icon className="size-4 text-muted-foreground" /> : null}{title}</h2>
+        <div className="flex min-h-10 flex-wrap items-center justify-between gap-2 border-b px-4 py-2">
+          <h2 className="flex min-w-0 items-center gap-2 text-[13px] font-semibold">{Icon ? <Icon className="size-4 text-muted-foreground" /> : null}{title}</h2>
           {actions}
         </div>
       ) : null}
-      <div className={padded ? 'p-4 md:p-5' : undefined}>{children}</div>
+      <div className={padded ? 'p-4' : undefined}>{children}</div>
     </section>
   );
 }
@@ -148,14 +151,14 @@ export function Fact({ label, children, wrap = false }: { label: string; childre
 }
 
 export function Chip({ children, tone }: { children: ReactNode; tone?: Tone }) {
-  return <span className="inline-flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-full border bg-background px-2 py-0.5 text-xs font-medium text-muted-foreground">{tone ? <StatusDot tone={tone} /> : null}<span className="truncate">{children}</span></span>;
+  return <span className="inline-flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-[3px] border bg-background px-1.5 py-0.5 text-xs font-medium text-muted-foreground">{tone ? <StatusDot tone={tone} /> : null}<span className="truncate">{children}</span></span>;
 }
 
 export function EmptyState({ icon: Icon, title, action }: { icon: ComponentType<{ className?: string }>; title: string; action?: ReactNode }) {
   return (
-    <section className="flex flex-col items-center rounded-2xl border border-dashed bg-background px-6 py-14 text-center">
-      <span className="flex size-11 items-center justify-center rounded-full bg-muted"><Icon className="size-5 text-muted-foreground" /></span>
-      <h2 className="mt-4 text-base font-semibold">{title}</h2>
+    <section className="flex flex-col items-center rounded-[6px] border border-dashed bg-card px-6 py-10 text-center">
+      <Icon className="size-5 text-muted-foreground" />
+      <h2 className="mt-3 text-[13px] font-medium">{title}</h2>
       {action ? <div className="mt-5">{action}</div> : null}
     </section>
   );
@@ -163,8 +166,8 @@ export function EmptyState({ icon: Icon, title, action }: { icon: ComponentType<
 
 export function ErrorState({ id, title, message, action }: { id: string; title: string; message?: string; action?: ReactNode }) {
   return (
-    <section role="alert" aria-labelledby={id} className="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100 md:p-6">
-      <h2 id={id} className="flex items-center gap-2 text-base font-semibold"><StatusDot tone="amber" />{title}</h2>
+    <section role="alert" aria-labelledby={id} className="rounded-[6px] border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+      <h2 id={id} className="flex items-center gap-2 text-[13px] font-semibold"><StatusDot tone="amber" />{title}</h2>
       {message ? <p className="mt-1.5 max-w-2xl text-sm opacity-90">{message}</p> : null}
       {action ? <div className="mt-4">{action}</div> : null}
     </section>
@@ -173,7 +176,7 @@ export function ErrorState({ id, title, message, action }: { id: string; title: 
 
 export function Notice({ tone = 'amber', title, children, role = 'status' }: { tone?: Tone; title: ReactNode; children?: ReactNode; role?: 'status' | 'alert' }) {
   return (
-    <div role={role} className="flex items-start gap-3 rounded-2xl border bg-background px-4 py-3 text-sm">
+    <div role={role} className="flex items-start gap-3 rounded-[6px] border bg-card px-3 py-2.5 text-[13px]">
       <StatusDot tone={tone} className="mt-1.5" />
       <div className="min-w-0"><div className="font-medium">{title}</div>{children ? <div className="mt-0.5 text-muted-foreground">{children}</div> : null}</div>
     </div>
@@ -190,5 +193,5 @@ export function initials(name?: string | null) {
 }
 
 export function Avatar({ name, className }: { name?: string | null; className?: string }) {
-  return <span aria-hidden="true" className={cn('flex size-9 shrink-0 items-center justify-center rounded-full bg-violet-50 text-xs font-semibold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300', className)}>{initials(name)}</span>;
+  return <span aria-hidden="true" className={cn('flex size-8 shrink-0 items-center justify-center rounded-[5px] bg-violet-50 text-xs font-semibold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300', className)}>{initials(name)}</span>;
 }

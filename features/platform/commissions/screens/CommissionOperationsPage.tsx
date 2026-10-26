@@ -57,7 +57,7 @@ export async function CommissionOperationsPage({ searchParams }: PageProps) {
       {summaries.length > 0 && (
         <section aria-label="Payouts by provider" className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {summaries.map((summary) => (
-            <article key={summary.providerId} className="flex min-w-0 flex-col gap-4 rounded-2xl border bg-background p-4">
+            <article key={summary.providerId} className="flex min-w-0 flex-col gap-4 rounded-[6px] border bg-background p-4">
               <div className="flex items-start gap-3">
                 <Avatar name={summary.providerName} />
                 <div className="min-w-0 flex-1">
@@ -88,7 +88,7 @@ export async function CommissionOperationsPage({ searchParams }: PageProps) {
       {commissions.length === 0 ? (
         <EmptyState icon={CheckCircle2} title="No commissions in this view" />
       ) : (
-        <ul className="divide-y overflow-hidden rounded-2xl border bg-background">
+        <ul className="divide-y overflow-hidden rounded-[6px] border bg-background">
           {commissions.map((commission) => <CommissionRow key={commission.id} commission={commission} />)}
         </ul>
       )}

@@ -34,7 +34,7 @@ export async function LocationsPage() {
       ) : (
         <section aria-label="Locations" className="grid gap-4 md:grid-cols-2">
           {result.locations.map((location) => (
-            <article key={location.id} className="min-w-0 rounded-2xl border bg-background p-4 md:p-5">
+            <article key={location.id} className="min-w-0 rounded-[6px] border bg-background p-4 md:p-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">

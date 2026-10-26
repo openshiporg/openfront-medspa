@@ -31,7 +31,7 @@ export function AcceptInvitationPage({ token }: { token: string }) {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-muted/30 px-4 py-12">
-      <section className="w-full max-w-sm rounded-2xl border bg-background p-6 shadow-sm">
+      <section className="w-full max-w-sm rounded-[6px] border bg-background p-6 shadow-sm">
         <h1 className="text-xl font-semibold tracking-tight">{done ? 'Account created' : 'Join the practice'}</h1>
         {done ? (
           <div className={cn(trackClass, 'mt-5')}><Link href="/dashboard/signin" className={pillClass('primary')}>Sign in</Link></div>

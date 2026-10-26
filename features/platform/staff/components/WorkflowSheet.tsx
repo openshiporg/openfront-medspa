@@ -79,9 +79,9 @@ export function WorkflowSheet({
 }
 
 export const field = 'grid min-w-0 gap-1.5 text-xs font-medium text-muted-foreground';
-export const control = 'h-10 w-full min-w-0 rounded-xl border bg-background px-3 text-sm font-normal text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60';
-export const area = 'min-h-24 w-full min-w-0 rounded-xl border bg-background px-3 py-2 text-sm font-normal text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring';
-export const check = 'flex min-h-10 items-center gap-2.5 rounded-xl border px-3 text-sm font-medium text-foreground';
+export const control = 'h-10 w-full min-w-0 rounded-[6px] border bg-background px-3 text-sm font-normal text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60';
+export const area = 'min-h-24 w-full min-w-0 rounded-[6px] border bg-background px-3 py-2 text-sm font-normal text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring';
+export const check = 'flex min-h-10 items-center gap-2.5 rounded-[6px] border px-3 text-sm font-medium text-foreground';
 
 export function str(form: FormData, name: string) { return String(form.get(name) ?? '').trim(); }
 export function all(form: FormData, name: string) { return form.getAll(name).map(String).filter(Boolean); }

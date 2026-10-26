@@ -71,7 +71,7 @@ export function ReceiveForm({ purchaseOrderId, lines }: { purchaseOrderId: strin
       </div>
       <div className="grid gap-3">
         {rows.map((row, index) => (
-          <fieldset key={row.lineId} className="grid gap-3 rounded-xl border p-3">
+          <fieldset key={row.lineId} className="grid gap-3 rounded-[6px] border p-3">
             <legend className="px-1 text-sm font-medium">{row.title} <span className="text-xs font-normal text-muted-foreground tabular-nums">· {row.open} open</span></legend>
             <div className="grid gap-3 sm:grid-cols-4">
               <Field label="Quantity"><input className={inputClass} type="number" min={0} max={row.open} step={1} value={row.quantity} onChange={(event) => set(index, { quantity: event.target.value })} /></Field>

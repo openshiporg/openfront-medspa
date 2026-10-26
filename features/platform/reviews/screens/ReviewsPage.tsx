@@ -56,7 +56,7 @@ export async function ReviewsPage({ searchParams }: { searchParams?: Promise<{ f
           {board.items.length === 0 ? <EmptyState icon={Star} title={filter === 'pending' ? 'Nothing to review' : 'No reviews'} /> : (
             <section aria-label="Reviews" className="grid gap-3">
               {board.items.map((review) => (
-                <article key={review.id} className="flex min-w-0 flex-col gap-3 rounded-2xl border bg-background p-4 md:flex-row md:items-start md:justify-between md:p-5">
+                <article key={review.id} className="flex min-w-0 flex-col gap-3 rounded-[6px] border bg-background p-4 md:flex-row md:items-start md:justify-between md:p-5">
                   <div className="min-w-0 flex-1">
                     <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
                       {review.client

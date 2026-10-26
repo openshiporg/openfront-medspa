@@ -66,7 +66,7 @@ export async function ClientListPage({ searchParams }: { searchParams?: Promise<
           {directory.items.length === 0 ? (
             <EmptyState icon={ContactRound} title={search || filter !== 'all' ? 'No matching clients' : 'No clients yet'} action={<Track><PillLink href="/dashboard/platform/appointments/new">Book an appointment</PillLink></Track>} />
           ) : (
-            <section aria-label="Client list" className="overflow-hidden rounded-2xl border bg-background">
+            <section aria-label="Client list" className="overflow-hidden rounded-[6px] border bg-background">
               <ul className="divide-y">
                 {directory.items.map((item) => (
                   <li key={item.id}>

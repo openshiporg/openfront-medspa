@@ -1,8 +1,8 @@
 import { CalendarHeart, ShieldAlert } from 'lucide-react';
 import { statusFilter } from '@/features/platform/lib/queryParams';
 import {
-  appointmentLabel, appointmentTone, Chip, EmptyState, ErrorState, MetricStrip, Notice, PageHeader, PillLink,
-  PlatformPage, SegmentTabs, StatusDot, Track, usd,
+  appointmentLabel, appointmentTone, Chip, EmptyState, ErrorState, Notice, PageHeader, PillLink,
+  PlatformPage, SegmentTabs, TitleStatus, Track, usd,
 } from '@/features/platform/components/medspa-ui';
 import { getAppointmentOperations, PlatformAppointment } from '../actions/appointments';
 
@@ -98,14 +98,6 @@ export async function AppointmentOperationsPage({ searchParams }: PageProps) {
         }
       />
 
-      <MetricStrip items={[
-        { label: 'Today', value: counts.today ?? 0, tone: 'violet', href: '/dashboard/platform/appointments' },
-        { label: 'Pending', value: counts.pending ?? 0, tone: 'amber', href: '/dashboard/platform/appointments?status=pending' },
-        { label: 'Confirmed', value: counts.confirmed ?? 0, tone: 'emerald', href: '/dashboard/platform/appointments?status=confirmed' },
-        { label: 'Checked in', value: counts.in_progress ?? 0, tone: 'blue', href: '/dashboard/platform/appointments?status=in_progress' },
-        { label: 'No-shows', value: counts.no_show ?? 0, tone: 'orange', href: '/dashboard/platform/appointments?status=no_show' },
-      ]} />
-
       {activeStatus !== 'pending' && (counts.pending ?? 0) > 0 ? (
         <Notice tone="amber" title={`${counts.pending} ${counts.pending === 1 ? 'request needs' : 'requests need'} confirmation`}>
           <Track><PillLink href="/dashboard/platform/appointments?status=pending" size="sm">Review requests</PillLink></Track>
@@ -120,11 +112,11 @@ export async function AppointmentOperationsPage({ searchParams }: PageProps) {
         <div className="grid gap-6">
           {groups.map((group) => (
             <section key={group.key} aria-label={group.label} className="min-w-0">
-              <h2 className="mb-2 flex items-baseline justify-between gap-3 px-1 text-sm font-semibold">
+              <h2 className="mb-2 flex items-baseline justify-between gap-3 px-1 text-[13px] font-semibold">
                 {group.label}
                 <span className="text-xs font-normal tabular-nums text-muted-foreground">{group.items.length}</span>
               </h2>
-              <ol className="divide-y overflow-hidden rounded-2xl border bg-background">
+              <ol className="divide-y overflow-hidden rounded-[6px] border bg-card">
                 {group.items.map((appointment) => <AppointmentRow key={appointment.id} appointment={appointment} />)}
               </ol>
             </section>
@@ -143,20 +135,16 @@ function AppointmentRow({ appointment }: { appointment: PlatformAppointment }) {
   const total = serviceTotal(appointment);
 
   return (
-    <li className="grid gap-3 p-4 sm:grid-cols-[5.5rem_minmax(0,1fr)] md:p-5 lg:grid-cols-[5.5rem_minmax(0,1fr)_auto] lg:items-center">
+    <li className="grid gap-2 px-3 py-3 sm:grid-cols-[5rem_8rem_minmax(0,1fr)] sm:gap-4 lg:grid-cols-[5rem_8rem_minmax(0,1fr)_auto] lg:items-baseline">
       <div className="flex items-baseline gap-2 sm:block">
-        <div className="text-sm font-semibold tabular-nums">{formatTime(appointment.startTime, timeZone)}</div>
+        <div className="text-[13px] font-semibold tabular-nums">{formatTime(appointment.startTime, timeZone)}</div>
         <div className="text-xs text-muted-foreground">{appointment.duration ? `${appointment.duration} min` : timeZone}</div>
       </div>
+      <div><TitleStatus tone={tone}>{appointmentLabel[appointment.status] || appointment.status}</TitleStatus></div>
 
       <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-          <h3 className="min-w-0 truncate text-base font-semibold">{clientName}</h3>
-          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-            <StatusDot tone={tone} />{appointmentLabel[appointment.status] || appointment.status}
-          </span>
-        </div>
-        <p className="mt-0.5 truncate text-sm text-muted-foreground">{treatmentTitle(appointment)} · {providerName}</p>
+        <h3 className="min-w-0 truncate text-[13px] font-semibold">{clientName}</h3>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">{treatmentTitle(appointment)} · {providerName}</p>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {needsClinicalReview(appointment) ? <Chip tone="violet"><ShieldAlert className="inline size-3" /> Clinical review</Chip> : null}
           {appointment.depositAmount ? <Chip tone={appointment.depositPaid ? 'emerald' : 'amber'}>{appointment.depositPaid ? 'Deposit paid' : `Deposit due ${usd(appointment.depositAmount)}`}</Chip> : null}
@@ -171,7 +159,7 @@ function AppointmentRow({ appointment }: { appointment: PlatformAppointment }) {
         )}
       </div>
 
-      <Track className="justify-self-start sm:col-start-2 lg:col-start-auto lg:justify-self-end">
+      <Track className="justify-self-start sm:col-start-3 lg:col-start-auto lg:justify-self-end">
         <PillLink href={`/dashboard/platform/appointments/${appointment.id}`} size="sm">Open</PillLink>
         <PillLink href={`/dashboard/platform/checkout/${appointment.id}`} size="sm" variant="quiet">Checkout</PillLink>
       </Track>
@@ -180,7 +168,7 @@ function AppointmentRow({ appointment }: { appointment: PlatformAppointment }) {
 }
 
 function Note({ title, body }: { title: string; body: string }) {
-  return <div className="min-w-0 rounded-xl bg-muted/50 px-3 py-2"><dt className="text-xs font-medium text-muted-foreground">{title}</dt><dd className="mt-0.5 break-words">{body}</dd></div>;
+  return <div className="min-w-0 rounded-[6px] bg-muted/50 px-3 py-2"><dt className="text-xs font-medium text-muted-foreground">{title}</dt><dd className="mt-0.5 break-words">{body}</dd></div>;
 }
 
 export default AppointmentOperationsPage;

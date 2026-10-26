@@ -53,7 +53,7 @@ export async function StaffListPage() {
       {providers.length === 0 ? (
         <EmptyState icon={UsersRound} title="No providers" />
       ) : (
-        <section aria-label="Providers" className="overflow-hidden rounded-2xl border bg-background">
+        <section aria-label="Providers" className="overflow-hidden rounded-[6px] border bg-background">
           <ul className="divide-y">
             {providers.map((provider) => <ProviderRow key={provider.id} provider={provider} />)}
           </ul>

@@ -231,7 +231,7 @@ export async function MovementsTab({ source, productId }: { source: string; prod
           <input type="hidden" name="tab" value="movements" />
           {source !== 'all' ? <input type="hidden" name="source" value={source} /> : null}
           <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">Product
-            <select name="product" defaultValue={productId} className="h-10 min-w-0 max-w-[14rem] rounded-xl border bg-background px-3 text-sm text-foreground">
+            <select name="product" defaultValue={productId} className="h-10 min-w-0 max-w-[14rem] rounded-[6px] border bg-background px-3 text-sm text-foreground">
               <option value="">All products</option>
               {products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
             </select>

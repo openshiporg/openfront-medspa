@@ -25,7 +25,7 @@ const statusLabel: Record<string, string> = { active: 'Active', paused: 'Paused'
 
 function Row({ title, status, meta, actions, children }: { title: ReactNode; status?: ReactNode; meta?: ReactNode; actions?: ReactNode; children?: ReactNode }) {
   return (
-    <article className="min-w-0 rounded-2xl border bg-background p-4 md:p-5">
+    <article className="min-w-0 rounded-[6px] border bg-background p-4 md:p-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -218,7 +218,7 @@ function ClientPackagesTab({ rows, status }: { rows: ClientPackageRow[]; status:
                     <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true"><div className="h-full rounded-full bg-violet-500" style={{ width: `${percent}%` }} /></div>
                   </div>
                   {row.usageHistory.length ? (
-                    <details className="group rounded-xl border">
+                    <details className="group rounded-[6px] border">
                       <summary className="cursor-pointer list-none px-3 py-2 text-sm font-medium">Usage · {row.usageHistory.length}</summary>
                       <ul className="divide-y border-t">
                         {row.usageHistory.map((usage) => (
@@ -265,7 +265,7 @@ function GiftCardsTab({ rows }: { rows: GiftCardRow[] }) {
             </Track>}
           >
             {row.transactions.length ? (
-              <details className="rounded-xl border">
+              <details className="rounded-[6px] border">
                 <summary className="cursor-pointer list-none px-3 py-2 text-sm font-medium"><CreditCard className="mr-1.5 inline size-3.5 text-muted-foreground" />Transactions · {row.transactions.length}</summary>
                 <ul className="divide-y border-t">
                   {row.transactions.map((tx) => (

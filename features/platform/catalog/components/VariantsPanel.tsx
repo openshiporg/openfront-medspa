@@ -14,7 +14,7 @@ function VariantForm({ serviceId, variant, onDone }: { serviceId: string; varian
   const [state, action, pending] = useActionState(saveVariant, initialState);
   useEffect(() => { if (state.status === 'saved') onDone(); }, [state, onDone]);
   return (
-    <form action={action} className="grid gap-3 rounded-2xl border bg-muted/20 p-4">
+    <form action={action} className="grid gap-3 rounded-[6px] border bg-muted/20 p-4">
       <input type="hidden" name="id" value={variant?.id || ''} />
       <input type="hidden" name="serviceId" value={serviceId} />
       <label className={fieldLabelClass}>Name<input className={inputClass} name="name" required maxLength={120} defaultValue={variant?.name || ''} /></label>

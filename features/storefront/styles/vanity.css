@@ -1,0 +1,395 @@
+@import "./vanity-tokens.css";
+
+/* The vanity: a black-lacquer dressing room. One lit mirror frames the practice's photograph
+   with a row of warm bulbs along its edge; brass rules divide everything else; every bookable
+   time is a bulb that lights. See .impeccable/surfaces/features-storefront.md. */
+
+.storefront { overflow-x: clip; }
+
+/* ── Type ─────────────────────────────────────────────────────────────── */
+
+.sf-display {
+  font-family: var(--sf-font-display);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+.sf-display em { font-style: italic; color: inherit; }
+
+/* Side notes and labels: small sentence case in the body face, never tracked capitals. */
+.sf-eyebrow {
+  font-family: var(--sf-font-body);
+  font-size: var(--sf-text-xs);
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--sf-ink-3);
+}
+
+.sf-lead { max-width: 54ch; font-size: var(--sf-text-lg); line-height: 1.55; color: var(--sf-ink-2); text-wrap: pretty; }
+.sf-num { font-variant-numeric: tabular-nums lining-nums; letter-spacing: 0; }
+.sf-muted { color: var(--sf-ink-3); }
+
+.sf-link {
+  color: var(--sf-ink);
+  text-decoration: underline;
+  text-decoration-color: var(--sf-brass-2);
+  text-underline-offset: 0.22em;
+  transition: text-decoration-color var(--sf-dur-short) var(--sf-ease-out);
+}
+.sf-link:hover { text-decoration-color: var(--sf-bulb); }
+
+/* ── Layout ───────────────────────────────────────────────────────────── */
+
+.sf-container { width: 100%; max-width: 78rem; margin-inline: auto; padding-inline: 1rem; }
+.sf-container-narrow { width: 100%; max-width: 44rem; margin-inline: auto; padding-inline: 1rem; }
+@media (min-width: 640px) { .sf-container, .sf-container-narrow { padding-inline: 1.5rem; } }
+@media (min-width: 1024px) { .sf-container { padding-inline: 2rem; } }
+
+.sf-page-pad { padding-block: var(--sf-space-lg) var(--sf-space-2xl); }
+.sf-section { padding-block: var(--sf-space-xl); }
+@media (min-width: 768px) {
+  .sf-page-pad { padding-block: var(--sf-space-xl) var(--sf-space-2xl); }
+  .sf-section { padding-block: var(--sf-space-2xl); }
+}
+
+.sf-rule { border: 0; border-top: 1px solid var(--sf-rule); }
+
+/* A flat band of the vanity top, ruled in brass top and bottom. */
+.sf-band { background: var(--sf-paper-2); border-block: 1px solid var(--sf-brass-2); }
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
+
+.sf-track { display: inline-flex; max-width: 100%; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sf-track-block { display: flex; width: 100%; }
+.sf-track-block > .sf-pill { flex: 1 1 0; }
+.sf-track-scroll { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.sf-track-scroll::-webkit-scrollbar { display: none; }
+
+/* A brass-ruled block; the primary is a lit bulb. */
+.sf-pill {
+  display: inline-flex;
+  min-height: 2.75rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0 1.125rem;
+  border: 1px solid var(--sf-rule-strong);
+  border-radius: var(--sf-radius-md);
+  background: transparent;
+  color: var(--sf-ink);
+  font-family: var(--sf-font-body);
+  font-size: var(--sf-text-sm);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color var(--sf-dur-short) var(--sf-ease-out), border-color var(--sf-dur-short) var(--sf-ease-out), color var(--sf-dur-short) var(--sf-ease-out), transform 140ms var(--sf-ease-out);
+}
+.sf-pill:active { transform: translateY(1px); }
+.sf-pill svg { width: 1rem; height: 1rem; flex-shrink: 0; }
+@media (hover: hover) and (pointer: fine) { .sf-pill:hover { border-color: var(--sf-brass); } }
+
+.sf-pill-primary { border-color: var(--sf-bulb); background: var(--sf-bulb); color: var(--sf-bulb-ink); font-weight: 600; }
+@media (hover: hover) and (pointer: fine) { .sf-pill-primary:hover { background: #fff6e2; border-color: #fff6e2; } }
+
+.sf-pill-quiet { border-color: transparent; color: var(--sf-ink-2); }
+@media (hover: hover) and (pointer: fine) { .sf-pill-quiet:hover { border-color: transparent; color: var(--sf-ink); text-decoration: underline; text-decoration-color: var(--sf-brass); text-underline-offset: 0.3em; } }
+
+.sf-pill[aria-current="page"],
+.sf-pill[aria-current="step"],
+.sf-pill[aria-pressed="true"] { border-color: var(--sf-brass); background: var(--sf-paper-3); color: var(--sf-ink); }
+
+.sf-pill-sm { min-height: 2.25rem; padding: 0 0.875rem; font-size: var(--sf-text-xs); }
+.sf-pill-icon { width: 2.75rem; padding: 0; }
+.sf-pill:disabled, .sf-pill[aria-disabled="true"] { cursor: not-allowed; opacity: 0.45; }
+
+.sf-pill:focus-visible, .sf-option:focus-visible, .sf-slot:focus-visible, .sf-date:focus-visible,
+.sf-link:focus-visible, .sf-ledger-row:focus-visible, .sf-card-link:focus-visible {
+  outline: 2px solid var(--sf-focus);
+  outline-offset: 2px;
+}
+
+/* ── Status ───────────────────────────────────────────────────────────── */
+
+.sf-dot { display: inline-block; width: 0.5rem; height: 0.5rem; flex-shrink: 0; border-radius: 999px; background: var(--sf-off); }
+.sf-dot[data-tone="ok"] { background: var(--sf-ok); }
+.sf-dot[data-tone="wait"] { background: var(--sf-wait); }
+.sf-dot[data-tone="stop"] { background: var(--sf-stop); }
+.sf-dot[data-tone="accent"] { background: var(--sf-accent); }
+
+.sf-status { display: inline-flex; align-items: center; gap: 0.5rem; font-size: var(--sf-text-xs); font-weight: 500; color: var(--sf-ink-2); white-space: nowrap; }
+.sf-title-line { display: flex; flex-wrap: wrap; align-items: center; column-gap: 0.875rem; row-gap: 0.5rem; }
+
+/* ── Surfaces: ruled, not boxed ──────────────────────────────────────── */
+
+.sf-card { border: 1px solid var(--sf-rule); border-radius: var(--sf-radius-lg); background: var(--sf-paper-2); }
+.sf-card-link { display: block; color: inherit; text-decoration: none; transition: border-color var(--sf-dur-short) var(--sf-ease-out), background-color var(--sf-dur-short) var(--sf-ease-out); }
+@media (hover: hover) and (pointer: fine) { .sf-card-link:hover { border-color: var(--sf-brass-2); } }
+
+.sf-well { border: 1px solid var(--sf-rule); border-radius: var(--sf-radius-md); background: var(--sf-paper-2); }
+
+.sf-state { display: grid; justify-items: start; gap: var(--sf-space-sm); padding: var(--sf-space-lg); border: 1px solid var(--sf-rule); border-radius: var(--sf-radius-lg); background: var(--sf-paper-2); }
+.sf-state[role="alert"] { border-color: color-mix(in oklch, var(--sf-wait) 45%, var(--sf-rule)); background: color-mix(in oklch, var(--sf-wait-ring) 45%, var(--sf-paper-2)); }
+.sf-state-center { justify-items: center; text-align: center; }
+
+.sf-alert { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.875rem 1rem; border: 1px solid color-mix(in oklch, var(--sf-stop) 35%, var(--sf-rule)); border-radius: var(--sf-radius-md); background: color-mix(in oklch, var(--sf-stop-ring) 50%, var(--sf-paper-2)); font-size: var(--sf-text-sm); color: var(--sf-ink); }
+.sf-alert .sf-dot { margin-top: 0.4rem; }
+
+/* ── Frames: the mirror ──────────────────────────────────────────────── */
+
+/* An empty frame: the vanity top behind brass. */
+.sf-dew { background: var(--sf-paper-3); }
+
+.sf-lens, .sf-capsule {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: var(--sf-radius-md);
+  background: var(--sf-paper-3);
+  container-type: inline-size;
+}
+.sf-lens { aspect-ratio: 1; }
+.sf-capsule { aspect-ratio: 4 / 5; }
+.sf-lens::after, .sf-capsule::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--sf-brass) 55%, transparent);
+  pointer-events: none;
+}
+.sf-lens img, .sf-capsule img { width: 100%; height: 100%; object-fit: cover; transition: transform 900ms var(--sf-ease-out); }
+@media (hover: hover) and (pointer: fine) {
+  .sf-card-link:hover .sf-lens img, .sf-card-link:hover .sf-capsule img { transform: scale(1.03); }
+}
+
+.sf-monogram {
+  display: flex; width: 100%; height: 100%; align-items: center; justify-content: center;
+  font-family: var(--sf-font-display); font-size: clamp(1rem, 38cqi, 4.5rem); font-style: italic; letter-spacing: -0.03em;
+  color: var(--sf-brass);
+}
+
+/* The lit mirror: a brass-ruled frame on the vanity top with a row of bulbs along its top edge. */
+.sf-mirror {
+  position: relative;
+  padding: 2.25rem 1rem 1rem;
+  border: 1px solid var(--sf-brass-2);
+  border-radius: var(--sf-radius-md);
+  background: var(--sf-paper-2);
+}
+.sf-mirror .sf-capsule { width: 100%; }
+.sf-bulbs {
+  position: absolute;
+  inset: 0.75rem 1rem auto;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.sf-bulb {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 999px;
+  background: var(--sf-bulb);
+  box-shadow: inset 0 -2px 0 rgb(0 0 0 / 0.18), 0 2px 3px -1px rgb(0 0 0 / 0.6);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sf-bulbs .sf-bulb { animation: sf-bulb-on 420ms var(--sf-ease-out) both; }
+  .sf-bulbs .sf-bulb:nth-child(2) { animation-delay: 70ms; }
+  .sf-bulbs .sf-bulb:nth-child(3) { animation-delay: 140ms; }
+  .sf-bulbs .sf-bulb:nth-child(4) { animation-delay: 210ms; }
+  .sf-bulbs .sf-bulb:nth-child(5) { animation-delay: 280ms; }
+  .sf-bulbs .sf-bulb:nth-child(6) { animation-delay: 350ms; }
+  .sf-bulbs .sf-bulb:nth-child(7) { animation-delay: 420ms; }
+  .sf-bulbs .sf-bulb:nth-child(n + 8) { animation-delay: 490ms; }
+}
+@keyframes sf-bulb-on { from { background: var(--sf-bulb-off); } }
+
+/* ── Header ───────────────────────────────────────────────────────────── */
+
+.sf-header { position: sticky; top: 0; z-index: 50; border-bottom: 1px solid var(--sf-rule); background: var(--sf-paper); }
+.sf-header-row { display: flex; min-height: 4.25rem; align-items: center; justify-content: space-between; gap: 1rem; }
+.sf-sheet { border-top: 1px solid var(--sf-rule); background: var(--sf-paper); }
+.sf-sheet-link {
+  display: flex; min-height: 3.25rem; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid var(--sf-rule); font-family: var(--sf-font-display); font-size: var(--sf-text-2xl); color: var(--sf-ink); text-decoration: none;
+}
+.sf-sheet-link[aria-current="page"] { color: var(--sf-brass); }
+.sf-mobile-bar {
+  position: fixed; inset-inline: 0; bottom: 0; z-index: 40;
+  padding: 0.625rem 1rem calc(0.625rem + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--sf-brass-2); background: var(--sf-paper);
+}
+.sf-mobile-bar-space { height: 4.5rem; }
+@media (min-width: 768px) { .sf-mobile-bar, .sf-mobile-bar-space { display: none; } }
+
+/* ── Hero: the name beside the mirror ────────────────────────────────── */
+
+.sf-hero { position: relative; border-bottom: 1px solid var(--sf-rule); }
+.sf-hero-grid { position: relative; display: grid; gap: var(--sf-space-lg); padding-block: var(--sf-space-lg) var(--sf-space-xl); }
+@media (min-width: 1024px) {
+  .sf-hero-grid { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); align-items: center; gap: var(--sf-space-xl); padding-block: var(--sf-space-xl); }
+}
+.sf-hero-notes { display: grid; align-content: start; gap: var(--sf-space-md); }
+.sf-hero-media { position: relative; width: 100%; }
+
+.sf-facts { display: grid; grid-template-columns: minmax(0, 1fr); border-top: 1px solid var(--sf-rule); }
+.sf-facts > div { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding: 0.75rem 0; border-bottom: 1px solid var(--sf-rule); }
+.sf-facts dt { margin: 0; }
+.sf-facts dd { font-size: var(--sf-text-md); color: var(--sf-ink); }
+
+/* ── The treatment menu: one ruled line per treatment, duration then price ── */
+
+.sf-ledger { display: grid; border-top: 1px solid var(--sf-brass-2); }
+.sf-ledger-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: 1rem;
+  row-gap: 0.25rem;
+  padding: 1rem 0.25rem;
+  border-bottom: 1px solid var(--sf-rule);
+  color: inherit;
+  text-decoration: none;
+  transition: background-color var(--sf-dur-short) var(--sf-ease-out), padding-inline var(--sf-dur-short) var(--sf-ease-out);
+}
+@media (hover: hover) and (pointer: fine) { a.sf-ledger-row:hover { padding-inline: 0.75rem; background: var(--sf-paper-2); } }
+.sf-ledger-index { display: none; }
+.sf-ledger-name { font-family: var(--sf-font-display); font-size: var(--sf-text-2xl); line-height: 1.1; overflow-wrap: anywhere; }
+.sf-ledger-figures {
+  display: grid;
+  grid-template-columns: auto 6rem auto;
+  align-items: baseline;
+  justify-items: end;
+  gap: 1.5rem;
+  font-variant-numeric: tabular-nums lining-nums;
+  white-space: nowrap;
+}
+.sf-ledger-figures .sf-muted { font-size: var(--sf-text-sm); color: var(--sf-ink-3); }
+.sf-ledger-figures > :nth-child(2) { font-family: var(--sf-font-display); font-size: var(--sf-text-xl); color: var(--sf-brass); }
+@media (max-width: 599px) {
+  .sf-ledger-row { grid-template-columns: minmax(0, 1fr); }
+  .sf-ledger-figures { justify-content: start; justify-items: start; grid-template-columns: auto auto auto; }
+}
+
+/* ── Category index ───────────────────────────────────────────────────── */
+
+.sf-chip-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.sf-chip {
+  display: inline-flex; min-height: 2.25rem; align-items: center; gap: 0.5rem; padding: 0 0.75rem;
+  border: 1px solid var(--sf-rule-strong); border-radius: var(--sf-radius-sm);
+  font-size: var(--sf-text-sm); color: var(--sf-ink-2); text-decoration: none; white-space: nowrap;
+}
+@media (hover: hover) and (pointer: fine) { a.sf-chip:hover { border-color: var(--sf-brass); color: var(--sf-ink); } }
+@media (min-width: 1024px) {
+  .sf-jump-list { display: grid; gap: 0; }
+  .sf-jump-list .sf-chip { width: 100%; justify-content: space-between; padding-inline: 0; border-width: 0 0 1px; border-color: var(--sf-rule); border-radius: 0; }
+}
+
+/* ── Forms ────────────────────────────────────────────────────────────── */
+
+.sf-field { display: grid; min-width: 0; gap: 0.5rem; font-size: var(--sf-text-sm); font-weight: 500; color: var(--sf-ink-2); }
+.sf-input {
+  width: 100%; min-height: 3rem; padding: 0.75rem 0.95rem;
+  border: 1px solid var(--sf-rule-strong); border-radius: var(--sf-radius-md); background: var(--sf-paper-2);
+  font: inherit; font-size: var(--sf-text-md); font-weight: 400; color: var(--sf-ink);
+  transition: border-color var(--sf-dur-short) var(--sf-ease-out);
+}
+.sf-input::placeholder { color: var(--sf-ink-3); }
+.sf-input:focus { outline: none; border-color: var(--sf-bulb); }
+textarea.sf-input { min-height: 7rem; resize: vertical; }
+
+/* ── Booking: available times are bulbs ──────────────────────────────── */
+
+.sf-book-grid { display: grid; gap: var(--sf-space-lg); }
+@media (min-width: 1024px) {
+  .sf-book-grid { grid-template-columns: minmax(0, 1fr) 20rem; align-items: start; }
+  .sf-ticket { position: sticky; top: 6rem; }
+}
+
+.sf-option {
+  display: grid; width: 100%; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 1rem;
+  padding: 0.875rem 1rem; border: 1px solid var(--sf-rule); border-radius: var(--sf-radius-md); background: var(--sf-paper-2);
+  color: inherit; font: inherit; text-align: left; cursor: pointer;
+  transition: border-color var(--sf-dur-short) var(--sf-ease-out), background-color var(--sf-dur-short) var(--sf-ease-out);
+}
+@media (hover: hover) and (pointer: fine) { .sf-option:hover { border-color: var(--sf-brass-2); } }
+.sf-option[aria-pressed="true"] { border-color: var(--sf-bulb); background: var(--sf-paper-3); }
+.sf-option .sf-lens { width: 3.25rem; }
+.sf-option:not(:has(> .sf-lens)) { grid-template-columns: minmax(0, 1fr) auto; }
+
+.sf-date-strip { display: flex; gap: 0.5rem; margin-inline: -1rem; padding: 0.25rem 1rem 0.75rem; overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; }
+.sf-date-strip::-webkit-scrollbar { display: none; }
+@media (min-width: 640px) { .sf-date-strip { margin-inline: 0; padding-inline: 0; flex-wrap: wrap; overflow: visible; } }
+
+.sf-date {
+  display: grid; min-width: 3.75rem; flex-shrink: 0; justify-items: center; gap: 0.125rem; padding: 0.625rem 0.5rem;
+  border: 1px solid var(--sf-rule); border-radius: var(--sf-radius-md); background: var(--sf-paper-2); color: var(--sf-ink);
+  font: inherit; cursor: pointer; scroll-snap-align: start;
+  transition: border-color var(--sf-dur-short) var(--sf-ease-out), background-color var(--sf-dur-short) var(--sf-ease-out);
+}
+@media (hover: hover) and (pointer: fine) { .sf-date:hover { border-color: var(--sf-brass-2); } }
+.sf-date:disabled { cursor: not-allowed; opacity: 0.38; }
+.sf-date[aria-pressed="true"] { border-color: var(--sf-brass); background: var(--sf-paper-3); }
+.sf-date-day { font-family: var(--sf-font-display); font-size: var(--sf-text-xl); line-height: 1; }
+
+.sf-slot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(6.25rem, 1fr)); gap: 0.5rem; }
+/* An open time is an unlit bulb on the vanity; the chosen one lights. */
+.sf-slot {
+  position: relative;
+  min-height: 2.75rem;
+  padding-left: 1.25rem;
+  border: 1px solid var(--sf-rule-strong);
+  border-radius: var(--sf-radius-md);
+  background: var(--sf-paper-2);
+  color: var(--sf-ink);
+  font-family: var(--sf-font-body);
+  font-size: var(--sf-text-sm);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: border-color var(--sf-dur-short) var(--sf-ease-out), background-color 220ms var(--sf-ease-out), color 220ms var(--sf-ease-out);
+}
+.sf-slot::before {
+  content: "";
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-top: -0.25rem;
+  border-radius: 999px;
+  background: var(--sf-bulb-off);
+  transition: background-color 220ms var(--sf-ease-out);
+}
+@media (hover: hover) and (pointer: fine) { .sf-slot:hover { border-color: var(--sf-brass); } .sf-slot:hover::before { background: var(--sf-brass); } }
+.sf-slot[aria-pressed="true"] { border-color: var(--sf-bulb); background: var(--sf-bulb); color: var(--sf-bulb-ink); font-weight: 600; }
+.sf-slot[aria-pressed="true"]::before { background: var(--sf-bulb-ink); }
+
+.sf-ticket-row { display: flex; justify-content: space-between; gap: 1rem; padding: 0.75rem 0; border-bottom: 1px solid var(--sf-rule); font-size: var(--sf-text-sm); }
+.sf-ticket-row:last-child { border-bottom: 0; }
+.sf-ticket-row dt { color: var(--sf-ink-3); }
+.sf-ticket-row dd { min-width: 0; text-align: right; font-weight: 500; overflow-wrap: anywhere; }
+
+.sf-spinner { display: inline-block; width: 1rem; height: 1rem; border: 2px solid currentColor; border-right-color: transparent; border-radius: 999px; animation: sf-spin 700ms linear infinite; }
+@keyframes sf-spin { to { transform: rotate(360deg); } }
+
+/* ── Hours table ──────────────────────────────────────────────────────── */
+
+.sf-hours { display: grid; }
+.sf-hours > div { display: flex; justify-content: space-between; gap: 1rem; padding: 0.75rem 0; border-bottom: 1px solid var(--sf-rule); font-size: var(--sf-text-sm); }
+.sf-hours > div[data-today="true"] { color: var(--sf-ink); font-weight: 600; }
+.sf-hours > div[data-today="true"] dt::after { content: " · today"; font-weight: 400; color: var(--sf-ink-3); }
+
+/* ── Motion ───────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .storefront *, .storefront *::before, .storefront *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* The mirror holds the practice photograph wide on a desk, tall on a phone. */
+.sf-mirror .sf-capsule img { object-position: 50% 22%; }
+@media (min-width: 1024px) { .sf-mirror .sf-capsule { aspect-ratio: 6 / 5; max-height: calc(100svh - 12rem); } }

@@ -25,7 +25,7 @@ export function LogoPicker({ initialSvg, initialHue, displayName }: { initialSvg
     <legend className="mb-3 text-sm font-semibold">Logo</legend>
     <input type="hidden" name="logoSvg" value={svg} />
 
-    <div className="flex min-w-0 items-center gap-3 rounded-2xl border bg-muted/30 p-4" aria-label="Current logo preview">
+    <div className="flex min-w-0 items-center gap-3 rounded-[6px] border bg-muted/30 p-4" aria-label="Current logo preview">
       <span className="block size-10 shrink-0 overflow-hidden [&>svg]:block [&>svg]:size-full" style={{ filter: logoHueFilter(hue) }} dangerouslySetInnerHTML={{ __html: safe || DEFAULT_LOGO_SVG }} aria-hidden="true" />
       <span className="min-w-0 truncate text-lg font-semibold tracking-tight">{displayName || 'Practice name'}</span>
       <output className="ml-auto flex shrink-0 items-center gap-1.5 text-xs tabular-nums text-muted-foreground"><span aria-hidden="true" className="size-3 rounded-full" style={{ background: brandHueColor(hue) }} />{hue}°</output>
@@ -47,9 +47,9 @@ export function LogoPicker({ initialSvg, initialHue, displayName }: { initialSvg
       <button type="button" className={pillClass('quiet', 'sm')} onClick={() => { setSvg(''); setDraft(''); setCustomMode(false) }}>Reset logo</button>
     </div>
 
-    {customMode && <div className="grid gap-3 rounded-2xl border p-4">
+    {customMode && <div className="grid gap-3 rounded-[6px] border p-4">
       <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">Custom SVG
-        <textarea ref={input} aria-label="Custom SVG" maxLength={100000} value={draft} onChange={event => setDraft(event.target.value)} aria-invalid={Boolean(draft && !safeDraft)} className="min-h-32 w-full min-w-0 rounded-xl border bg-background p-3 font-mono text-xs text-foreground" spellCheck={false} />
+        <textarea ref={input} aria-label="Custom SVG" maxLength={100000} value={draft} onChange={event => setDraft(event.target.value)} aria-invalid={Boolean(draft && !safeDraft)} className="min-h-32 w-full min-w-0 rounded-[6px] border bg-background p-3 font-mono text-xs text-foreground" spellCheck={false} />
       </label>
       {draft && !safeDraft ? <p role="alert" className="text-sm text-destructive">Enter a valid, safe SVG document.</p> : null}
       <div className={`${trackClass} w-fit flex-wrap`}>
@@ -68,7 +68,7 @@ function Tile({ label, active, onSelect, svg, hue }: { label: string; active: bo
     aria-label={label}
     title={label}
     onClick={onSelect}
-    className={`relative flex aspect-square min-w-0 items-center justify-center rounded-xl border bg-background p-2.5 transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? 'border-violet-500 shadow-[0_0_0_3px_rgb(139_92_246/0.18)]' : 'hover:bg-muted/50'}`}
+    className={`relative flex aspect-square min-w-0 items-center justify-center rounded-[6px] border bg-background p-2.5 transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${active ? 'border-violet-500 shadow-[0_0_0_3px_rgb(139_92_246/0.18)]' : 'hover:bg-muted/50'}`}
   >
     <span className="block size-full overflow-hidden [&>svg]:block [&>svg]:size-full" style={{ filter: logoHueFilter(hue) }} dangerouslySetInnerHTML={{ __html: svg }} aria-hidden="true" />
     {active ? <span className="absolute right-1 top-1 flex size-4 items-center justify-center rounded-full bg-violet-600 text-white"><Check className="size-3" /></span> : null}

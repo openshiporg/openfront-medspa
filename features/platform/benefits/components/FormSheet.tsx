@@ -94,9 +94,9 @@ export function ServicePicker({ name, services, selected = [] }: { name: string;
   return (
     <fieldset className="grid gap-2">
       <legend className="mb-1.5 text-xs font-medium text-muted-foreground">Treatments</legend>
-      <div className="grid max-h-60 gap-1 overflow-y-auto rounded-xl border p-2">
+      <div className="grid max-h-60 gap-1 overflow-y-auto rounded-[6px] border p-2">
         {services.map((service) => (
-          <label key={service.id} className="flex min-h-9 cursor-pointer items-center gap-2.5 rounded-lg px-2 text-sm hover:bg-muted/60">
+          <label key={service.id} className="flex min-h-9 cursor-pointer items-center gap-2.5 rounded-[5px] px-2 text-sm hover:bg-muted/60">
             <input type="checkbox" name={name} value={service.id} defaultChecked={chosen.has(service.id)} className="size-4 accent-violet-600" />
             <span className="min-w-0 truncate">{service.name}</span>
           </label>

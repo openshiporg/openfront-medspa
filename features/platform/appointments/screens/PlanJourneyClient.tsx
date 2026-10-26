@@ -31,7 +31,7 @@ function AttemptForm({ children, makeInput, send, label, onAttemptChange }: { ch
     } catch { setResult({ success: false, error: 'No acknowledgement. Retry the same request or reload history first.' }); }
     finally { setBusy(false); }
   }
-  return <form onSubmit={submit} className="grid min-w-0 gap-4 rounded-2xl border bg-muted/30 p-4">
+  return <form onSubmit={submit} className="grid min-w-0 gap-4 rounded-[6px] border bg-muted/30 p-4">
     <fieldset disabled={busy || Boolean(original.current)} className="grid min-w-0 gap-3 disabled:opacity-70">{children}</fieldset>
     {original.current && <p className="break-all text-xs text-muted-foreground">Request key {String(original.current.idempotencyKey)} · retries resend the original values</p>}
     {result && <p role={result.success ? 'status' : 'alert'} className="text-sm">{result.success ? `Recorded ${result.recordId || result.appointmentId}.` : result.error || 'Request not acknowledged.'}</p>}
@@ -80,7 +80,7 @@ export function PlanJourneyClient({ data }: { data: PlanJourney }) {
             <p className="break-all text-xs text-muted-foreground">Approval hash {plan.evidenceHash || 'not recorded'}</p>
             {!plan.receiptAvailable && <Notice title="Legacy approval without receipt">Approve a superseding plan to book from it.</Notice>}
             {plan.items.map(item => (
-              <div key={item.id} className="grid min-w-0 gap-3 rounded-xl border p-3">
+              <div key={item.id} className="grid min-w-0 gap-3 rounded-[6px] border p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="min-w-0 truncate text-sm font-medium">{item.title}</span>
                   <span className="flex flex-wrap gap-1.5">
@@ -131,7 +131,7 @@ export function PlanJourneyClient({ data }: { data: PlanJourney }) {
     <section className="grid min-w-0 gap-3">
       <h2 className="px-1 text-sm font-semibold">History</h2>
       {!data.history.length ? <EmptyState icon={ClipboardList} title="No history events" /> : (
-        <ol className="divide-y overflow-hidden rounded-2xl border bg-background">
+        <ol className="divide-y overflow-hidden rounded-[6px] border bg-background">
           {data.history.map(event => (
             <li key={event.id} className="grid gap-1 break-all p-3 text-xs md:px-5">
               <p className="flex flex-wrap items-center gap-2 text-sm font-medium"><StatusDot tone="violet" />{humanize(event.action)}<span className="text-xs font-normal text-muted-foreground">{new Date(event.occurredAt).toLocaleString()}</span></p>
@@ -148,7 +148,7 @@ export function PlanJourneyClient({ data }: { data: PlanJourney }) {
 function HistoryPagination({ data }: { data: PlanJourney }) {
   const href = (kind: 'plans' | 'appointments' | 'history', next: number) => `/dashboard/platform/appointments/plans/${data.consultation.id}?planPage=${kind === 'plans' ? next : data.pages.plans}&appointmentPage=${kind === 'appointments' ? next : data.pages.appointments}&historyPage=${kind === 'history' ? next : data.pages.history}`;
   const labels = { plans: 'Plans', appointments: 'Appointments', history: 'History' } as const;
-  return <nav aria-label="Plan and history pagination" className="grid gap-2 rounded-2xl border bg-background p-3 text-sm md:px-5">{(['plans', 'appointments', 'history'] as const).map(kind => {
+  return <nav aria-label="Plan and history pagination" className="grid gap-2 rounded-[6px] border bg-background p-3 text-sm md:px-5">{(['plans', 'appointments', 'history'] as const).map(kind => {
     const more = data.pages[kind === 'plans' ? 'morePlans' : kind === 'appointments' ? 'moreAppointments' : 'moreHistory'];
     return <div key={kind} className="flex flex-wrap items-center justify-between gap-3">
       <span className="text-muted-foreground">{labels[kind]} · page {data.pages[kind] + 1}</span>

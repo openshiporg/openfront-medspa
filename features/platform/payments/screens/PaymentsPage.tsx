@@ -72,7 +72,7 @@ export async function PaymentsPage({ searchParams }: { searchParams?: Promise<{ 
       </div>
 
       {!result.payments.length ? <EmptyState icon={Banknote} title="No payments in this view" /> : (
-        <section className="overflow-hidden rounded-2xl border bg-background">
+        <section className="overflow-hidden rounded-[6px] border bg-background">
           <ul className="divide-y">
             {result.payments.map((payment) => {
               const refunded = Number(payment.refundedAmount || 0);

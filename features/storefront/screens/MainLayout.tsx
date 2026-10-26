@@ -1,4 +1,4 @@
-import localFont from "next/font/local"
+import { Bodoni_Moda, Jost } from "next/font/google"
 import type { CSSProperties } from "react"
 import { Metadata } from "next"
 import Nav from "@/features/storefront/modules/layout/templates/nav"
@@ -6,17 +6,12 @@ import Footer from "@/features/storefront/modules/layout/templates/footer"
 import { getStorefrontBrand } from "@/features/storefront/lib/data/brand"
 import { PillLink, Track } from "@/features/storefront/components/ui/primitives"
 import { brandHueColor } from "@/features/lib/store-logo"
-import "../styles/storefront.css"
+import "../styles/vanity.css"
 
-// One face for the whole storefront: EB Garamond (OFL, vendored with its licence), roman and italic.
-const display = localFont({
-  src: [
-    { path: "../../../public/fonts/eb-garamond.woff2", style: "normal", weight: "400 800" },
-    { path: "../../../public/fonts/eb-garamond-italic.woff2", style: "italic", weight: "400 800" },
-  ],
-  variable: "--font-sf-display",
-  display: "swap",
-})
+// The vanity's two voices: Bodoni Moda, a beauty-editorial didone, letters names, headings and
+// prices; Jost, from the beauty counter's Futura tradition, sets everything read.
+const display = Bodoni_Moda({ subsets: ["latin"], style: ["normal", "italic"], variable: "--font-sf-display", display: "swap" })
+const body = Jost({ subsets: ["latin"], variable: "--font-sf-body", display: "swap" })
 
 type StorefrontStyle = CSSProperties & Record<`--sf-${string}`, string>
 
@@ -31,7 +26,7 @@ function theme(hue: number): StorefrontStyle {
   }
 }
 
-const fonts = display.variable
+const fonts = `${display.variable} ${body.variable}`
 
 export async function MainLayout({ children }: { children: React.ReactNode }) {
   const brand = await getStorefrontBrand()

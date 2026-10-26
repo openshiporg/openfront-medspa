@@ -98,7 +98,7 @@ export function AppointmentSchedulingPanel({ appointmentId, customerOnly = false
     </form>;
   }
   const tone = data ? ({ pending: 'bg-amber-500', confirmed: 'bg-emerald-500', in_progress: 'bg-blue-500', completed: 'bg-zinc-400', cancelled: 'bg-rose-500', no_show: 'bg-orange-500' } as Record<string, string>)[data.status] || 'bg-zinc-400' : 'bg-zinc-300';
-  return <section className="grid min-w-0 gap-4 rounded-2xl border bg-background p-4 text-foreground md:p-5" aria-label="Controlled appointment scheduling">
+  return <section className="grid min-w-0 gap-4 rounded-[6px] border bg-background p-4 text-foreground md:p-5" aria-label="Controlled appointment scheduling">
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
       <h2 className="text-sm font-semibold">{customerOnly ? 'Cancel request' : 'Scheduling'}</h2>
       {data && <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><span aria-hidden="true" className={`size-2 rounded-full ${tone}`} />{data.status.replaceAll('_', ' ')}</span>}

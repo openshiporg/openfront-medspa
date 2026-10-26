@@ -121,7 +121,7 @@ export function FormEditorSheet({ kind, row, links, triggerLabel, triggerVariant
                   {links.map((option) => {
                     const checked = linked.includes(option.value);
                     return (
-                      <label key={option.value} className={cn('inline-flex h-8 cursor-pointer items-center gap-2 rounded-full border px-3 text-xs font-medium', checked ? 'border-violet-500 bg-violet-50 text-violet-800 dark:bg-violet-950/40 dark:text-violet-200' : 'bg-background text-muted-foreground')}>
+                      <label key={option.value} className={cn('inline-flex h-8 cursor-pointer items-center gap-2 rounded-[5px] border px-3 text-xs font-medium', checked ? 'border-violet-500 bg-violet-50 text-violet-800 dark:bg-violet-950/40 dark:text-violet-200' : 'bg-background text-muted-foreground')}>
                         <input type="checkbox" className="sr-only" checked={checked} onChange={() => setLinked((current) => checked ? current.filter((id) => id !== option.value) : [...current, option.value])} />{option.label}
                       </label>
                     );
@@ -133,7 +133,7 @@ export function FormEditorSheet({ kind, row, links, triggerLabel, triggerVariant
             <fieldset className="grid gap-3">
               <legend className="mb-1 text-xs font-medium text-muted-foreground">Fields</legend>
               {fields.map((field, index) => (
-                <div key={field.key} className="grid gap-3 rounded-xl border bg-muted/20 p-3 sm:grid-cols-[minmax(0,1fr)_10rem]">
+                <div key={field.key} className="grid gap-3 rounded-[6px] border bg-muted/20 p-3 sm:grid-cols-[minmax(0,1fr)_10rem]">
                   <label className={fieldLabelClass}>Label<input className={inputClass} required maxLength={200} value={field.label} onChange={(event) => update(field.key, { label: event.target.value })} /></label>
                   <label className={fieldLabelClass}>Type<select className={inputClass} value={field.type} onChange={(event) => update(field.key, { type: event.target.value as FormFieldType })}>{FIELD_TYPES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
                   {field.type === 'select' || field.type === 'radio' ? (
@@ -142,7 +142,7 @@ export function FormEditorSheet({ kind, row, links, triggerLabel, triggerVariant
                   <div className="flex flex-wrap items-center justify-between gap-2 sm:col-span-2">
                     <div className="flex items-center gap-3">
                       <label className="flex items-center gap-2 text-xs font-medium"><input type="checkbox" className="size-4" checked={field.required} onChange={(event) => update(field.key, { required: event.target.checked })} />Required</label>
-                      <label className="flex items-center gap-1.5 text-xs text-muted-foreground">ID<input className="h-7 w-32 rounded-lg border bg-background px-2 font-mono text-xs" maxLength={64} value={field.id} placeholder={slug(field.label || 'field')} onChange={(event) => update(field.key, { id: event.target.value })} /></label>
+                      <label className="flex items-center gap-1.5 text-xs text-muted-foreground">ID<input className="h-7 w-32 rounded-[5px] border bg-background px-2 font-mono text-xs" maxLength={64} value={field.id} placeholder={slug(field.label || 'field')} onChange={(event) => update(field.key, { id: event.target.value })} /></label>
                     </div>
                     <div className={trackClass}>
                       <button type="button" aria-label="Move up" className={pillClass('quiet', 'sm')} disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp /></button>
