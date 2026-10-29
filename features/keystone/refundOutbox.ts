@@ -98,7 +98,7 @@ export async function enqueueRefund(sudo: Sudo, input: RequestRefundInput) {
   return { refundId: refund.id, attemptId: attempt.id, replayed: false };
 }
 
-async function inTransaction<T>(context: Context, lockKey: string, work: (sudo: Sudo) => Promise<T>): Promise<T> {
+export async function paymentLifecycleTransaction<T>(context: Context, lockKey: string, work: (sudo: Sudo) => Promise<T>): Promise<T> {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
       return await context.transaction(async (tx: Context) => {
@@ -125,7 +125,7 @@ function createStore(context: Context): RefundAttemptStore {
       const row = await sudoRoot.query.RefundAttempt.findOne({ where: { id: attempt.id }, query: "paymentSession { id }" });
       const sessionId = row?.paymentSession?.id;
       if (!sessionId) throw new Error("Refund attempt has no payment session");
-      await inTransaction(context, `session:${sessionId}`, async sudo => {
+      await paymentLifecycleTransaction(context, `session:${sessionId}`, async sudo => {
         const current = await sudo.query.RefundAttempt.findOne({ where: { id: attempt.id }, query: "status" });
         if (current?.status === "succeeded") return; // idempotent: a webhook and the worker may both arrive
         const session = await sudo.query.PaymentSession.findOne({
@@ -151,7 +151,7 @@ function createStore(context: Context): RefundAttemptStore {
     },
 
     async settleFailed(attempt, reason) {
-      await inTransaction(context, `refund:${attempt.refundId}`, async sudo => {
+      await paymentLifecycleTransaction(context, `refund:${attempt.refundId}`, async sudo => {
         const current = await sudo.query.RefundAttempt.findOne({ where: { id: attempt.id }, query: "status" });
         if (current?.status === "failed" || current?.status === "succeeded") return;
         const now = new Date().toISOString();
