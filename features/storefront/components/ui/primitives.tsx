@@ -71,9 +71,13 @@ export function Monogram({ name }: { name: string }) {
 }
 
 /** Circular frame: a service or provider image, or the practice's dew gradient. */
-export function Lens({ src, alt, className = "" }: { src?: string | null; alt?: string; name?: string; className?: string }) {
-  // No image, no frame: a placeholder tile would stand in for content that doesn't exist.
-  if (!src) return null
+export function Lens({ src, alt, name = "", fallback = "none", className = "" }: { src?: string | null; alt?: string; name?: string; fallback?: "none" | "monogram"; className?: string }) {
+  // No image, no frame by default. In mixed lists (booking options) a monogram
+  // tile keeps the column aligned and reads as deliberate, not as a missing photo.
+  if (!src) {
+    if (fallback !== "monogram") return null
+    return <span className={`sf-lens sf-lens-empty block ${className}`}><Monogram name={name} /></span>
+  }
   return (
     <span className={`sf-lens sf-dew block ${className}`}>
       <img src={src} alt={alt || ""} loading="lazy" />

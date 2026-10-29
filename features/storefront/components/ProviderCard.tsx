@@ -19,14 +19,14 @@ export function ProviderCard({ provider, variant = "default", showSpecialization
   if (variant === "compact") {
     const body = (
       <>
-        <Lens src={photoUrl} alt={provider.photo?.altText || name} name={name} className="w-14" />
+        <Lens src={photoUrl} alt={provider.photo?.altText || name} name={name} className="w-14 shrink-0" />
         <span className="min-w-0">
           <span className="sf-display block truncate text-[length:var(--sf-text-lg)]">{name}</span>
           {showSpecializations && treatments.length ? <span className="mt-0.5 block truncate text-[length:var(--sf-text-xs)] text-[var(--sf-ink-3)]">{treatments.join(" · ")}</span> : null}
         </span>
       </>
     )
-    const className = "sf-card flex items-center gap-4 p-3 pr-5"
+    const className = "sf-card sf-card-row p-3 pr-5"
     return linked ? <Link href={`/team/${provider.id}`} className={`${className} sf-card-link`}>{body}</Link> : <div className={className}>{body}</div>
   }
 

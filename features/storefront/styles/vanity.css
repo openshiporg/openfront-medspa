@@ -130,6 +130,8 @@
 .sf-card { border: 1px solid var(--sf-rule); border-radius: var(--sf-radius-lg); background: var(--sf-paper-2); }
 .sf-card-link { display: block; color: inherit; text-decoration: none; transition: border-color var(--sf-dur-short) var(--sf-ease-out), background-color var(--sf-dur-short) var(--sf-ease-out); }
 @media (hover: hover) and (pointer: fine) { .sf-card-link:hover { border-color: var(--sf-brass-2); } }
+/* Compact row card (thumb + name). Declared after .sf-card-link so its display:block does not stack the row. */
+.sf-card-row { display: flex; align-items: center; gap: 1rem; }
 
 .sf-well { border: 1px solid var(--sf-rule); border-radius: var(--sf-radius-md); background: var(--sf-paper-2); }
 
@@ -163,6 +165,8 @@
   box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--sf-brass) 55%, transparent);
   pointer-events: none;
 }
+/* No photo on record: a lettered tile on the vanity top, same frame and brass ring as a photo. */
+.sf-lens-empty { background: radial-gradient(120% 120% at 30% 20%, color-mix(in oklch, var(--sf-brass) 14%, var(--sf-paper-3)), var(--sf-paper-3) 70%); }
 .sf-lens img, .sf-capsule img { width: 100%; height: 100%; object-fit: cover; transition: transform 900ms var(--sf-ease-out); }
 @media (hover: hover) and (pointer: fine) {
   .sf-card-link:hover .sf-lens img, .sf-card-link:hover .sf-capsule img { transform: scale(1.03); }

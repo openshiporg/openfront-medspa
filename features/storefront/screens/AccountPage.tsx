@@ -66,6 +66,7 @@ export async function AccountPage() {
     <div className="sf-container-narrow sf-page-pad">
       <header className="mb-[var(--sf-space-lg)] grid gap-4">
         <h1 className="sf-display text-[length:var(--sf-text-display-s)]">{result.status === "unauthenticated" ? "Your appointments" : "No client profile"}</h1>
+        {result.status === "unauthenticated" ? <p className="max-w-[46ch] text-[length:var(--sf-text-sm)] text-[var(--sf-ink-2)]">Sign in to see your upcoming visits and any intake forms to complete. No account yet? You can book as a guest.</p> : null}
       </header>
       {result.status === "unauthenticated" ? (
         <Track><PillLink href="/account/sign-in" variant="primary">Sign in</PillLink><PillLink href="/account/sign-up">Create account</PillLink></Track>

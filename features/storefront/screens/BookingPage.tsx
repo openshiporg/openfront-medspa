@@ -300,7 +300,7 @@ export function BookingPage({ initialServices = EMPTY_SERVICES, initialContact =
                   <p className="sf-eyebrow">{group.name}</p>
                   {group.services.map((svc) => (
                     <button key={svc.id} type="button" className="sf-option" aria-pressed={svc.id === selectedService} onClick={() => handleServiceSelect(svc.id)}>
-                      <Lens src={getStorefrontImageSrc(svc.image)} alt="" name={svc.name} />
+                      <Lens src={getStorefrontImageSrc(svc.image)} alt="" name={svc.name} fallback="monogram" />
                       <span className="min-w-0">
                         <span className="sf-display block text-[length:var(--sf-text-lg)] leading-tight">{svc.name}</span>
                         <span className="sf-num mt-1 block text-[length:var(--sf-text-xs)] text-[var(--sf-ink-3)]">{formatDuration(svc.baseDuration)}</span>
@@ -330,7 +330,7 @@ export function BookingPage({ initialServices = EMPTY_SERVICES, initialContact =
                     const name = item.user?.name || "Provider"
                     return (
                       <button key={item.id} type="button" className="sf-option" aria-pressed={item.id === selectedProvider} onClick={() => handleProviderSelect(item.id)}>
-                        <Lens src={getStorefrontImageSrc(item.photo)} alt="" name={name} />
+                        <Lens src={getStorefrontImageSrc(item.photo)} alt="" name={name} fallback="monogram" />
                         <span className="min-w-0">
                           <span className="sf-display block truncate text-[length:var(--sf-text-lg)] leading-tight">{name}</span>
                           {item.specializations.length ? <span className="mt-1 block truncate text-[length:var(--sf-text-xs)] text-[var(--sf-ink-3)]">{item.specializations.slice(0, 3).map((value) => value.name).join(" · ")}</span> : null}
