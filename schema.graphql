@@ -14031,9 +14031,10 @@ type Mutation {
   bookAppointment(rescheduleAppointmentId: ID, expectedAppointmentRevision: Int, rescheduleReason: String, planId: ID, planItemId: ID, planClientId: ID, expectedPlanHash: String, expectedResourceIds: [ID!], expectedSupervisorIds: [ID!], serviceIds: [ID!]!, providerId: ID!, locationId: ID, startTime: String!, clientName: String!, clientEmail: String!, clientPhone: String, clientNotes: String, idempotencyKey: String!): BookAppointmentResult
   processPayment(appointmentId: ID!, paymentMethod: String!, providerCode: String, idempotencyKey: String!, tipAmount: Int, discountAmount: Int): ProcessPaymentResult
   confirmPayment(paymentSessionId: ID!): ConfirmPaymentResult
-  refundPayment(paymentSessionId: ID!, amount: Int, reason: String): RefundPaymentResult
+  refundPayment(paymentSessionId: ID!, amount: Int, reason: String, idempotencyKey: String): RefundPaymentResult
   reverseAppointmentSettlement(paymentSessionId: ID!, amount: Int!, reason: String!, idempotencyKey: String!): ReverseAppointmentSettlementResult
   distributeTip(paymentId: ID!): DistributeTipResult
+  retryRefunds: RetryRefundsResult
   purchaseGiftCard(amount: Int!, recipientEmail: String, recipientName: String, message: String, purchaserEmail: String!, purchaserName: String!, providerCode: String, idempotencyKey: String!): PurchaseGiftCardResult
   confirmGiftCardPurchase(paymentSessionId: ID!): ConfirmGiftCardPurchaseResult
   applyGiftCardBalance(giftCardId: ID!, action: String!, amount: Int!, appointmentId: ID, reason: String, idempotencyKey: String!): ApplyGiftCardBalanceResult
@@ -14103,6 +14104,8 @@ type Mutation {
   submitAppointmentReview(appointmentId: ID!, rating: Int!, comment: String, idempotencyKey: String!): SubmitAppointmentReviewResult!
   requestWaitlistSpot(serviceId: ID!, providerId: ID, preferredDays: [String!], preferredTimeRange: String, notes: String, idempotencyKey: String!): RequestWaitlistSpotResult!
   cancelGuestAppointment(appointmentId: ID!, token: String!, reason: String): CancelGuestAppointmentResult!
+  startDepositCheckout(appointmentId: ID!, token: String): StorefrontDepositResult!
+  confirmDepositCheckout(appointmentId: ID!, token: String): StorefrontDepositResult!
   upsertResource(resourceId: ID, expectedRevision: Int, name: String!, type: String!, locationId: ID!, capacity: Int!, isPublic: Boolean!, notes: String, manufacturer: String, model: String, serialNumber: String, maintenanceDueAt: String, calibrationDueAt: String, serviceIds: [ID!]!, idempotencyKey: String!): ResourceUpsertResult
   updateProviderProfile(providerId: ID!, title: String, bio: String, role: String!, tier: String!, status: String!, isActive: Boolean!, isPublic: Boolean!, specializationIds: [ID!]!, locationIds: [ID!]!, idempotencyKey: String!): PracticeAdminWorkflowResult
   upsertLocation(locationId: ID, name: String!, address: String, city: String, state: String, zipCode: String, phone: String, email: String, timezone: String!, hours: JSON!, isActive: Boolean!, idempotencyKey: String!): PracticeAdminWorkflowResult
@@ -14163,6 +14166,14 @@ type ReverseAppointmentSettlementResult {
 
 type DistributeTipResult {
   success: Boolean!
+  error: String
+}
+
+type RetryRefundsResult {
+  success: Boolean!
+  claimed: Int!
+  succeeded: Int!
+  needsReview: Int!
   error: String
 }
 
@@ -14366,6 +14377,13 @@ type CancelGuestAppointmentResult {
   success: Boolean!
   recordId: ID
   error: String
+}
+
+type StorefrontDepositResult {
+  success: Boolean!
+  error: String
+  url: String
+  paid: Boolean
 }
 
 type ResourceUpsertResult {
@@ -14920,6 +14938,9 @@ type StorefrontGuestAppointment {
   locationName: String
   price: Int
   cancellable: Boolean!
+  depositAmount: Int
+  depositPaid: Boolean!
+  depositOnline: Boolean!
 }
 
 union AuthenticatedItem = User
