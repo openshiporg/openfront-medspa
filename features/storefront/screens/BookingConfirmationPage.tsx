@@ -1,12 +1,13 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
-import { getStorefrontVisit } from "../lib/data/visit"
+import { confirmVisitDeposit, getStorefrontVisit } from "../lib/data/visit"
 import { getStorefrontBrand, storefrontMetadata } from "../lib/data/brand"
 import { PillLink, Status, Track } from "../components/ui/primitives"
 import { appointmentStatus, formatDuration, formatPrice } from "../lib/format"
 import { GuestCancelForm } from "../components/GuestCancelForm"
+import { DepositPay } from "../components/DepositPay"
 
-interface Props { params: Promise<{ id: string }>; searchParams?: Promise<{ token?: string }> }
+interface Props { params: Promise<{ id: string }>; searchParams?: Promise<{ token?: string; deposit?: string }> }
 
 export async function generateMetadata(): Promise<Metadata> {
   return { ...(await storefrontMetadata("Appointment")), robots: { index: false, follow: false } }
@@ -14,9 +15,13 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export async function BookingConfirmationPage({ params, searchParams }: Props) {
   const { id } = await params
-  const token = (searchParams ? (await searchParams).token : undefined) || null
+  const query = searchParams ? await searchParams : {}
+  const token = query.token || null
+  // Back from Stripe: read the Checkout back so the deposit shows as paid even before the webhook arrives.
+  const reconcile = query.deposit === "return" ? await confirmVisitDeposit(id, token) : null
   const [visit, brand] = await Promise.all([getStorefrontVisit(id, token), getStorefrontBrand()])
   if (!visit) notFound()
+  const depositLabel = visit.depositAmount ? formatPrice(visit.depositAmount / 100) : ""
   const status = appointmentStatus[visit.status] || { label: visit.status, tone: "off" as const }
   const when = new Date(visit.startTime)
   const zone = visit.timezone || brand.timezone || undefined
@@ -43,6 +48,25 @@ export async function BookingConfirmationPage({ params, searchParams }: Props) {
           {brand.addressLine ? <div className="sf-ticket-row"><dt>Location</dt><dd>{brand.addressLine}</dd></div> : null}
         </dl>
       </div>
+
+      {visit.depositAmount ? (
+        <div className="sf-card mt-[var(--sf-space-md)] grid gap-3 p-[var(--sf-space-md)]" aria-labelledby="deposit-heading">
+          <div className="sf-title-line">
+            <h2 id="deposit-heading" className="sf-display text-[length:var(--sf-text-xl)]">Deposit</h2>
+            <Status tone={visit.depositPaid ? "ok" : "wait"}>{visit.depositPaid ? "Paid" : "Due"}</Status>
+          </div>
+          <p className="text-[length:var(--sf-text-md)] text-[var(--sf-ink-2)]">
+            {visit.depositPaid
+              ? `${depositLabel} received. It is taken off your total at your visit.`
+              : visit.depositOnline
+                ? `A ${depositLabel} deposit holds this time. It is taken off your total at your visit, and returned if you cancel.`
+                : `A ${depositLabel} deposit is due. The practice will collect it before your visit.`}
+          </p>
+          {reconcile?.error ? <p role="alert" className="sf-alert">{reconcile.error}</p> : null}
+          {query.deposit === "return" && !visit.depositPaid && !reconcile?.error ? <p role="status" className="text-[length:var(--sf-text-sm)] text-[var(--sf-ink-3)]">Your payment is still being confirmed. Refresh in a moment.</p> : null}
+          {!visit.depositPaid && visit.depositOnline ? <DepositPay appointmentId={visit.id} token={token} label={`Pay ${depositLabel} deposit`} /> : null}
+        </div>
+      ) : null}
 
       {token && visit.cancellable ? <div className="mt-[var(--sf-space-md)]"><GuestCancelForm appointmentId={visit.id} token={token} /></div> : null}
 

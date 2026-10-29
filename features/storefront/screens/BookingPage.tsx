@@ -252,7 +252,11 @@ export function BookingPage({ initialServices = EMPTY_SERVICES, initialContact =
           <div className="sf-ticket-row"><dt>Duration</dt><dd className="sf-num">{service ? formatDuration(service.baseDuration) : "—"}</dd></div>
           <div className="sf-ticket-row"><dt>Price</dt><dd className="sf-num">{service ? formatPrice(service.basePrice) : "—"}</dd></div>
         </dl>
-        <p className="flex items-center gap-2 text-[length:var(--sf-text-xs)] text-[var(--sf-ink-3)]"><Dot tone="off" />No payment taken now</p>
+        {service?.depositAmount ? (
+          <p className="flex items-center gap-2 text-[length:var(--sf-text-xs)] text-[var(--sf-ink-3)]"><Dot tone="off" />{formatPrice(service.depositAmount)} deposit is paid after you send the request</p>
+        ) : (
+          <p className="flex items-center gap-2 text-[length:var(--sf-text-xs)] text-[var(--sf-ink-3)]"><Dot tone="off" />No payment taken now</p>
+        )}
       </div>
     </aside>
   )

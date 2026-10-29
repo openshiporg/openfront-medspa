@@ -18,10 +18,11 @@ export async function readStorefrontServices(context: Context, ids: readonly str
   const services = await context.sudo().query.Service.findMany({
     where: { id: { in: [...ids] }, practice: { id: { equals: practice.id } }, status: { equals: 'active' }, isPublic: { equals: true } },
     take: 100, orderBy: { id: 'asc' },
-    query: 'id name baseDuration price category { id name isVisible practice { id } } image { image { url } imagePath altText practice { id } }',
+    query: 'id name baseDuration price depositRequired depositAmount category { id name isVisible practice { id } } image { image { url } imagePath altText practice { id } }',
   });
   return services.map(service => ({
     id: service.id, name: service.name, baseDuration: service.baseDuration, basePrice: service.price,
+    depositAmount: service.depositRequired === true && Number(service.depositAmount) > 0 ? Number(service.depositAmount) : null,
     category: service.category?.practice?.id === practice.id && service.category.isVisible === true
       ? { id: service.category.id, name: service.category.name } : null,
     image: service.image?.practice?.id === practice.id

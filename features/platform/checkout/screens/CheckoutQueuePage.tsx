@@ -65,10 +65,9 @@ export function CheckoutCard({ appointment, products }: { appointment: CheckoutA
   const clientName = appointment.client?.user?.name || 'Client unavailable';
   const providerName = appointment.provider?.user?.name || 'Unassigned';
   const status = appointment.status || '';
-  const checkoutEligible = ['confirmed', 'in_progress'].includes(status) && !appointment.payment && !appointment.depositPaid && !appointment.benefitsUnavailable && totals.tax !== null;
+  const checkoutEligible = ['confirmed', 'in_progress'].includes(status) && !appointment.payment && !appointment.benefitsUnavailable && totals.tax !== null;
   const blockedReasons = [
     !['confirmed', 'in_progress'].includes(status) && 'Confirm or check in the appointment first.',
-    appointment.depositPaid && 'A recorded deposit needs reconciliation first.',
     appointment.benefitsUnavailable && 'Client benefits could not be verified. Reload the appointment.',
     totals.tax === null && 'Set a tax rate in Storefront settings.',
   ].filter((reason): reason is string => Boolean(reason));
@@ -89,7 +88,7 @@ export function CheckoutCard({ appointment, products }: { appointment: CheckoutA
           </div>
         </div>
 
-        {appointment.depositPaid ? <div className="mt-3"><Chip tone="amber">Deposit recorded</Chip></div> : null}
+        {totals.depositCredit > 0 ? <div className="mt-3"><Chip tone="emerald">Deposit paid {formatCurrency(totals.depositCredit)}</Chip></div> : null}
 
         <div className="mt-5 overflow-hidden rounded-[6px] border">
           <ul className="divide-y">
@@ -108,6 +107,7 @@ export function CheckoutCard({ appointment, products }: { appointment: CheckoutA
             {membershipOptions.length > 0 && <SummaryRow label={`${membershipOptions[0].membership?.name || 'Membership'} discount`} value={`-${membershipOptions[0].membership?.discountPercent || 0}%`} />}
             {packageOptions.length > 0 && <SummaryRow label={`${packageOptions[0].package?.name || 'Package'} credit`} value={formatCurrency(packageOptions[0].remainingValue)} />}
             <SummaryRow label="Tax" value={formatEstimate(totals.tax)} />
+            {totals.depositCredit > 0 && <SummaryRow label="Deposit paid online" value={`-${formatCurrency(totals.depositCredit)}`} />}
             <SummaryRow label="Treatment total" value={formatEstimate(totals.totalDue)} strong />
             <SummaryRow label="Commission estimate" value={formatEstimate(totals.commissionEstimate)} />
           </dl>

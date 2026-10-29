@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import type { Context } from ".keystone/types";
 import { canTransitionPayment, paymentRecordStatus, type PaymentLifecycleStatus } from "./payment-lifecycle";
 import { parseProviderWebhook, paymentProviderFromRecord } from "./utils/paymentProviderAdapter";
-import { reconcileRefundFromWebhook, signalRefundRecheck } from "./refundOutbox";
+import { processRefundOutbox, reconcileRefundFromWebhook, signalRefundRecheck } from "./refundOutbox";
+import { settleDepositCheckout } from "./depositCheckout";
 
 export type PaymentWebhookOutcome = {
   replayed: boolean;
@@ -54,7 +55,8 @@ export async function reconcilePaymentWebhook(
     return { replayed: false, processed: applied, status };
   }
 
-  return context.transaction(async (transactionContext: Context) => {
+  let refundAttemptToKick: string | null = null;
+  const outcome = await context.transaction(async (transactionContext: Context) => {
     await transactionContext.prisma.$executeRawUnsafe(
       "SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))",
       "medspa-payment-webhook",
@@ -74,6 +76,30 @@ export async function reconcilePaymentWebhook(
       query: "id status",
     }))[0];
     if (existing) return { replayed: true, processed: existing.status === "processed", status: existing.status };
+
+    if (event.checkout) {
+      // Hosted-checkout events settle booking deposits. Correlate by the Checkout/intent id we stored, never by metadata.
+      const refs = [event.checkout.providerReference, event.checkout.paymentIntentId].filter((value): value is string => Boolean(value));
+      const target = (await sudo.query.PaymentSession.findMany({
+        where: { provider: { id: { equals: provider.id } }, providerReference: { in: refs } }, take: 2, query: "id",
+      }));
+      let settled: Awaited<ReturnType<typeof settleDepositCheckout>> = { outcome: "none", refundAttemptId: null };
+      if (target.length === 1) {
+        await transactionContext.prisma.$executeRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))", "medspa-payment-lifecycle", `session-checkout:${target[0].id}`);
+        settled = await settleDepositCheckout(sudo, target[0].id, event.checkout);
+        refundAttemptToKick = settled.refundAttemptId;
+      }
+      const applied = settled.outcome === "completed" || settled.outcome === "expired" || settled.outcome === "refund_queued";
+      await (sudo.query as any).PaymentWebhookEvent.createOne({
+        data: {
+          practice: { connect: { id: provider.practice.id } }, provider: { connect: { id: provider.id } }, replayKey, eventId: event.eventId,
+          type: event.type, providerReference: event.providerReference || "", payloadHash,
+          status: applied ? "processed" : "ignored", data: { ...(event.data || {}), outcome: settled.outcome }, processedAt: new Date().toISOString(),
+        },
+        query: "id",
+      });
+      return { replayed: false, processed: applied, status: applied ? "processed" : "ignored" };
+    }
 
     const sessions = event.providerReference
       ? await sudo.query.PaymentSession.findMany({
@@ -157,4 +183,6 @@ export async function reconcilePaymentWebhook(
     });
     return { replayed: false, processed: eventStatus === "processed", status: eventStatus };
   }, { maxWait: 5_000, timeout: 30_000 });
+  if (refundAttemptToKick) await processRefundOutbox(context, { attemptIds: [refundAttemptToKick], limit: 1 }).catch(() => undefined);
+  return outcome;
 }

@@ -42,6 +42,7 @@ import { medspaClientDirectory, medspaClientRecord, medspaMessageLog, medspaRevi
 import { enrollClientMembership, issueGiftCard, sellClientPackage, upsertMembershipPlan, upsertServicePackage } from "./benefitCatalogWorkflows";
 import { createPurchaseOrder, transitionPurchaseOrder, upsertProduct } from "./procurementWorkflows";
 import { upsertFormTemplate, upsertIntakeForm } from "./formWorkflows";
+import { confirmDepositCheckout, startDepositCheckout } from "../depositCheckout";
 import { cancelGuestAppointment, clientIntakeForms, requestWaitlistSpot, storefrontAppointment, storefrontReviews, submitAppointmentReview } from "./storefrontClientWorkflows";
 
 const gql = String.raw;
@@ -151,6 +152,8 @@ export const extendGraphqlSchema = graphql.extend((base) => ({
     submitAppointmentReview,
     requestWaitlistSpot,
     cancelGuestAppointment,
+    startDepositCheckout,
+    confirmDepositCheckout,
     upsertResource,
     updateProviderProfile,
     upsertLocation,

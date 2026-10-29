@@ -48,6 +48,7 @@ export interface CheckoutAppointment {
   status?: string | null;
   depositAmount?: number | null;
   depositPaid?: boolean | null;
+  paymentSessions?: { id: string; status?: string | null; amount?: number | null; data?: { purpose?: string; appliedToCheckout?: boolean } | null; payment?: { refundedAmount?: number | null } | null }[];
   client?: {
     id: string;
     totalVisits?: number | null;
@@ -118,6 +119,7 @@ const CHECKOUT_APPOINTMENT_QUERY = `
   status
   depositAmount
   depositPaid
+  paymentSessions(where: { status: { in: [completed, partially_refunded] } }, take: 50) { id status amount data payment { refundedAmount } }
   client {
     id
     totalVisits
@@ -203,8 +205,10 @@ export function calculateCheckoutTotals(appointment: CheckoutAppointment) {
       }));
 
   const subtotal = rawLineItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-  // Deposits are not allocated into controlled checkout until refund/cancellation reconciliation exists.
-  const depositCredit = 0;
+  // Held online deposits (not yet applied to a checkout) are credited against what is due.
+  const depositCredit = (appointment.paymentSessions || [])
+    .filter((session) => session.data?.purpose === 'appointment_deposit' && !session.data?.appliedToCheckout)
+    .reduce((sum, session) => sum + Math.max(0, Number(session.amount || 0) - Number(session.payment?.refundedAmount || 0)), 0);
   let tax: number | null = null;
   try { tax = Math.round(subtotal * configuredTaxRate(process.env.TAX_RATE, appointment.practice?.taxRate)); } catch { /* No rate is not an estimate of zero tax. */ }
   const totalDue = tax === null ? null : Math.max(0, subtotal + tax - depositCredit);

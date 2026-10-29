@@ -17,6 +17,7 @@ export interface Service {
   name: string
   baseDuration: number
   basePrice: number
+  depositAmount?: number | null
   category: { id: string; name: string } | null
   image: StorefrontImage | null
   description?: null
@@ -36,7 +37,7 @@ type ServiceRead = Pick<Service, 'id' | 'name' | 'baseDuration' | 'basePrice'>
 type ServiceWithScopedCategory = ServiceRead & { category: Service["category"] }
 
 function toStorefrontService(service: Service): Service {
-  return { ...service, basePrice: service.basePrice / 100 }
+  return { ...service, basePrice: service.basePrice / 100, depositAmount: service.depositAmount ? service.depositAmount / 100 : null }
 }
 
 const PUBLISHED_PRACTICE = `{

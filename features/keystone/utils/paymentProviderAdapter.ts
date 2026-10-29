@@ -1,5 +1,7 @@
 import {
   getPaymentAdapter,
+  type CreateCheckoutInput,
+  type RefundLookupInput,
   type CreatePaymentSessionInput,
   type PaymentOperationInput,
   type PaymentProviderConfig,
@@ -16,6 +18,24 @@ export async function confirmProviderPayment(input: PaymentOperationInput) {
 
 export async function refundProviderPayment(input: PaymentOperationInput) {
   return (await getPaymentAdapter(input.provider)).refund(input);
+}
+
+export async function getProviderRefundStatus(input: RefundLookupInput) {
+  const adapter = await getPaymentAdapter(input.provider);
+  if (!adapter.getRefundStatus) throw new Error("Payment provider cannot report refund status");
+  return adapter.getRefundStatus(input);
+}
+
+export async function createProviderCheckout(input: CreateCheckoutInput) {
+  const adapter = await getPaymentAdapter(input.provider);
+  if (!adapter.createCheckout) throw new Error("Payment provider does not support hosted checkout");
+  return adapter.createCheckout(input);
+}
+
+export async function getProviderCheckoutStatus(input: { provider: PaymentProviderConfig; providerReference: string }) {
+  const adapter = await getPaymentAdapter(input.provider);
+  if (!adapter.getCheckoutStatus) throw new Error("Payment provider does not support hosted checkout");
+  return adapter.getCheckoutStatus(input);
 }
 
 export async function parseProviderWebhook(input: PaymentWebhookInput) {

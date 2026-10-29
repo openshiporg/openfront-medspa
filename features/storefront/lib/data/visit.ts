@@ -14,6 +14,9 @@ export interface StorefrontVisit {
   locationName: string | null
   price: number | null
   cancellable: boolean
+  depositAmount: number | null
+  depositPaid: boolean
+  depositOnline: boolean
 }
 
 /** The signed-in owner's visit, or a guest's via the confirmation link token. */
@@ -22,7 +25,7 @@ export async function getStorefrontVisit(appointmentId: string, token?: string |
     const data = await medspaClient.request<{ storefrontAppointment: StorefrontVisit | null }>(gql`
       query StorefrontVisit($appointmentId: ID!, $token: String) {
         storefrontAppointment(appointmentId: $appointmentId, token: $token) {
-          id status startTime duration timezone serviceNames providerName locationName price cancellable
+          id status startTime duration timezone serviceNames providerName locationName price cancellable depositAmount depositPaid depositOnline
         }
       }
     `, { appointmentId, token: token || null })
@@ -42,5 +45,33 @@ export async function cancelGuestVisit(appointmentId: string, token: string, rea
     return data.cancelGuestAppointment
   } catch {
     return { success: false, error: "Cancellation wasn't confirmed. Reload to check the status." }
+  }
+}
+
+export async function startVisitDeposit(appointmentId: string, token: string | null): Promise<{ url: string | null; error: string | null }> {
+  try {
+    const data = await medspaClient.request<{ startDepositCheckout: { success: boolean; error: string | null; url: string | null } }>(gql`
+      mutation StartVisitDeposit($appointmentId: ID!, $token: String) {
+        startDepositCheckout(appointmentId: $appointmentId, token: $token) { success error url }
+      }
+    `, { appointmentId, token })
+    return data.startDepositCheckout.success ? { url: data.startDepositCheckout.url, error: null } : { url: null, error: data.startDepositCheckout.error }
+  } catch {
+    return { url: null, error: "We couldn't open the payment page. Please try again." }
+  }
+}
+
+/** Reads the Checkout back from Stripe after the payer returns; the webhook does the same if they never come back. */
+export async function confirmVisitDeposit(appointmentId: string, token: string | null): Promise<{ paid: boolean; error: string | null }> {
+  try {
+    const data = await medspaClient.request<{ confirmDepositCheckout: { success: boolean; error: string | null; paid: boolean | null } }>(gql`
+      mutation ConfirmVisitDeposit($appointmentId: ID!, $token: String) {
+        confirmDepositCheckout(appointmentId: $appointmentId, token: $token) { success error paid }
+      }
+    `, { appointmentId, token })
+    const result = data.confirmDepositCheckout
+    return { paid: result.paid === true, error: result.success ? null : result.error }
+  } catch {
+    return { paid: false, error: null }
   }
 }

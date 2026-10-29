@@ -67,6 +67,7 @@ const SAFE_PAYMENT_ERRORS = new Set([
   "Idempotency key is invalid",
   "Idempotency key was already used for another operation",
   "Refund exceeds what is still refundable",
+  "This deposit was applied to the visit's checkout. Refund the checkout instead",
   "Payment provider is unavailable",
 ]);
 
@@ -264,6 +265,7 @@ export const refundPayment = graphql.field({
           const sessionData = session.data && typeof session.data === "object" ? session.data as Record<string, any> : {};
           if (sessionData.purpose !== "appointment_deposit") throw new Error("Use the controlled settlement reversal workflow");
           if (!["completed", "partially_refunded"].includes(session.status)) throw new Error("Completed payment not found");
+          if (sessionData.appliedToCheckout) throw new Error("This deposit was applied to the visit's checkout. Refund the checkout instead");
           const refunds = await sudo.query.Refund.findMany({ where: { payment: { id: { equals: session.payment.id } } }, take: 200, query: "amountMinor status" });
           const refundable = refundableMinor(session.amount, refunds as any);
           const refundCents = amount ?? refundable;

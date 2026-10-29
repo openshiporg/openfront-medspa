@@ -5,6 +5,7 @@ import { permissions } from "../access";
 import { paymentRecordStatus } from "../payment-lifecycle";
 import { createProviderPaymentSession, paymentProviderFromRecord } from "../utils/paymentProviderAdapter";
 import { serializableWorkflow } from "./serializableWorkflow";
+import { kickRefundAttempts, queueDepositRefundsOnCancel } from "../depositCheckout";
 import { assertPracticeRecord, bounded, evidenceHash, requireActorPractice, validIdempotencyKey } from "../workflowAuth";
 import { appointmentClientKey, assertAppointmentSchedulingAuthority } from '../appointmentSchedulingAuthority';
 import type { AppointmentScheduleScope, AppointmentTransitionInput, AppointmentTransitionReceipt } from '../../platform/appointments/types/appointmentSchedule';
@@ -56,8 +57,9 @@ export async function transitionAppointmentTransaction(
   if (reason.length > 1_000) return { success: false, appointmentId: null, status: null, error: "Transition reason is too long" };
   if (args.status === "cancelled" && !reason) return { success: false, appointmentId: null, status: null, error: "A cancellation reason is required" };
 
+  let depositAttempts: string[] = [];
   try {
-    return await serializableWorkflow(context, "medspa-appointment-transition", [`appointment:${args.appointmentId}`, `idempotency:${context.session.data.practice?.id}:${args.idempotencyKey || args.appointmentId}`], async (transactionContext) => {
+    const transitioned = await serializableWorkflow(context, "medspa-appointment-transition", [`appointment:${args.appointmentId}`, `idempotency:${context.session.data.practice?.id}:${args.idempotencyKey || args.appointmentId}`], async (transactionContext) => {
       const authority = await assertAppointmentSchedulingAuthority(transactionContext, args.appointmentId, { cancellationOnly: args.status === 'cancelled', purpose: args.expectedScope?.purpose });
       assertExpectedSchedulingScope(args.expectedScope, authority.scope);
       const sudo = transactionContext.sudo();
@@ -113,6 +115,7 @@ export async function transitionAppointmentTransaction(
         for (const reservation of appointment.resourceReservations || []) await sudo.query.AppointmentResourceReservation.updateOne({ where: { id: reservation.id }, data: { status: "cancelled" }, query: "id" });
         for (const reservation of appointment.supervisorReservations || []) await sudo.query.AppointmentSupervisorReservation.updateOne({ where: { id: reservation.id }, data: { status: "cancelled" }, query: "id" });
       }
+      if (args.status === "cancelled") depositAttempts = await queueDepositRefundsOnCancel(sudo, appointment.id, appointment.practice!.id);
       let receipt: AppointmentTransitionReceipt | null = null;
       if (receipted) {
         const evidence = { version: 2, requestHash, scope: authority.scope, membershipId: authority.membershipId, delegation: authority.delegation, planBooking: planBooking || null, fromStatus: appointment.status, toStatus: args.status, fromRevision: appointment.revision, toRevision: Number(appointment.revision || 1) + 1, actorId: authority.scope.actorId, reason, occurredAt: now };
@@ -122,6 +125,8 @@ export async function transitionAppointmentTransaction(
       }
       return { success: true, appointmentId: appointment.id, status: args.status, receipt, error: null };
     });
+    await kickRefundAttempts(context, depositAttempts);
+    return transitioned;
   } catch (error) {
     return { success: false, appointmentId: null, status: null, error: errorMessage(error) };
   }

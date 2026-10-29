@@ -10,6 +10,7 @@ import { assertPracticeRecord, evidenceHash, requireActorPractice } from "../wor
 
 import { configuredTaxRate, parseRetail, type RetailInput } from "../checkoutInput";
 import { commissionMinor } from "../commissionAmount";
+import { amountDueAfterDeposit, netDepositMinor } from "../depositCheckoutCore";
 
 type CheckoutResult = { success: boolean; transactionId: string | null; paymentId: string | null; error: string | null };
 
@@ -67,6 +68,7 @@ export async function completeAppointmentCheckoutTransaction(
         where: { id: args.appointmentId },
         query: `
           id status depositAmount depositPaid payment { id } transaction { id } practice { id taxRate } location { id name isActive }
+          paymentSessions(where: { status: { in: [completed, partially_refunded] } }, take: 50) { id status amount data payment { id refundedAmount } }
           client { id lifetimeValue totalVisits user { id email } }
           provider { id baseCommissionRate user { id } }
           consultation { id status staffDecisionRecorded service { id } }
@@ -190,9 +192,17 @@ export async function completeAppointmentCheckoutTransaction(
       if (discount > serviceSubtotal) throw new Error("Discounts and benefits cannot exceed the service subtotal");
       const tax = Math.round(taxable * configuredTaxRate(process.env.TAX_RATE, appointment.practice?.taxRate));
       const tip = Math.max(0, args.tipAmount || 0);
-      if (appointment.depositPaid) throw new Error("Deposit allocation is unavailable until payment-allocation reconciliation is implemented");
-      const depositCredit = 0;
-      const total = Math.max(0, taxable + tax + tip - depositCredit);
+      // A held online deposit is credited against what is due. Only deposits not yet applied count, and they are
+      // marked applied below in this same transaction so they can be neither credited nor refunded a second time.
+      const heldDeposits = ((appointment.paymentSessions || []) as any[]).filter(session => {
+        const data = session.data && typeof session.data === "object" ? session.data : {};
+        return data.purpose === "appointment_deposit" && !data.appliedToCheckout;
+      });
+      const depositCredit = netDepositMinor(heldDeposits.map(session => ({ amount: session.amount, status: session.status, purpose: "appointment_deposit", refundedAmount: session.payment?.refundedAmount })));
+      if (appointment.depositPaid && depositCredit === 0 && !heldDeposits.length && Number(appointment.depositAmount || 0) > 0) {
+        throw new Error("The recorded deposit has no settled payment to credit. Reconcile it from Payments first");
+      }
+      const total = amountDueAfterDeposit(taxable + tax + tip, depositCredit);
       const now = new Date().toISOString();
 
       const transaction = await sudo.query.MedSpaTransaction.createOne({
@@ -276,6 +286,10 @@ export async function completeAppointmentCheckoutTransaction(
         query: "id",
       });
       await sudo.query.PaymentSession.updateOne({ where: { id: session.id }, data: { payment: { connect: { id: payment.id } } }, query: "id" });
+      for (const deposit of heldDeposits) {
+        const depositData = deposit.data && typeof deposit.data === "object" ? deposit.data : {};
+        await sudo.query.PaymentSession.updateOne({ where: { id: deposit.id }, data: { data: { ...depositData, appliedToCheckout: true, appliedCheckoutPaymentId: payment.id, appliedAt: now } }, query: "id" });
+      }
 
       if (retailLines.length) {
         await sudo.query.ProductSale.createOne({

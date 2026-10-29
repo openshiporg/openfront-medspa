@@ -3,6 +3,7 @@ import type { Context } from ".keystone/types";
 import type { JSONValue } from "@keystone-6/core/types";
 import { assertActiveActor, evidenceHash, requireActorPractice, validIdempotencyKey } from "../workflowAuth";
 import { validGuestAccessToken } from "../lib/guestAccess";
+import { kickRefundAttempts, onlineDepositProvider, queueDepositRefundsOnCancel } from "../depositCheckout";
 import { serializableWorkflow } from "./serializableWorkflow";
 import { storefrontPracticeSlug } from "../lib/storefrontPractice";
 
@@ -213,7 +214,7 @@ export const requestWaitlistSpot = graphql.field({
   },
 });
 
-type GuestAppointment = { id: string; status: string; startTime: string; duration: number | null; timezone: string | null; serviceNames: string[]; providerName: string | null; locationName: string | null; price: number | null; cancellable: boolean };
+type GuestAppointment = { id: string; status: string; startTime: string; duration: number | null; timezone: string | null; serviceNames: string[]; providerName: string | null; locationName: string | null; price: number | null; cancellable: boolean; depositAmount: number | null; depositPaid: boolean; depositOnline: boolean };
 
 const GuestAppointmentType = graphql.object<GuestAppointment>()({
   name: "StorefrontGuestAppointment",
@@ -228,10 +229,13 @@ const GuestAppointmentType = graphql.object<GuestAppointment>()({
     locationName: graphql.field({ type: graphql.String }),
     price: graphql.field({ type: graphql.Int }),
     cancellable: graphql.field({ type: graphql.nonNull(graphql.Boolean) }),
+    depositAmount: graphql.field({ type: graphql.Int }),
+    depositPaid: graphql.field({ type: graphql.nonNull(graphql.Boolean) }),
+    depositOnline: graphql.field({ type: graphql.nonNull(graphql.Boolean) }),
   },
 });
 
-const GUEST_FIELDS = "id status startTime duration revision metadata client { id } practice { id } location { id name timezone } provider { user { name } } lineItems { serviceTitle price quantity } payment { id } transaction { id } consentsCount treatmentSessionsCount resourceReservations(where: { status: { in: [reserved, in_use] } }) { id } supervisorReservations(where: { status: { equals: reserved } }) { id }";
+const GUEST_FIELDS = "id status startTime duration revision metadata depositAmount depositPaid client { id } practice { id } location { id name timezone } provider { user { name } } lineItems { serviceTitle price quantity } payment { id } transaction { id } consentsCount treatmentSessionsCount resourceReservations(where: { status: { in: [reserved, in_use] } }) { id } supervisorReservations(where: { status: { equals: reserved } }) { id }";
 
 async function guestRecord(context: Context, appointmentId: string, token: string) {
   if (!validGuestAccessToken(appointmentId, token)) throw new Error("Appointment not found");
@@ -267,6 +271,11 @@ export const storefrontAppointment = graphql.field({
         price: lines.length ? lines.reduce((sum: number, line: any) => sum + Number(line.price || 0) * Number(line.quantity || 1), 0) : null,
         // Signed-in owners cancel from the account's scheduling control; the flag is for guest links.
         cancellable: Boolean(args.token) && guestCancellable(appointment),
+        depositAmount: Number(appointment.depositAmount || 0) > 0 ? Number(appointment.depositAmount) : null,
+        depositPaid: appointment.depositPaid === true,
+        // Only offered while the visit can still take it and the practice has Stripe installed and configured.
+        depositOnline: Number(appointment.depositAmount || 0) > 0 && appointment.depositPaid !== true && ["pending", "confirmed"].includes(appointment.status)
+          && Boolean(await onlineDepositProvider(context.sudo(), appointment.practice.id)),
       }
     } catch { return null }
   },
@@ -287,7 +296,8 @@ export const cancelGuestAppointment = graphql.field({
     try {
       const reason = (args.reason || "").trim().slice(0, 1000) || "Cancelled by guest";
       await guestRecord(context, args.appointmentId, args.token);
-      return await serializableWorkflow(context, "medspa-guest-cancel", [`appointment:${args.appointmentId}`], async (tx) => {
+      let depositAttempts: string[] = [];
+      const cancelled = await serializableWorkflow(context, "medspa-guest-cancel", [`appointment:${args.appointmentId}`], async (tx) => {
         const sudo = tx.sudo();
         const appointment: any = await sudo.query.Appointment.findOne({ where: { id: args.appointmentId }, query: GUEST_FIELDS });
         if (!appointment || appointment.client?.id) throw new Error("Appointment not found");
@@ -307,8 +317,11 @@ export const cancelGuestAppointment = graphql.field({
         for (const reservation of appointment.resourceReservations || []) await sudo.query.AppointmentResourceReservation.updateOne({ where: { id: reservation.id }, data: { status: "cancelled" }, query: "id" });
         for (const reservation of appointment.supervisorReservations || []) await sudo.query.AppointmentSupervisorReservation.updateOne({ where: { id: reservation.id }, data: { status: "cancelled" }, query: "id" });
         await sudo.query.AuditEvent.createOne({ data: { practice: { connect: { id: appointment.practice.id } }, location: appointment.location?.id ? { connect: { id: appointment.location.id } } : undefined, action: "appointment.guest_cancelled", resourceType: "Appointment", resourceId: appointment.id, correlationId: `guest-cancel:${appointment.id}`, evidence: { fromStatus: appointment.status, reason }, evidenceHash: evidenceHash({ appointmentId: appointment.id, fromStatus: appointment.status, reason, at: now }), occurredAt: now }, query: "id" });
+        depositAttempts = await queueDepositRefundsOnCancel(sudo, appointment.id, appointment.practice.id);
         return { success: true, recordId: appointment.id, error: null };
       });
+      await kickRefundAttempts(context, depositAttempts);
+      return cancelled;
     } catch (error) { return failed(error); }
   },
 });
