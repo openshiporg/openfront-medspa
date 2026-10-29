@@ -1,6 +1,10 @@
+<!-- logo -->
+
 # Openfront Med Spa
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fopenshiporg%2Fopenfront-medspa&env=DATABASE_URL%2CSESSION_SECRET%2CS3_BUCKET_NAME%2CS3_REGION%2CS3_ACCESS_KEY_ID%2CS3_SECRET_ACCESS_KEY)
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/openfront-medspa)
 
 Openfront Med Spa is a self-hostable medical-aesthetics booking and practice-operations application. Clients can discover services and providers, book appointments, and manage visits. Practice teams coordinate scheduling, intake, treatment plans, consent, clinical records, checkout, inventory, memberships, packages, and commissions.
 
@@ -10,16 +14,14 @@ Openfront Med Spa is a self-hostable medical-aesthetics booking and practice-ope
 
 ![Service illustration included with the Med Spa storefront](public/images/services/custom-clinical-facial.svg)
 
-Explore the application locally using the setup instructions below.
-
 | | |
 |---|---|
-| **Public application** | `/` on your development URL |
-| **Dashboard** | `/dashboard` on your development URL |
+| **Storefront** | [medspa.openship.org](https://medspa.openship.org) |
+| **Dashboard** | [medspa.openship.org/dashboard](https://medspa.openship.org/dashboard) |
 
 [Learn more →](https://openship.org/products/openfront-medspa)
 
-[Documentation →](features/keystone/models)
+[Documentation →](https://docs.openship.org/docs/openfront/medspa/)
 
 ## The Openfront Ecosystem
 
