@@ -23,7 +23,7 @@ export type PaymentList =
 
 export interface PaymentDetail extends PaymentRow {
   subtotal: number | null; tax: number | null; discount: number | null; receiptEmail: string | null; refundReason: string | null; refundedAt: string | null; currencyCode: string | null;
-  refunds: Array<{ id: string; amountMinor: number | null; reason: string | null; status: string | null; processedAt: string | null }>;
+  refunds: Array<{ id: string; amountMinor: number | null; reason: string | null; status: string | null; processedAt: string | null; attempt?: { status: string | null; needsReview: boolean | null; lastError: string | null; providerRefundId: string | null } | null }>;
   session: { id: string; status: string | null; amount: number | null; data: Record<string, unknown> | null; provider: { name: string | null; adapter: string | null } | null } | null;
   lines: Array<{ id: string; title: string; quantity: number; amount: number; kind: string }>;
 }

@@ -81,6 +81,7 @@ export const extendGraphqlSchema = graphql.extend((base) => ({
     refundPayment: paymentMutations.refundPayment,
     reverseAppointmentSettlement: paymentMutations.reverseAppointmentSettlement,
     distributeTip: paymentMutations.distributeTip,
+    retryRefunds: paymentMutations.retryRefunds,
     purchaseGiftCard: giftCardMutations.purchaseGiftCard,
     confirmGiftCardPurchase: giftCardMutations.confirmGiftCardPurchase,
     applyGiftCardBalance: giftCardMutations.applyGiftCardBalance,

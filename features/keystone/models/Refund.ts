@@ -12,6 +12,6 @@ export const Refund = list({
     providerReference: text(), status: select({ type: 'enum', options: [
       { label: 'Pending', value: 'pending' }, { label: 'Completed', value: 'completed' }, { label: 'Failed', value: 'failed' },
     ], defaultValue: 'pending', validation: { isRequired: true } }),
-    processedAt: timestamp(), data: json(), ...trackingFields,
+    processedAt: timestamp(), attempt: relationship({ ref: 'RefundAttempt.refund' }), data: json(), ...trackingFields,
   },
 })

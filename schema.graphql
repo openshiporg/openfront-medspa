@@ -7709,6 +7709,8 @@ type PaymentSession {
   appointment: Appointment
   provider: PaymentProvider
   payment: Payment
+  refundAttempts(where: RefundAttemptWhereInput! = {}, orderBy: [RefundAttemptOrderByInput!]! = [], take: Int! = 5000, skip: Int! = 0, cursor: RefundAttemptWhereUniqueInput): [RefundAttempt!]
+  refundAttemptsCount(where: RefundAttemptWhereInput! = {}): Int
   idempotencyKey: String
   amount: Int
   currency: String
@@ -7749,6 +7751,7 @@ input PaymentSessionWhereInput {
   appointment: AppointmentWhereInput
   provider: PaymentProviderWhereInput
   payment: PaymentWhereInput
+  refundAttempts: RefundAttemptManyRelationFilter
   idempotencyKey: StringFilter
   amount: IntFilter
   currency: StringFilter
@@ -7760,6 +7763,12 @@ input PaymentSessionWhereInput {
   refundedAt: DateTimeNullableFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
+}
+
+input RefundAttemptManyRelationFilter {
+  every: RefundAttemptWhereInput
+  some: RefundAttemptWhereInput
+  none: RefundAttemptWhereInput
 }
 
 input PaymentSessionStatusTypeNullableFilter {
@@ -7789,6 +7798,7 @@ input PaymentSessionUpdateInput {
   appointment: AppointmentRelateToOneForUpdateInput
   provider: PaymentProviderRelateToOneForUpdateInput
   payment: PaymentRelateToOneForUpdateInput
+  refundAttempts: RefundAttemptRelateToManyForUpdateInput
   idempotencyKey: String
   amount: Int
   currency: String
@@ -7809,6 +7819,13 @@ input PaymentProviderRelateToOneForUpdateInput {
   disconnect: Boolean
 }
 
+input RefundAttemptRelateToManyForUpdateInput {
+  disconnect: [RefundAttemptWhereUniqueInput!]
+  set: [RefundAttemptWhereUniqueInput!]
+  create: [RefundAttemptCreateInput!]
+  connect: [RefundAttemptWhereUniqueInput!]
+}
+
 input PaymentSessionUpdateArgs {
   where: PaymentSessionWhereUniqueInput!
   data: PaymentSessionUpdateInput!
@@ -7819,6 +7836,7 @@ input PaymentSessionCreateInput {
   appointment: AppointmentRelateToOneForCreateInput
   provider: PaymentProviderRelateToOneForCreateInput
   payment: PaymentRelateToOneForCreateInput
+  refundAttempts: RefundAttemptRelateToManyForCreateInput
   idempotencyKey: String
   amount: Int
   currency: String
@@ -7836,6 +7854,11 @@ input PaymentSessionCreateInput {
 input PaymentProviderRelateToOneForCreateInput {
   create: PaymentProviderCreateInput
   connect: PaymentProviderWhereUniqueInput
+}
+
+input RefundAttemptRelateToManyForCreateInput {
+  create: [RefundAttemptCreateInput!]
+  connect: [RefundAttemptWhereUniqueInput!]
 }
 
 type PaymentWebhookEvent {
@@ -10309,6 +10332,7 @@ type Refund {
   providerReference: String
   status: RefundStatusType
   processedAt: DateTime
+  attempt: RefundAttempt
   data: JSON
   createdAt: DateTime
   updatedAt: DateTime
@@ -10323,6 +10347,7 @@ enum RefundStatusType {
 input RefundWhereUniqueInput {
   id: ID
   idempotencyKey: String
+  attempt: RefundAttemptWhereUniqueInput
 }
 
 input RefundWhereInput {
@@ -10339,6 +10364,7 @@ input RefundWhereInput {
   providerReference: StringFilter
   status: RefundStatusTypeNullableFilter
   processedAt: DateTimeNullableFilter
+  attempt: RefundAttemptWhereInput
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -10373,9 +10399,16 @@ input RefundUpdateInput {
   providerReference: String
   status: RefundStatusType
   processedAt: DateTime
+  attempt: RefundAttemptRelateToOneForUpdateInput
   data: JSON
   createdAt: DateTime
   updatedAt: DateTime
+}
+
+input RefundAttemptRelateToOneForUpdateInput {
+  create: RefundAttemptCreateInput
+  connect: RefundAttemptWhereUniqueInput
+  disconnect: Boolean
 }
 
 input RefundUpdateArgs {
@@ -10393,9 +10426,163 @@ input RefundCreateInput {
   providerReference: String
   status: RefundStatusType
   processedAt: DateTime
+  attempt: RefundAttemptRelateToOneForCreateInput
   data: JSON
   createdAt: DateTime
   updatedAt: DateTime
+}
+
+input RefundAttemptRelateToOneForCreateInput {
+  create: RefundAttemptCreateInput
+  connect: RefundAttemptWhereUniqueInput
+}
+
+type RefundAttempt {
+  id: ID!
+  practice: Practice
+  refund: Refund
+  paymentSession: PaymentSession
+  idempotencyKey: String
+  amountMinor: Int
+  currencyCode: String
+  status: RefundAttemptStatusType
+  providerReference: String
+  providerRefundId: String
+  attemptCount: Int
+  submitStartedAt: DateTime
+  leaseUntil: DateTime
+  nextAttemptAt: DateTime
+  needsReview: Boolean
+  lastError: String
+  completedAt: DateTime
+  data: JSON
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+enum RefundAttemptStatusType {
+  pending
+  submitted
+  succeeded
+  failed
+  unknown
+}
+
+input RefundAttemptWhereUniqueInput {
+  id: ID
+  refund: RefundWhereUniqueInput
+  idempotencyKey: String
+}
+
+input RefundAttemptWhereInput {
+  AND: [RefundAttemptWhereInput!]
+  OR: [RefundAttemptWhereInput!]
+  NOT: [RefundAttemptWhereInput!]
+  id: IDFilter
+  practice: PracticeWhereInput
+  refund: RefundWhereInput
+  paymentSession: PaymentSessionWhereInput
+  idempotencyKey: StringFilter
+  amountMinor: IntFilter
+  currencyCode: StringFilter
+  status: RefundAttemptStatusTypeNullableFilter
+  providerReference: StringFilter
+  providerRefundId: StringFilter
+  attemptCount: IntNullableFilter
+  submitStartedAt: DateTimeNullableFilter
+  leaseUntil: DateTimeNullableFilter
+  nextAttemptAt: DateTimeNullableFilter
+  needsReview: BooleanFilter
+  lastError: StringFilter
+  completedAt: DateTimeNullableFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input RefundAttemptStatusTypeNullableFilter {
+  equals: RefundAttemptStatusType
+  in: [RefundAttemptStatusType!]
+  notIn: [RefundAttemptStatusType!]
+  not: RefundAttemptStatusTypeNullableFilter
+}
+
+input RefundAttemptOrderByInput {
+  id: OrderDirection
+  idempotencyKey: OrderDirection
+  amountMinor: OrderDirection
+  currencyCode: OrderDirection
+  status: OrderDirection
+  providerReference: OrderDirection
+  providerRefundId: OrderDirection
+  attemptCount: OrderDirection
+  submitStartedAt: OrderDirection
+  leaseUntil: OrderDirection
+  nextAttemptAt: OrderDirection
+  needsReview: OrderDirection
+  lastError: OrderDirection
+  completedAt: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input RefundAttemptUpdateInput {
+  practice: PracticeRelateToOneForUpdateInput
+  refund: RefundRelateToOneForUpdateInput
+  paymentSession: PaymentSessionRelateToOneForUpdateInput
+  idempotencyKey: String
+  amountMinor: Int
+  currencyCode: String
+  status: RefundAttemptStatusType
+  providerReference: String
+  providerRefundId: String
+  attemptCount: Int
+  submitStartedAt: DateTime
+  leaseUntil: DateTime
+  nextAttemptAt: DateTime
+  needsReview: Boolean
+  lastError: String
+  completedAt: DateTime
+  data: JSON
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input RefundRelateToOneForUpdateInput {
+  create: RefundCreateInput
+  connect: RefundWhereUniqueInput
+  disconnect: Boolean
+}
+
+input RefundAttemptUpdateArgs {
+  where: RefundAttemptWhereUniqueInput!
+  data: RefundAttemptUpdateInput!
+}
+
+input RefundAttemptCreateInput {
+  practice: PracticeRelateToOneForCreateInput
+  refund: RefundRelateToOneForCreateInput
+  paymentSession: PaymentSessionRelateToOneForCreateInput
+  idempotencyKey: String
+  amountMinor: Int
+  currencyCode: String
+  status: RefundAttemptStatusType
+  providerReference: String
+  providerRefundId: String
+  attemptCount: Int
+  submitStartedAt: DateTime
+  leaseUntil: DateTime
+  nextAttemptAt: DateTime
+  needsReview: Boolean
+  lastError: String
+  completedAt: DateTime
+  data: JSON
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input RefundRelateToOneForCreateInput {
+  create: RefundCreateInput
+  connect: RefundWhereUniqueInput
 }
 
 type RetentionPolicy {
@@ -13697,6 +13884,12 @@ type Mutation {
   updateRefunds(data: [RefundUpdateArgs!]!): [Refund]
   deleteRefund(where: RefundWhereUniqueInput!): Refund
   deleteRefunds(where: [RefundWhereUniqueInput!]!): [Refund]
+  createRefundAttempt(data: RefundAttemptCreateInput!): RefundAttempt
+  createRefundAttempts(data: [RefundAttemptCreateInput!]!): [RefundAttempt]
+  updateRefundAttempt(where: RefundAttemptWhereUniqueInput!, data: RefundAttemptUpdateInput!): RefundAttempt
+  updateRefundAttempts(data: [RefundAttemptUpdateArgs!]!): [RefundAttempt]
+  deleteRefundAttempt(where: RefundAttemptWhereUniqueInput!): RefundAttempt
+  deleteRefundAttempts(where: [RefundAttemptWhereUniqueInput!]!): [RefundAttempt]
   createRetentionPolicy(data: RetentionPolicyCreateInput!): RetentionPolicy
   createRetentionPolicies(data: [RetentionPolicyCreateInput!]!): [RetentionPolicy]
   updateRetentionPolicy(where: RetentionPolicyWhereUniqueInput!, data: RetentionPolicyUpdateInput!): RetentionPolicy
@@ -14470,6 +14663,9 @@ type Query {
   refund(where: RefundWhereUniqueInput!): Refund
   refunds(where: RefundWhereInput! = {}, orderBy: [RefundOrderByInput!]! = [], take: Int! = 5000, skip: Int! = 0, cursor: RefundWhereUniqueInput): [Refund!]
   refundsCount(where: RefundWhereInput! = {}): Int
+  refundAttempt(where: RefundAttemptWhereUniqueInput!): RefundAttempt
+  refundAttempts(where: RefundAttemptWhereInput! = {}, orderBy: [RefundAttemptOrderByInput!]! = [], take: Int! = 5000, skip: Int! = 0, cursor: RefundAttemptWhereUniqueInput): [RefundAttempt!]
+  refundAttemptsCount(where: RefundAttemptWhereInput! = {}): Int
   retentionPolicy(where: RetentionPolicyWhereUniqueInput!): RetentionPolicy
   retentionPolicies(where: RetentionPolicyWhereInput! = {}, orderBy: [RetentionPolicyOrderByInput!]! = [], take: Int! = 5000, skip: Int! = 0, cursor: RetentionPolicyWhereUniqueInput): [RetentionPolicy!]
   retentionPoliciesCount(where: RetentionPolicyWhereInput! = {}): Int

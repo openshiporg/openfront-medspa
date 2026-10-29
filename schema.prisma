@@ -1646,6 +1646,7 @@ model PaymentSession {
   provider          PaymentProvider?         @relation("PaymentSession_provider", fields: [providerId], references: [id])
   providerId        String?                  @map("provider")
   payment           Payment?                 @relation("Payment_session")
+  refundAttempts    RefundAttempt[]          @relation("RefundAttempt_paymentSession")
   idempotencyKey    String                   @unique @default("")
   amount            Int
   currency          String                   @default("usd")
@@ -1877,6 +1878,7 @@ model Practice {
   from_RecallExposure_practice                   RecallExposure[]                   @relation("RecallExposure_practice")
   from_Referral_practice                         Referral[]                         @relation("Referral_practice")
   from_Refund_practice                           Refund[]                           @relation("Refund_practice")
+  from_RefundAttempt_practice                    RefundAttempt[]                    @relation("RefundAttempt_practice")
   from_RetentionPolicy_practice                  RetentionPolicy[]                  @relation("RetentionPolicy_practice")
   from_Resource_practice                         Resource[]                         @relation("Resource_practice")
   from_ResourceScheduleBlock_practice            ResourceScheduleBlock[]            @relation("ResourceScheduleBlock_practice")
@@ -2286,12 +2288,44 @@ model Refund {
   providerReference String           @default("")
   status            RefundStatusType @default(pending)
   processedAt       DateTime?
+  attempt           RefundAttempt?   @relation("Refund_attempt", fields: [attemptId], references: [id])
+  attemptId         String?          @unique @map("attempt")
   data              Json?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @default(now()) @updatedAt
 
   @@index([practiceId])
   @@index([paymentId])
+}
+
+model RefundAttempt {
+  id                String                  @id @default(cuid())
+  practice          Practice?               @relation("RefundAttempt_practice", fields: [practiceId], references: [id])
+  practiceId        String?                 @map("practice")
+  refund            Refund?                 @relation("Refund_attempt")
+  paymentSession    PaymentSession?         @relation("RefundAttempt_paymentSession", fields: [paymentSessionId], references: [id])
+  paymentSessionId  String?                 @map("paymentSession")
+  idempotencyKey    String                  @unique @default("")
+  amountMinor       Int
+  currencyCode      String                  @default("")
+  status            RefundAttemptStatusType @default(pending)
+  providerReference String                  @default("")
+  providerRefundId  String                  @default("")
+  attemptCount      Int?                    @default(0)
+  submitStartedAt   DateTime?
+  leaseUntil        DateTime?
+  nextAttemptAt     DateTime?               @default(now())
+  needsReview       Boolean                 @default(false)
+  lastError         String                  @default("")
+  completedAt       DateTime?
+  data              Json?                   @default("{}")
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @default(now()) @updatedAt
+
+  @@index([practiceId])
+  @@index([paymentSessionId])
+  @@index([providerRefundId])
+  @@index([nextAttemptAt])
 }
 
 model RetentionPolicy {
@@ -3505,6 +3539,14 @@ enum RefundStatusType {
   pending
   completed
   failed
+}
+
+enum RefundAttemptStatusType {
+  pending
+  submitted
+  succeeded
+  failed
+  unknown
 }
 
 enum ResourceTypeType {

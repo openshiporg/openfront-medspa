@@ -32,7 +32,7 @@ export async function getIntegrations(eventStatus: string): Promise<Integrations
 export async function setPaymentProviderFlag(id: string, field: 'isInstalled' | 'isDefault', value: boolean): Promise<{ success: boolean; error: string | null }> {
   if (!id || !['isInstalled', 'isDefault'].includes(field)) return { success: false, error: 'Unsupported change' };
   const response = await keystoneClient(`mutation UpdatePaymentProvider($id: ID!, $data: PaymentProviderUpdateInput!) { updatePaymentProvider(where: { id: $id }, data: $data) { id } }`, { id, data: { [field]: value } });
-  if (!response.success) return { success: false, error: field === 'isInstalled' ? 'Not saved. Stripe stays off until refund reconciliation ships.' : 'Not saved.' };
+  if (!response.success) return { success: false, error: field === 'isInstalled' ? 'Not saved. Check that the Stripe keys are configured on the server.' : 'Not saved.' };
   revalidatePath('/dashboard/platform/integrations');
   revalidatePath('/dashboard/platform/checkout');
   return { success: true, error: null };

@@ -76,6 +76,7 @@ import { RecallCase } from './RecallCase'
 import { RecallExposure } from './RecallExposure'
 import { Referral } from './Referral'
 import { Refund } from './Refund'
+import { RefundAttempt } from './RefundAttempt'
 import { RetentionPolicy } from './RetentionPolicy'
 import { Resource } from './Resource'
 import { ResourceScheduleBlock } from './ResourceScheduleBlock'
@@ -176,6 +177,7 @@ export const models = {
   RecallExposure,
   Referral,
   Refund,
+  RefundAttempt,
   RetentionPolicy,
   Resource,
   ResourceScheduleBlock,

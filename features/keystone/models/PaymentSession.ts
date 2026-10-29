@@ -24,6 +24,7 @@ export const PaymentSession = list({
     appointment: relationship({ ref: "Appointment.paymentSessions" }),
     provider: relationship({ ref: "PaymentProvider.sessions" }),
     payment: relationship({ ref: "Payment.session" }),
+    refundAttempts: relationship({ ref: "RefundAttempt.paymentSession", many: true }),
     idempotencyKey: text({ isIndexed: "unique", validation: { isRequired: true } }),
     amount: integer({ validation: { isRequired: true, min: 0 } }),
     currency: text({ defaultValue: "usd", validation: { isRequired: true } }),

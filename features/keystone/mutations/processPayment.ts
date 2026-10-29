@@ -10,6 +10,8 @@ import {
   paymentProviderFromRecord,
   refundProviderPayment,
 } from "../utils/paymentProviderAdapter";
+import { enqueueRefund, processRefundOutbox, refundableMinor, retryPracticeRefunds } from "../refundOutbox";
+import { aggregateIdempotencyKey } from "../aggregateIdempotencyKey";
 
 
 function operator(context: Context) {
@@ -64,6 +66,8 @@ const SAFE_PAYMENT_ERRORS = new Set([
   "No tip to distribute",
   "Idempotency key is invalid",
   "Idempotency key was already used for another operation",
+  "Refund exceeds what is still refundable",
+  "Payment provider is unavailable",
 ]);
 
 function safeError(error: unknown) {
@@ -243,17 +247,46 @@ export const refundPayment = graphql.field({
     name: "RefundPaymentResult",
     fields: { success: graphql.field({ type: graphql.nonNull(graphql.Boolean) }), refundId: graphql.field({ type: graphql.String }), error: graphql.field({ type: graphql.String }), status: graphql.field({ type: graphql.String }) },
   }),
-  args: { paymentSessionId: graphql.arg({ type: graphql.nonNull(graphql.ID) }), amount: graphql.arg({ type: graphql.Int }), reason: graphql.arg({ type: graphql.String }) },
-  async resolve(source, { paymentSessionId, amount, reason }, context: Context) {
-    try { requireActorPractice(context, permissions.canManageFinance); await assertPracticeRecord(context, "PaymentSession", paymentSessionId); }
+  args: { paymentSessionId: graphql.arg({ type: graphql.nonNull(graphql.ID) }), amount: graphql.arg({ type: graphql.Int }), reason: graphql.arg({ type: graphql.String }), idempotencyKey: graphql.arg({ type: graphql.String }) },
+  async resolve(source, { paymentSessionId, amount, reason, idempotencyKey }, context: Context) {
+    let actor;
+    try { actor = requireActorPractice(context, permissions.canManageFinance); await assertPracticeRecord(context, "PaymentSession", paymentSessionId); }
     catch (error) { return { success: false, refundId: null, error: error instanceof Error ? error.message : "Payment session not found", status: null }; }
     try {
+      const processorSession = await context.sudo().query.PaymentSession.findOne({ where: { id: paymentSessionId }, query: "provider { adapter }" });
+      if (processorSession?.provider?.adapter && processorSession.provider.adapter !== "manual") {
+        // Processor refund: record the Refund + outbox attempt atomically, then let the outbox call the provider.
+        const key = (idempotencyKey || "").trim();
+        if (key.length < 12 || key.length > 200) throw new Error("Idempotency key is invalid");
+        const queued = await paymentTransaction(context, [`session:${paymentSessionId}`], async (sudo) => {
+          const session = await loadSession(sudo, paymentSessionId);
+          if (!session?.provider || !session.providerReference || !session.payment) throw new Error("Payment session not found");
+          const sessionData = session.data && typeof session.data === "object" ? session.data as Record<string, any> : {};
+          if (sessionData.purpose !== "appointment_deposit") throw new Error("Use the controlled settlement reversal workflow");
+          if (!["completed", "partially_refunded"].includes(session.status)) throw new Error("Completed payment not found");
+          const refunds = await sudo.query.Refund.findMany({ where: { payment: { id: { equals: session.payment.id } } }, take: 200, query: "amountMinor status" });
+          const refundable = refundableMinor(session.amount, refunds as any);
+          const refundCents = amount ?? refundable;
+          if (!Number.isInteger(refundCents) || refundCents <= 0) throw new Error("Invalid refund amount");
+          const scopedKey = aggregateIdempotencyKey(actor.practiceId, `refund:${key}`);
+          const replay = (await sudo.query.Refund.findMany({ where: { practice: { id: { equals: actor.practiceId } }, idempotencyKey: { equals: scopedKey } }, take: 1, query: "id" }))[0];
+          if (!replay && refundCents > refundable) throw new Error("Refund exceeds what is still refundable");
+          return enqueueRefund(sudo, {
+            practiceId: actor.practiceId, paymentId: session.payment.id, sessionId: session.id, amountMinor: refundCents,
+            currencyCode: session.currency, reason: (reason || "").trim() || "Refund requested", idempotencyKey: scopedKey,
+            providerReference: session.providerReference, actorId: actor.actorId,
+          });
+        });
+        // After the commit: first attempt right away. The outbox keeps going if this call fails or the process dies.
+        if (queued.attemptId) await processRefundOutbox(context, { attemptIds: [queued.attemptId], limit: 1 }).catch(error => console.error("Refund outbox kick failed", error));
+        const refund = await context.sudo().query.Refund.findOne({ where: { id: queued.refundId }, query: "status" });
+        return { success: true, refundId: queued.refundId, error: null, status: refund?.status === "completed" ? "refunded" : refund?.status === "failed" ? "failed" : "processing" };
+      }
       return await paymentTransaction(context, [`session:${paymentSessionId}`], async (sudo) => {
       const session = await loadSession(sudo, paymentSessionId);
       if (!session?.provider || !session.providerReference || !session.payment) throw new Error("Payment session not found");
       const initialData = session.data && typeof session.data === "object" ? session.data as Record<string, any> : {};
       if (initialData.purpose !== "appointment_deposit") throw new Error("Use the controlled settlement reversal workflow");
-      if (session.provider.adapter !== "manual") throw new Error("Processor refunds require a durable outbox and webhook reconciliation workflow");
       const alreadyRefunded = Number(session.payment.refundedAmount || 0);
       const refundCents = amount ?? (session.amount - alreadyRefunded);
       const cumulativeRefund = alreadyRefunded + refundCents;
@@ -325,4 +358,27 @@ export const distributeTip = graphql.field({
   },
 });
 
-export const paymentMutations = { processPayment, confirmPayment, refundPayment, reverseAppointmentSettlement, distributeTip };
+export const retryRefunds = graphql.field({
+  type: graphql.object<{ success: boolean; claimed: number; succeeded: number; needsReview: number; error: string | null }>()({
+    name: "RetryRefundsResult",
+    fields: {
+      success: graphql.field({ type: graphql.nonNull(graphql.Boolean) }),
+      claimed: graphql.field({ type: graphql.nonNull(graphql.Int) }),
+      succeeded: graphql.field({ type: graphql.nonNull(graphql.Int) }),
+      needsReview: graphql.field({ type: graphql.nonNull(graphql.Int) }),
+      error: graphql.field({ type: graphql.String }),
+    },
+  }),
+  async resolve(_source, _args, context: Context) {
+    let actor;
+    try { actor = requireActorPractice(context, permissions.canManageFinance); }
+    catch (error) { return { success: false, claimed: 0, succeeded: 0, needsReview: 0, error: error instanceof Error ? error.message : "Authorized finance access is required" }; }
+    try {
+      const summary = await retryPracticeRefunds(context, actor.practiceId);
+      const values = Object.values(summary.results);
+      return { success: true, claimed: summary.claimed, succeeded: values.filter(value => value === "succeeded").length, needsReview: values.filter(value => value === "needs_review").length, error: null };
+    } catch (error) { return { success: false, claimed: 0, succeeded: 0, needsReview: 0, error: safeError(error) }; }
+  },
+});
+
+export const paymentMutations = { processPayment, confirmPayment, refundPayment, reverseAppointmentSettlement, distributeTip, retryRefunds };

@@ -42,12 +42,12 @@ export async function getPayments(filters: PaymentFilters): Promise<PaymentList>
   };
 }
 
-/** Which existing workflow can refund this payment: manual deposits refund; manual checkouts reverse the settlement. */
+/** Which workflow can refund this payment: deposits refund (processor deposits through the durable outbox); manual checkouts reverse the settlement. */
 function refundRouteFor(session: any): RefundRoute {
   const purpose = session?.data && typeof session.data === 'object' ? session.data.purpose : null;
-  if (!session || session.provider?.adapter !== 'manual') return null;
+  if (!session) return null;
   if (purpose === 'appointment_deposit') return 'deposit';
-  if (purpose === 'controlled_checkout') return 'settlement';
+  if (session.provider?.adapter === 'manual' && purpose === 'controlled_checkout') return 'settlement';
   return null;
 }
 
@@ -57,7 +57,7 @@ export async function getPayment(id: string): Promise<PaymentDetailRead> {
       payment(where: { id: $id }) {
         ${ROW_FIELDS}
         subtotal tax discount receiptEmail refundReason refundedAt currencyCode
-        refunds(orderBy: { processedAt: desc }) { id amountMinor reason status processedAt }
+        refunds(orderBy: { createdAt: desc }) { id amountMinor reason status processedAt attempt { status needsReview lastError providerRefundId } }
         session { id status amount data provider { name adapter } }
         appointment {
           lineItems { id serviceTitle price quantity }
@@ -78,9 +78,9 @@ export async function getPayment(id: string): Promise<PaymentDetailRead> {
 
 export async function refundPaymentAction(input: { paymentId: string; paymentSessionId: string; route: 'deposit' | 'settlement'; amount: number; reason: string; idempotencyKey: string }) {
   const response = input.route === 'deposit'
-    ? await keystoneClient<{ result: { success: boolean; error: string | null } }>(`mutation RefundDeposit($paymentSessionId: ID!, $amount: Int, $reason: String) {
-        result: refundPayment(paymentSessionId: $paymentSessionId, amount: $amount, reason: $reason) { success error }
-      }`, { paymentSessionId: input.paymentSessionId, amount: input.amount, reason: input.reason }).catch(() => null)
+    ? await keystoneClient<{ result: { success: boolean; error: string | null } }>(`mutation RefundDeposit($paymentSessionId: ID!, $amount: Int, $reason: String, $idempotencyKey: String) {
+        result: refundPayment(paymentSessionId: $paymentSessionId, amount: $amount, reason: $reason, idempotencyKey: $idempotencyKey) { success error status }
+      }`, { paymentSessionId: input.paymentSessionId, amount: input.amount, reason: input.reason, idempotencyKey: input.idempotencyKey }).catch(() => null)
     : await keystoneClient<{ result: { success: boolean; error: string | null } }>(`mutation ReverseSettlement($paymentSessionId: ID!, $amount: Int!, $reason: String!, $idempotencyKey: String!) {
         result: reverseAppointmentSettlement(paymentSessionId: $paymentSessionId, amount: $amount, reason: $reason, idempotencyKey: $idempotencyKey) { success error }
       }`, { paymentSessionId: input.paymentSessionId, amount: input.amount, reason: input.reason, idempotencyKey: input.idempotencyKey }).catch(() => null);
@@ -91,4 +91,17 @@ export async function refundPaymentAction(input: { paymentId: string; paymentSes
     revalidatePath(`/dashboard/platform/payments/${input.paymentId}`);
   }
   return { success: result.success, recordId: input.paymentId, error: result.error };
+}
+
+/** Dashboard "Retry refunds": re-queries every open refund with the processor, then submits only what is confirmed missing. */
+export async function retryRefundsAction(): Promise<{ success: boolean; error: string | null; message: string | null }> {
+  const response = await keystoneClient<{ result: { success: boolean; error: string | null; claimed: number; succeeded: number; needsReview: number } }>(`mutation RetryRefunds {
+    result: retryRefunds { success error claimed succeeded needsReview }
+  }`, {}).catch(() => null);
+  if (!response?.success) return { success: false, error: 'Retry was not confirmed. Reload before retrying again.', message: null };
+  const result = response.data.result;
+  revalidatePath('/dashboard/platform/payments');
+  if (!result.success) return { success: false, error: result.error, message: null };
+  const message = result.claimed === 0 ? 'No refunds are waiting.' : `Checked ${result.claimed} refund${result.claimed === 1 ? '' : 's'}: ${result.succeeded} completed${result.needsReview ? `, ${result.needsReview} need review` : ''}.`;
+  return { success: true, error: null, message };
 }

@@ -3,13 +3,14 @@ import { checkbox, json, relationship, select, text } from "@keystone-6/core/fie
 import { activeListPermissions, permissions } from "../access";
 import { trackingFields } from "./trackingFields";
 import { tenantFilter, validateTenantInput } from "./tenantAccess";
+import { REFUND_OUTBOX_PROCESSOR } from "../refundOutbox";
 
 export const PaymentProvider = list({
   hooks: { validateInput: async args => {
     await validateTenantInput(args);
     const adapter = args.resolvedData.adapter ?? args.item?.adapter;
     const installed = args.resolvedData.isInstalled ?? args.item?.isInstalled;
-    if (adapter === "stripe" && installed === true) args.addValidationError("Stripe is not launch-enabled until durable refund outbox reconciliation is implemented");
+    if (adapter === "stripe" && installed === true && REFUND_OUTBOX_PROCESSOR.registered !== true) args.addValidationError("Stripe cannot be installed until the durable refund outbox processor is registered");
   } },
   access: {
     operation: {

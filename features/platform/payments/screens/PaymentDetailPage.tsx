@@ -77,10 +77,10 @@ export async function PaymentDetailPage({ paymentId }: { paymentId: string }) {
             {payment.refunds.map((refund) => (
               <li key={refund.id} className="grid gap-0.5 px-4 py-3 text-sm md:px-5">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="inline-flex items-center gap-1.5 font-medium"><StatusDot tone={refund.status === 'completed' ? 'emerald' : refund.status === 'failed' ? 'rose' : 'amber'} /><span className="capitalize">{refund.status}</span></span>
+                  <span className="inline-flex items-center gap-1.5 font-medium"><StatusDot tone={refund.status === 'completed' ? 'emerald' : refund.status === 'failed' || refund.attempt?.needsReview ? 'rose' : 'amber'} /><span className="capitalize">{refund.attempt?.needsReview ? 'Needs review' : refund.status === 'pending' && refund.attempt?.status === 'unknown' ? 'Confirming with processor' : refund.status}</span></span>
                   <span className="tabular-nums">−{usd(refund.amountMinor)}</span>
                 </div>
-                <span className="text-xs text-muted-foreground">{stamp(refund.processedAt)}{refund.reason ? ` · ${refund.reason}` : ''}</span>
+                <span className="text-xs text-muted-foreground">{stamp(refund.processedAt)}{refund.reason ? ` · ${refund.reason}` : ''}{refund.attempt?.providerRefundId ? ` · ${refund.attempt.providerRefundId}` : ''}{refund.attempt?.needsReview && refund.attempt.lastError ? ` · ${refund.attempt.lastError}` : ''}</span>
               </li>
             ))}
           </ul>

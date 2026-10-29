@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { Context } from ".keystone/types";
 import { canTransitionPayment, paymentRecordStatus, type PaymentLifecycleStatus } from "./payment-lifecycle";
 import { parseProviderWebhook, paymentProviderFromRecord } from "./utils/paymentProviderAdapter";
+import { reconcileRefundFromWebhook, signalRefundRecheck } from "./refundOutbox";
 
 export type PaymentWebhookOutcome = {
   replayed: boolean;
@@ -32,6 +33,26 @@ export async function reconcilePaymentWebhook(
 
   const replayKey = `${provider.id}:${event.eventId}`;
   const payloadHash = createHash("sha256").update(payload).digest("hex");
+
+  // Refund events belong to the outbox. They are applied through its own transactions (so not inside
+  // the one below) and are idempotent, so a crash between apply and the receipt just replays safely.
+  if (event.refund || event.refundSignal) {
+    const sudo = context.sudo();
+    const seen = (await (sudo.query as any).PaymentWebhookEvent.findMany({ where: { replayKey: { equals: replayKey } }, take: 1, query: "id status" }))[0];
+    if (seen) return { replayed: true, processed: seen.status === "processed", status: seen.status };
+    let applied = false;
+    if (event.refund) applied = (await reconcileRefundFromWebhook(context, provider.code, event.refund)) === "applied";
+    else if (event.providerReference) applied = (await signalRefundRecheck(context, event.providerReference)) > 0;
+    const status = applied ? "processed" : "ignored";
+    await (sudo.query as any).PaymentWebhookEvent.createOne({
+      data: {
+        practice: { connect: { id: provider.practice.id } }, provider: { connect: { id: provider.id } }, replayKey, eventId: event.eventId,
+        type: event.type, providerReference: event.providerReference || "", payloadHash, status, data: event.data || {}, processedAt: new Date().toISOString(),
+      },
+      query: "id",
+    }).catch(() => undefined); // a concurrent delivery of the same event already recorded it
+    return { replayed: false, processed: applied, status };
+  }
 
   return context.transaction(async (transactionContext: Context) => {
     await transactionContext.prisma.$executeRawUnsafe(

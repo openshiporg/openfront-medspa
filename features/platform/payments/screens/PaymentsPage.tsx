@@ -6,6 +6,7 @@ import { EmptyState, ErrorState, MetricStrip, PageHeader, PillLink, PlatformPage
 import { PracticeSetupState } from '@/features/platform/components/PracticeSetupState';
 import { hasPracticeSetup } from '@/features/platform/lib/practiceSetup';
 import { getPayments } from '../actions/payments';
+import { RetryRefundsButton } from '../components/RetryRefundsButton';
 import { PAYMENT_STATUSES, paymentMethodLabel, paymentStatusLabel, type PaymentFilters } from '../types';
 
 const BASE = '/dashboard/platform/payments';
@@ -51,7 +52,7 @@ export async function PaymentsPage({ searchParams }: { searchParams?: Promise<{ 
 
   return (
     <PlatformPage breadcrumbs={breadcrumbs}>
-      <PageHeader title="Payments" icon={Banknote} />
+      <PageHeader title="Payments" icon={Banknote} actions={<RetryRefundsButton />} />
       <MetricStrip items={[
         { label: 'Settled', value: usd(result.settled, { whole: true }), tone: 'emerald' },
         { label: 'Refunded', value: usd(result.refunded, { whole: true }) },
