@@ -54,10 +54,10 @@
 .storefront:has(.altair-home)>footer { display:none; }
 .altair-mobile-book { display:flex; justify-content:center; align-items:center; gap:30px; padding:17px; font:400 20px/1.2 var(--sf-font-display); text-decoration:none; color:#fff9ef; background:linear-gradient(100deg,#6a3d20,#51301c); border-radius:10px 10px 0 0; }
 .sf-mobile-bar { border:0; padding:0; background:transparent; }
-@media(min-width:1024px) { .altair-home-grid:has(.altair-rooms) { grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) minmax(0,.9fr); gap:45px; } }
-.altair-room-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+@media(min-width:1024px) { .altair-home-grid:has(.altair-rooms) { grid-template-columns:auto minmax(0,1fr) minmax(0,.9fr); gap:45px; } }
+.altair-room-grid { display:flex; gap:10px; }
 .altair-room-grid img { width:100%; aspect-ratio:.77; object-fit:cover; }
-.altair-room-grid a { color:inherit; text-decoration:none; }
+.altair-room-grid a { display:block; flex:0 0 179px; color:inherit; text-decoration:none; }
 .altair-room-grid h3 { font:400 16px/1.2 var(--sf-font-display); margin-top:6px; }
 @media(min-width:768px) { .altair-inflow-book { display:none; } }
 @media(max-width:767px) {
@@ -90,7 +90,7 @@
  .altair-rooms { order:-1; margin-inline:-3px -21px; }
  .altair-rooms>h2 { display:none; }
  .altair-room-grid { display:flex; overflow-x:auto; gap:8px; padding-right:18px; scrollbar-width:none; }
- .altair-room-grid a { flex:0 0 47%; }
+ .altair-room-grid a { flex:0 0 47%; min-width:0; }
  .altair-room-grid img { aspect-ratio:1.42; border-radius:6px; }
  .altair-room-grid h3 { font-size:15px; }
 }
