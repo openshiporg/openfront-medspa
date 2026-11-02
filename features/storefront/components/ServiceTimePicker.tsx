@@ -25,8 +25,8 @@ export function ServiceTimePicker({ serviceId, serviceName, duration, total, pro
 
   useEffect(() => {
     let off = false
-    setDate(undefined); setSlots([]); setTime(null); setNext(undefined)
     if (!providerId) return
+    Promise.resolve().then(() => { if (!off) { setDate(undefined); setSlots([]); setTime(null); setNext(undefined) } })
     getNextAvailableDate(providerId, duration, serviceId).then((n) => {
       if (off) return
       setNext(n)
@@ -38,7 +38,7 @@ export function ServiceTimePicker({ serviceId, serviceName, duration, total, pro
   useEffect(() => {
     let off = false
     if (!date || !providerId) return
-    setLoading(true); setTime(null)
+    Promise.resolve().then(() => { if (!off) { setLoading(true); setTime(null) } })
     getAvailableTimeSlots(providerId, key(date), duration, serviceId)
       .then((s) => { if (!off) setSlots(s) })
       .finally(() => { if (!off) setLoading(false) })
