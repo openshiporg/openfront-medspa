@@ -1,4 +1,5 @@
 'use client'
+import { RelativeTime } from '@/features/dashboard/components/RelativeTime';
 
 import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -458,7 +459,7 @@ export function WaitlistClient() {
                       <div className="flex items-center gap-4 text-sm text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
-                          {formatTimeAgo(entry.createdAt)}
+                          <RelativeTime format={() => formatTimeAgo(entry.createdAt)} />
                         </span>
                         {entry.service && (
                           <span>{entry.service.name}</span>

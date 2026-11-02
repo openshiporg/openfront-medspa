@@ -1,3 +1,4 @@
+import { RelativeAge } from './RelativeAge';
 import { PlugZap } from 'lucide-react';
 import { Chip, EmptyState, ErrorState, MetricStrip, PageHeader, Panel, PillLink, PlatformPage, SegmentTabs, StatusDot, TitleStatus, Track, humanize } from '@/features/platform/components/medspa-ui';
 import { PracticeSetupState } from '@/features/platform/components/PracticeSetupState';
@@ -11,14 +12,6 @@ const EVENT_TABS = [
   { value: 'delivered', label: 'Delivered' },
   { value: 'all', label: 'All' },
 ] as const;
-
-function age(value: string | null) {
-  if (!value) return '—';
-  const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60000));
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.round(minutes / 60);
-  return hours < 48 ? `${hours} h ago` : `${Math.round(hours / 24)} d ago`;
-}
 
 export async function IntegrationsPage({ searchParams }: { searchParams?: Promise<{ events?: string }> }) {
   const params = searchParams ? await searchParams : {};
@@ -100,7 +93,7 @@ export async function IntegrationsPage({ searchParams }: { searchParams?: Promis
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   {event.aggregateType ? <Chip>{event.aggregateType}</Chip> : null}
-                  <span className="tabular-nums">{age(event.occurredAt)}</span>
+                  <span className="tabular-nums"><RelativeAge value={event.occurredAt} /></span>
                 </div>
               </li>
             ))}
@@ -114,7 +107,7 @@ export async function IntegrationsPage({ searchParams }: { searchParams?: Promis
             {result.webhooks.map((hook) => (
               <li key={hook.id} className="flex flex-wrap items-center justify-between gap-2">
                 <span className="flex items-center gap-2"><StatusDot tone={hook.status === 'processed' ? 'emerald' : 'amber'} />{hook.type || 'Webhook'} · {hook.provider?.name || 'Provider'}</span>
-                <span className="text-xs tabular-nums text-muted-foreground">{age(hook.processedAt)}</span>
+                <span className="text-xs tabular-nums text-muted-foreground"><RelativeAge value={hook.processedAt} /></span>
               </li>
             ))}
           </ul>

@@ -1,4 +1,5 @@
 'use client'
+import { RelativeTime } from '@/features/dashboard/components/RelativeTime';
 
 import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -171,7 +172,7 @@ function TicketCard({ order, station, onBump, onCompleteOrder, currentTime }: Ti
           )}
           <span className="flex items-center gap-1">
             <Clock className="h-3 w-3" />
-            {formatTimeAgo(order.createdAt, currentTime)}
+            <RelativeTime format={() => formatTimeAgo(order.createdAt, currentTime)} />
           </span>
         </div>
       </CardHeader>
