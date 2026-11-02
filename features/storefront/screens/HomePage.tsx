@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { MapPin, Phone, Clock } from "lucide-react"
+import { ArrowRight, MapPin, Phone, Clock } from "lucide-react"
 import { getStorefrontBrand, storefrontMetadata } from "../lib/data/brand"
 import { getAllServices } from "../lib/data/services"
 import { getFeaturedProviders } from "../lib/data/providers"
@@ -45,6 +45,7 @@ export async function HomePage() {
             <span>{service.name}</span><span>{service.baseDuration} min</span><span>{service.basePrice === 0 ? "complimentary" : formatPrice(service.basePrice)}</span>
           </Link>)}
         </div> : <p>No treatments listed yet</p>}
+        <Link href="/book" className="altair-inflow-book">Book an appointment <ArrowRight aria-hidden="true" /></Link>
       </section>
       <section className="altair-team" id="team" aria-labelledby="team-heading">
         <h2 id="team-heading">Your team</h2>
