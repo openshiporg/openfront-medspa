@@ -39,20 +39,14 @@ function boundedText(value: unknown, max: number): string | null {
   return text
 }
 
-function publicPhone(value: unknown, fictionalDemo: boolean) {
-  const phone = boundedText(value, 40)
-  if (!phone) return null
-  const digits = phone.replace(/\D/g, '')
-  const reservedFictionalNumber = /^1?[2-9]\d{2}55501\d{2}$/.test(digits)
-  if (reservedFictionalNumber) return fictionalDemo ? phone : null
-  return /555/.test(digits) ? null : phone
+// The merchant's saved contact details are shown as saved (after the format checks).
+function publicPhone(value: unknown) {
+  return boundedText(value, 40)
 }
 
-function publicEmail(value: unknown, fictionalDemo: boolean) {
+function publicEmail(value: unknown) {
   const email = boundedText(value, 254)
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null
-  if (/\.example$/i.test(email)) return fictionalDemo ? email : null
-  return /\.(?:invalid|test)$/i.test(email) ? null : email
+  return email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null
 }
 
 function publicZipCode(value: unknown) {
@@ -181,8 +175,8 @@ export const publicStorefrontSettings = graphql.field({
         city: boundedText(location.city, 100),
         state: boundedText(location.state, 100),
         zipCode: publicZipCode(location.zipCode),
-        phone: publicPhone(location.phone, fictionalDemo),
-        email: publicEmail(location.email, fictionalDemo),
+        phone: publicPhone(location.phone),
+        email: publicEmail(location.email),
         hours: publicHours(location.hours),
         timezone: boundedText(location.timezone, 100),
       },
