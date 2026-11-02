@@ -41,7 +41,8 @@
 .altair-menu-row>span:nth-child(2) { font-size:12px; }
 .altair-menu-row>span:last-child { text-align:right; font-size:13px; }
 .altair-team-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:15px; }
-.altair-team-grid a { text-decoration:none; color:inherit; }
+.altair-team-grid a { display:block; min-width:0; text-decoration:none; color:inherit; }
+.altair-provider-title { font-size:14px; margin:2px 0 0; }
 .altair-team img { width:100%; aspect-ratio: .74; object-fit:cover; object-position:center 30%; }
 .altair-team h3 { font:400 18px/1.25 var(--sf-font-display); margin-top:6px; }
 .altair-visit { position:relative; display:flex; align-items:center; gap:30px; min-height:121px; padding:25px 5.4%; color:#fff9ef; background:#664d35; isolation:isolate; }
