@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ViewerTime } from '@/features/dashboard/components/ViewerTime';
 import { ChevronLeft, ChevronRight, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { EmptyState, ErrorState, MetricStrip, PageHeader, PillLink, PlatformPage, SegmentTabs, TitleStatus, Track } from '@/features/platform/components/medspa-ui';
@@ -66,7 +67,7 @@ export async function ReviewsPage({ searchParams }: { searchParams?: Promise<{ f
                       <TitleStatus tone={review.isApproved ? 'emerald' : 'amber'}>{review.isApproved ? 'Published' : 'To review'}</TitleStatus>
                     </div>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      {[review.service?.name, review.provider?.name, new Date(review.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })].filter(Boolean).join(' · ')}
+                      {[review.service?.name, review.provider?.name].filter(Boolean).join(' · ')}{review.service?.name || review.provider?.name ? ' · ' : ''}<ViewerTime value={review.createdAt} style="date" />
                     </p>
                     {review.comment ? <p className="mt-2 whitespace-pre-wrap text-sm">{review.comment}</p> : <p className="mt-2 text-sm text-muted-foreground">No comment</p>}
                     {review.appointment ? <Link href={`/dashboard/platform/appointments/${review.appointment.id}`} className="mt-2 inline-block text-xs font-medium hover:underline">Appointment</Link> : null}

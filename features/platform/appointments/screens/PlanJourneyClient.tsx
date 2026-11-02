@@ -1,4 +1,5 @@
 'use client';
+import { ViewerTime } from '@/features/dashboard/components/ViewerTime';
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -106,7 +107,7 @@ export function PlanJourneyClient({ data }: { data: PlanJourney }) {
           <Panel key={appointment.id}>
             <div className="grid min-w-0 gap-3">
               <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-                <Link className="font-semibold underline-offset-4 hover:underline" href={`/dashboard/platform/appointments/${appointment.id}`}>{new Date(appointment.startTime).toLocaleString()}</Link>
+                <Link className="font-semibold underline-offset-4 hover:underline" href={`/dashboard/platform/appointments/${appointment.id}`}><ViewerTime value={appointment.startTime} style="datetime" /></Link>
                 <TitleStatus tone={statusTone(appointment.status)}>{humanize(appointment.status)}</TitleStatus>
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -134,7 +135,7 @@ export function PlanJourneyClient({ data }: { data: PlanJourney }) {
         <ol className="divide-y overflow-hidden rounded-[6px] border bg-background">
           {data.history.map(event => (
             <li key={event.id} className="grid gap-1 break-all p-3 text-xs md:px-5">
-              <p className="flex flex-wrap items-center gap-2 text-sm font-medium"><StatusDot tone="violet" />{humanize(event.action)}<span className="text-xs font-normal text-muted-foreground">{new Date(event.occurredAt).toLocaleString()}</span></p>
+              <p className="flex flex-wrap items-center gap-2 text-sm font-medium"><StatusDot tone="violet" />{humanize(event.action)}<span className="text-xs font-normal text-muted-foreground"><ViewerTime value={event.occurredAt} style="datetime" /></span></p>
               <p className="text-muted-foreground">Record {event.resourceId} · request {event.correlationId}</p>
               <p className="text-muted-foreground">Evidence {event.evidenceHash}</p>
             </li>

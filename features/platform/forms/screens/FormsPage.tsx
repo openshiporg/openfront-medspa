@@ -1,3 +1,4 @@
+import { ViewerTime } from '@/features/dashboard/components/ViewerTime';
 import { ClipboardList, FileSignature, FileText, Inbox } from 'lucide-react';
 import { statusFilter } from '@/features/platform/lib/queryParams';
 import { Chip, EmptyState, ErrorState, MetricStrip, PageHeader, PillLink, PlatformPage, SegmentTabs, StatusDot, Track, humanize, type Tone } from '@/features/platform/components/medspa-ui';
@@ -9,7 +10,7 @@ import type { ConsentTemplateRow } from '../types';
 const tabs = ['intake', 'templates', 'consent', 'submissions'] as const;
 
 function date(value?: string | null) {
-  return value ? new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+  return <ViewerTime value={value} style="date" />;
 }
 
 const submissionTone: Record<string, Tone> = { submitted: 'amber', in_review: 'blue', reviewed: 'emerald', superseded: 'zinc' };
@@ -118,7 +119,7 @@ export async function FormsPage({ searchParams }: { searchParams?: Promise<{ tab
                       <h2 className="min-w-0 break-words text-base font-semibold">{row.service?.name || 'Treatment'} · v{row.version}</h2>
                       <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><StatusDot tone={state.tone} />{state.label}</span>
                     </div>
-                    <p className="mt-1 text-sm text-muted-foreground">{row.jurisdiction} · {row.language} · from {date(row.effectiveFrom)}{row.effectiveUntil ? ` to ${date(row.effectiveUntil)}` : ''} · {row.recordsCount} signed</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{row.jurisdiction} · {row.language} · from {date(row.effectiveFrom)}{row.effectiveUntil ? <> to {date(row.effectiveUntil)}</> : ''} · {row.recordsCount} signed</p>
                   </div>
                   {overview.canPublishConsent && !row.supersededBy && state.label !== 'Ended' ? <Track><ConsentPublishSheet services={overview.services} supersede={row} /></Track> : null}
                 </li>
@@ -140,7 +141,7 @@ export async function FormsPage({ searchParams }: { searchParams?: Promise<{ tab
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {row.template?.name || 'Form'}{row.templateVersion ? ` v${row.templateVersion}` : ''} · submitted {date(row.submittedAt)}
-                    {row.appointment?.startTime ? ` · visit ${date(row.appointment.startTime)}` : ''}
+                    {row.appointment?.startTime ? <> · visit {date(row.appointment.startTime)}</> : ''}
                     {row.reviewActions[0] ? ` · ${humanize(row.reviewActions[0].disposition)} by ${row.reviewActions[0].reviewer?.name || 'staff'}` : ''}
                   </p>
                 </div>

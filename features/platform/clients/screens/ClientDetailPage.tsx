@@ -1,3 +1,4 @@
+import { ViewerTime } from '@/features/dashboard/components/ViewerTime';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { CalendarDays, ClipboardList, ContactRound, FileText, Gift, Hourglass } from 'lucide-react';
@@ -10,14 +11,14 @@ import { ClientProfileDrawer } from '../components/ClientProfileDrawer';
 import type { ClientRecord } from '../types';
 
 function day(value?: string | null) {
-  return value ? new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+  return <ViewerTime value={value} style="date" />;
 }
 
 function when(value: string, timeZone?: string | null) {
   try {
     return new Date(value).toLocaleString('en-US', { timeZone: timeZone || undefined, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   } catch {
-    return new Date(value).toLocaleString('en-US');
+    return <ViewerTime value={value} style="datetime" />;
   }
 }
 
@@ -155,7 +156,7 @@ export async function ClientDetailPage({ clientId }: { clientId: string }) {
                   <div key={membership.id} className="flex items-start justify-between gap-3 text-sm">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2"><span className="truncate font-medium">{membership.name || 'Membership'}</span><TitleStatus tone={statusTone(membership.status)}>{humanize(membership.status)}</TitleStatus></div>
-                      <div className="text-xs text-muted-foreground">{membership.nextBillingDate ? `Bills ${day(membership.nextBillingDate)}` : 'No billing date'}</div>
+                      <div className="text-xs text-muted-foreground">{membership.nextBillingDate ? <>Bills {day(membership.nextBillingDate)}</> : 'No billing date'}</div>
                     </div>
                     {membership.monthlyPrice !== null ? <span className="shrink-0 text-xs tabular-nums">{usd(membership.monthlyPrice)}/mo</span> : null}
                   </div>
@@ -164,7 +165,7 @@ export async function ClientDetailPage({ clientId }: { clientId: string }) {
                   <div key={pkg.id} className="flex items-start justify-between gap-3 text-sm">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2"><span className="truncate font-medium">{pkg.name || 'Package'}</span><TitleStatus tone={statusTone(pkg.status)}>{humanize(pkg.status)}</TitleStatus></div>
-                      <div className="text-xs text-muted-foreground">{pkg.expiresAt ? `Expires ${day(pkg.expiresAt)}` : 'No expiry'}</div>
+                      <div className="text-xs text-muted-foreground">{pkg.expiresAt ? <>Expires {day(pkg.expiresAt)}</> : 'No expiry'}</div>
                     </div>
                     <span className="shrink-0 text-xs tabular-nums">{usd(pkg.remaining)} left</span>
                   </div>

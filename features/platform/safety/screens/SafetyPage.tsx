@@ -1,3 +1,4 @@
+import { ViewerTime } from '@/features/dashboard/components/ViewerTime';
 import Link from 'next/link';
 import { ArrowUpRight, ShieldAlert, Siren, Wrench } from 'lucide-react';
 import { statusFilter } from '@/features/platform/lib/queryParams';
@@ -11,7 +12,7 @@ export const incidentStatusLabel: Record<string, string> = { open: 'Open', under
 export const recallTone = (status: string): Tone => status === 'closed' ? 'zinc' : status === 'disposition_complete' ? 'emerald' : 'rose';
 
 export function when(value?: string | null) {
-  return value ? new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+  return <ViewerTime value={value} style="datetime" />;
 }
 
 export async function SafetyPage({ searchParams }: { searchParams?: Promise<{ tab?: string }> }) {

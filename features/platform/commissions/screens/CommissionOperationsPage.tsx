@@ -1,3 +1,4 @@
+import { ViewerTime } from '@/features/dashboard/components/ViewerTime';
 import { Banknote, CheckCircle2 } from 'lucide-react';
 import { statusFilter } from '@/features/platform/lib/queryParams';
 import {
@@ -17,8 +18,7 @@ const tabs = [
 ] as const;
 
 function formatDate(value?: string | null) {
-  if (!value) return 'No date';
-  return new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return <ViewerTime value={value} style="date" />;
 }
 
 export async function CommissionOperationsPage({ searchParams }: PageProps) {
@@ -105,7 +105,7 @@ function CommissionRow({ commission }: { commission: PlatformCommission }) {
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
           <h2 className="text-base font-semibold tabular-nums">{usd(commission.commissionAmount)}</h2>
-          <TitleStatus tone={commission.isPaid ? 'emerald' : 'amber'}>{commission.isPaid ? `Paid ${formatDate(commission.paidAt)}` : 'Unpaid'}</TitleStatus>
+          <TitleStatus tone={commission.isPaid ? 'emerald' : 'amber'}>{commission.isPaid ? <>Paid {formatDate(commission.paidAt)}</> : 'Unpaid'}</TitleStatus>
         </div>
         <p className="mt-0.5 truncate text-sm text-muted-foreground">{providerName} · {commission.service?.name || 'Treatment'} · {clientName}</p>
         <div className="mt-2 flex flex-wrap gap-1.5">

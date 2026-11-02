@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ViewerTime } from '@/features/dashboard/components/ViewerTime';
 import { ArrowUpRight, Boxes, ClipboardList, History, PackageOpen, Truck } from 'lucide-react';
 import { Chip, EmptyState, ErrorState, MetricStrip, Panel, PillLink, SegmentTabs, StatusDot, Track, usd, type Tone } from '@/features/platform/components/medspa-ui';
 import { pillClass } from '@/features/platform/components/pill';
@@ -19,7 +20,7 @@ const movementLabel: Record<string, string> = { receive: 'Received', adjustment:
 
 export function date(value?: string | null, withTime = false) {
   if (!value) return '—';
-  return new Date(value).toLocaleString('en-US', withTime ? { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' } : { month: 'short', day: 'numeric', year: 'numeric' });
+  return <ViewerTime value={value} style={withTime ? 'datetime' : 'date'} />;
 }
 
 function Unavailable({ id, title, tab }: { id: string; title: string; tab: string }) {

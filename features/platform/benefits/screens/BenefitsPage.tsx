@@ -1,3 +1,4 @@
+import { ViewerTime } from '@/features/dashboard/components/ViewerTime';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { BadgePercent, CreditCard, Gift, Package, Ticket } from 'lucide-react';
@@ -17,7 +18,7 @@ import {
 const BASE = '/dashboard/platform/benefits';
 
 function date(value?: string | null) {
-  return value ? new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+  return <ViewerTime value={value} style="date" />;
 }
 
 const statusTone: Record<string, Tone> = { active: 'emerald', paused: 'amber', cancelled: 'zinc', expired: 'zinc', 'fully-used': 'blue' };
@@ -175,7 +176,7 @@ function ClientMembershipsTab({ rows, status }: { rows: ClientMembershipRow[]; s
                   <Fact label="Terms">{agreement ? <span className="inline-flex items-center gap-1.5"><StatusDot tone="emerald" />{agreement.termsVersion} · {date(agreement.acceptedAt)}</span> : <span className="inline-flex items-center gap-1.5 text-rose-700 dark:text-rose-300"><StatusDot tone="rose" />Not accepted</span>}</Fact>
                   <Fact label="Discount">{row.membership?.discountPercent || 0}%</Fact>
                   <Fact label="Treatments">{row.membership?.includedServices.length || 0}</Fact>
-                  <Fact label="Last entry">{row.ledgerEntries[0] ? `${row.ledgerEntries[0].type} · ${date(row.ledgerEntries[0].occurredAt)}` : '—'}</Fact>
+                  <Fact label="Last entry">{row.ledgerEntries[0] ? <>{row.ledgerEntries[0].type} · {date(row.ledgerEntries[0].occurredAt)}</> : '—'}</Fact>
                 </dl>
               </Row>
             );

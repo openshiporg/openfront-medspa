@@ -1,3 +1,4 @@
+import { ViewerTime } from '@/features/dashboard/components/ViewerTime';
 import Link from 'next/link';
 import { Banknote, ReceiptText } from 'lucide-react';
 import { EmptyState, ErrorState, Fact, PageHeader, Panel, PillLink, PlatformPage, StatusDot, TitleStatus, Track, usd } from '@/features/platform/components/medspa-ui';
@@ -7,7 +8,7 @@ import { RefundSheet } from '../components/RefundSheet';
 import { paymentTone } from './PaymentsPage';
 
 function stamp(value?: string | null) {
-  return value ? new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+  return <ViewerTime value={value} style="datetime" />;
 }
 
 export async function PaymentDetailPage({ paymentId }: { paymentId: string }) {

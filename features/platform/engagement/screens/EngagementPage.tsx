@@ -1,3 +1,4 @@
+import { ViewerTime } from '@/features/dashboard/components/ViewerTime';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Hourglass, Megaphone, MessageSquareText, Send } from 'lucide-react';
 import {
@@ -19,11 +20,11 @@ const waitlistLabels: Record<WaitlistStatus, string> = { active: 'Waiting', noti
 const messageLabels: Record<MessageStatus, string> = { all: 'All', sent: 'Sent', delivered: 'Delivered', failed: 'Failed' };
 
 function day(value?: string | null) {
-  return value ? new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null;
+  return value ? <ViewerTime value={value} style="date" /> : null;
 }
 
 function moment(value?: string | null) {
-  return value ? new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+  return <ViewerTime value={value} style="datetime" />;
 }
 
 type Params = { tab?: string; status?: string; page?: string };
@@ -150,7 +151,7 @@ export async function EngagementPage({ searchParams }: { searchParams?: Promise<
             <section aria-label="Waitlist entries" className="grid gap-3">
               {board.entries.map((entry) => {
                 const name = entry.name || 'Client';
-                const range = [day(entry.dateRangeStart), day(entry.dateRangeEnd)].filter(Boolean).join(' – ');
+                const range = entry.dateRangeStart || entry.dateRangeEnd ? <>{day(entry.dateRangeStart)}{entry.dateRangeStart && entry.dateRangeEnd ? ' – ' : ''}{day(entry.dateRangeEnd)}</> : null;
                 return (
                   <article key={entry.id} className="flex min-w-0 flex-col gap-3 rounded-[6px] border bg-background p-4 md:flex-row md:items-start md:justify-between md:p-5">
                     <div className="min-w-0 flex-1">
@@ -169,7 +170,7 @@ export async function EngagementPage({ searchParams }: { searchParams?: Promise<
                         {entry.phone ? <Chip>{entry.phone}</Chip> : null}
                       </div>
                       {entry.notes ? <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{entry.notes}</p> : null}
-                      <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground"><StatusDot tone="zinc" />Added {moment(entry.createdAt)}{entry.notifiedAt ? ` · notified ${moment(entry.notifiedAt)}` : ''}</p>
+                      <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground"><StatusDot tone="zinc" />Added {moment(entry.createdAt)}{entry.notifiedAt ? <> · notified {moment(entry.notifiedAt)}</> : ''}</p>
                       {entry.convertedAppointment ? <Link href={`/dashboard/platform/appointments/${entry.convertedAppointment.id}`} className="mt-1 inline-block text-xs font-medium hover:underline">Booked {moment(entry.convertedAppointment.startTime)}</Link> : null}
                     </div>
                     <div className="shrink-0"><WaitlistEntryActions entryId={entry.id} status={entry.status} name={name} /></div>

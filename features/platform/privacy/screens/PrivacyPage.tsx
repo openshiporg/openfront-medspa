@@ -1,3 +1,4 @@
+import { ViewerTime } from '@/features/dashboard/components/ViewerTime';
 import Link from 'next/link';
 import { ArrowUpRight, Archive, Gavel, KeyRound, LockKeyhole, UserRoundSearch } from 'lucide-react';
 import { statusFilter } from '@/features/platform/lib/queryParams';
@@ -12,7 +13,7 @@ const CLOSED = new Set(['fulfilled', 'partially_fulfilled', 'denied_with_basis',
 export const requestTypeLabel = Object.fromEntries(REQUEST_TYPES.map((option) => [option.value, option.label]));
 
 export function day(value?: string | null) {
-  return value ? new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+  return <ViewerTime value={value} style="date" />;
 }
 
 /** Due-date dot: overdue rose, due within 3 days amber, finished zinc. */
@@ -105,7 +106,7 @@ export async function PrivacyPage({ searchParams }: { searchParams?: Promise<{ t
                     {row.incident?.summary && row.client ? <Chip>{row.incident.summary}</Chip> : null}
                   </div>
                   <p className="mt-1 break-words text-sm text-muted-foreground">{row.authorityReference} · {row.reason}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">Placed {day(row.placedAt)} by {row.placedBy?.name || 'staff'}{row.releasedAt ? ` · released ${day(row.releasedAt)} by ${row.releasedBy?.name || 'staff'}` : ''}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">Placed {day(row.placedAt)} by {row.placedBy?.name || 'staff'}{row.releasedAt ? <> · released {day(row.releasedAt)} by {row.releasedBy?.name || 'staff'}</> : ''}</p>
                 </div>
                 {row.status === 'active' && overview.canApprove ? <Track><ReleaseHoldSheet legalHoldId={row.id} /></Track> : null}
               </li>
@@ -125,7 +126,7 @@ export async function PrivacyPage({ searchParams }: { searchParams?: Promise<{ t
                     <h2 className="min-w-0 break-words text-base font-semibold">{row.recordClass} · {row.retainMonths} months</h2>
                     <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><StatusDot tone={ended ? 'zinc' : 'emerald'} />{ended ? 'Ended' : 'Effective'}</span>
                   </div>
-                  <p className="mt-1 text-sm text-muted-foreground">{row.jurisdiction} · v{row.version} · from {day(row.effectiveFrom)}{row.effectiveUntil ? ` to ${day(row.effectiveUntil)}` : ''} · approved by {row.approvedBy?.name || 'owner'}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{row.jurisdiction} · v{row.version} · from {day(row.effectiveFrom)}{row.effectiveUntil ? <> to {day(row.effectiveUntil)}</> : ''} · approved by {row.approvedBy?.name || 'owner'}</p>
                   <p className="mt-1 break-words text-xs text-muted-foreground">{row.dispositionRule}{row.minorsRule ? ` · Minors: ${row.minorsRule}` : ''}</p>
                 </li>
               );

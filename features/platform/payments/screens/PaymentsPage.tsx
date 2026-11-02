@@ -1,3 +1,4 @@
+import { ViewerTime } from '@/features/dashboard/components/ViewerTime';
 import Link from 'next/link';
 import { ArrowUpRight, Banknote } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -14,7 +15,7 @@ const BASE = '/dashboard/platform/payments';
 export const paymentTone: Record<string, Tone> = { completed: 'emerald', partially_refunded: 'amber', refunded: 'zinc', pending: 'amber', processing: 'blue', failed: 'rose' };
 
 function stamp(value?: string | null) {
-  return value ? new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+  return <ViewerTime value={value} style="datetime" />;
 }
 
 function query(filters: PaymentFilters, status: string) {
