@@ -5,6 +5,11 @@ const s3Hostname = process.env.S3_ENDPOINT ? process.env.S3_ENDPOINT.replace(/^h
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '10mb',
+    },
+  },
   logging: { serverFunctions: false },
   allowedDevOrigins: process.env.PORTLESS_URL ? [new URL(process.env.PORTLESS_URL).hostname] : [],
   serverExternalPackages: ['graphql'],

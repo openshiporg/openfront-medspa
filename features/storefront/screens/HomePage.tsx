@@ -21,7 +21,8 @@ export async function HomePage() {
   const services = catalog.status === "loaded" ? catalog.data : []
   const providers = providerResult.status === "loaded" ? providerResult.data : []
   const hero = images.find(image => /room/i.test(image.altText || ""))
-  const heroSrc = rooms[0]?.photoUrl || (hero ? getStorefrontImageSrc(hero) : null)
+  // Hero: the stored room hero first, then the Treatment room photo, then any room.
+  const heroSrc = (hero ? getStorefrontImageSrc(hero) : null) || rooms.find(room => /treatment/i.test(room.name))?.photoUrl || rooms[0]?.photoUrl || null
   const hours = publishedHours(brand.hours, "short").filter(day => day.hours !== "Closed")
   return <div className="altair-home">
     <section className="altair-hero" aria-labelledby="home-heading">
