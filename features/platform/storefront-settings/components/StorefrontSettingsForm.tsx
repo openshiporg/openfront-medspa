@@ -2,8 +2,10 @@
 
 import { useActionState, useState } from 'react'
 import { saveStorefrontSettings, type StorefrontSaveState, type StorefrontSettingsData } from '../actions/storefrontSettings'
-import { LogoPicker } from './LogoPicker'
-import { fieldLabelClass, inputClass, pillClass, trackClass } from '@/features/platform/components/pill'
+import { StoreLogoField } from './StoreLogoField'
+import { StoreSettingsSaveBar } from './StoreSettingsSaveBar'
+import { DEFAULT_LOGO_SVG } from '@/features/lib/store-logo'
+import { fieldLabelClass, inputClass, pillClass } from '@/features/platform/components/pill'
 
 export function StorefrontSettingsForm({ setting, locations }: StorefrontSettingsData) {
   const [name, setName] = useState(setting?.displayName || '')
@@ -39,7 +41,7 @@ export function StorefrontSettingsForm({ setting, locations }: StorefrontSetting
       </section>
 
       <section className="min-w-0 rounded-[6px] border bg-background p-4 md:p-6">
-        <LogoPicker initialSvg={setting?.logoSvg} initialHue={setting?.logoHue} displayName={name} />
+        <StoreLogoField initialIcon={setting?.logoSvg || DEFAULT_LOGO_SVG} initialColor={setting?.logoHue ?? 221} />
       </section>
 
       <section className="flex flex-wrap items-center justify-between gap-4 rounded-[6px] border bg-background p-4 md:p-6">
@@ -48,9 +50,10 @@ export function StorefrontSettingsForm({ setting, locations }: StorefrontSetting
           Publish storefront
           <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><span aria-hidden="true" className={`size-2 rounded-full ${published ? 'bg-emerald-500' : 'bg-zinc-400'}`} />{published ? 'Live' : 'Hidden'}</span>
         </label>
-        <div className={trackClass}>
-          <button type="submit" disabled={pending || state.status === 'conflict' || !hasActiveLocation} className={pillClass('primary')}>{pending ? 'Saving…' : 'Save storefront settings'}</button>
-        </div>
+        <StoreSettingsSaveBar
+          isSaving={pending}
+          button={<button type="submit" disabled={pending || state.status === 'conflict' || !hasActiveLocation} className={pillClass('primary')}>{pending ? 'Saving…' : 'Save storefront settings'}</button>}
+        />
       </section>
     </fieldset>
   </form>

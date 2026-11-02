@@ -2,7 +2,8 @@
 
 import { revalidatePath } from 'next/cache'
 import { keystoneClient } from '@/features/dashboard/lib/keystoneClient'
-import { sanitizeStoreLogoSvg } from '@/features/lib/sanitize-store-logo'
+import { sanitizeStoreLogoSvg } from '@/features/keystone/utils/storeLogo'
+import { normalizeStoreLogoColor } from '../lib/store-logo'
 import { validLogoHue } from '@/features/lib/store-logo'
 
 export interface StorefrontSettingsData {
@@ -51,12 +52,14 @@ export async function saveStorefrontSettings(_state: StorefrontSaveState, formDa
   const accentHue = Number(formData.get('accentHue'))
   const expectedRevision = Number(formData.get('expectedRevision'))
   const rawLogo = String(formData.get('logoSvg') || '').trim()
-  const logoSvg = rawLogo ? sanitizeStoreLogoSvg(rawLogo) : ''
-  const logoHue = Number(formData.get('logoHue'))
+  const logoSvg = rawLogo ? sanitizeStoreLogoSvg(rawLogo) : undefined
+  const logoRejected = Boolean(rawLogo) && !logoSvg
+  const rawHue = formData.get('logoHue')
+  const logoHue = rawHue == null || rawHue === '' ? undefined : Math.round(Number(normalizeStoreLogoColor(rawHue))) % 360
   const isPublished = formData.get('isPublished') === 'on'
 
   if (
-    !displayName || displayName.length > 80 || !primaryLocationId || (Boolean(rawLogo) && !logoSvg) || !validLogoHue(logoHue) ||
+    !displayName || displayName.length > 80 || !primaryLocationId || logoRejected || (logoHue !== undefined && !validLogoHue(logoHue)) ||
     !Number.isInteger(accentHue) || accentHue < 0 || accentHue > 360 ||
     !Number.isInteger(expectedRevision) || expectedRevision < 0
   ) return { status: 'invalid', message: 'Review the display name, active location and valid logo/hue before saving.', revision: _state.revision }
@@ -68,8 +71,8 @@ export async function saveStorefrontSettings(_state: StorefrontSaveState, formDa
       $displayName: String!
       $primaryLocationId: ID!
       $accentHue: Int!
-      $logoSvg: String!
-      $logoHue: Int!
+      $logoSvg: String
+      $logoHue: Int
       $isPublished: Boolean!
       $expectedRevision: Int!
     ) {

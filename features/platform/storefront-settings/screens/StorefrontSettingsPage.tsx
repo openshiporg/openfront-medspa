@@ -21,10 +21,12 @@ export async function StorefrontSettingsPage(_props: Props) {
         status={result.status === 'loaded' ? <TitleStatus tone={published ? 'emerald' : 'zinc'}>{published ? 'Published' : 'Not published'}</TitleStatus> : null}
         actions={published ? <Track><PillLink href="/">View storefront</PillLink></Track> : null}
       />
+      <div className="flex min-w-0 flex-col gap-5 pb-24 md:pb-6">
       {needsSetup ? <PracticeSetupState /> : result.status === 'unavailable'
         ? <ErrorState id="storefront-settings-unavailable" title="Settings unavailable" message={result.message} action={<Track><PillLink href="/dashboard/platform/storefront">Retry</PillLink></Track>} />
         : <StorefrontSettingsForm setting={result.setting} locations={result.locations} />}
       {!needsSetup && tax ? <PracticeTaxForm practiceId={tax.practiceId} taxRate={tax.taxRate} /> : null}
+      </div>
     </PlatformPage>
   )
 }
