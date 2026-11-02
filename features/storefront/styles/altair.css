@@ -87,3 +87,41 @@
  .altair-room-grid img { aspect-ratio:1.42; border-radius:6px; }
  .altair-room-grid h3 { font-size:15px; }
 }
+
+/* Service detail */
+.altair-detail { background:#f5f0e8; color:#2a1c12; }
+.altair-detail-hero { height:310px; overflow:hidden; background:#4a3626; }
+.altair-detail-hero img { width:100%; height:100%; object-fit:cover; object-position:center 30%; display:block; }
+.altair-detail-body { max-width:1440px; margin:0 auto; padding:24px 150px 64px; display:grid; grid-template-columns:minmax(0,1fr) 472px; gap:54px; align-items:start; }
+.altair-eyebrow { font-size:12px; letter-spacing:.2em; text-transform:uppercase; margin:0 0 14px; }
+.altair-eyebrow a { color:inherit; text-decoration:none; }
+.altair-detail-main h1 { font:400 52px/1.05 var(--sf-font-display); margin:0; }
+.altair-detail-meta { font:400 28px/1.3 var(--sf-font-display); color:#6b4a30; margin:6px 0 0; }
+.altair-detail-rating { display:flex; gap:8px; align-items:center; margin-top:12px; font-size:14px; color:inherit; text-decoration:none; }
+.altair-detail-main h2, .altair-pairs h2 { font:400 24px/1.2 var(--sf-font-display); margin:0 0 14px; }
+.altair-detail-section, .altair-pairs { margin-top:32px; padding-top:24px; border-top:1px solid #cdbca9; }
+.altair-pairs>div { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.altair-pairs a { display:flex; border:1px solid #d9cbb8; border-radius:4px; overflow:hidden; color:inherit; text-decoration:none; background:#fbf8f3; }
+.altair-pairs img { width:38%; aspect-ratio:1/.9; object-fit:cover; }
+.altair-pairs span { display:grid; align-content:center; gap:4px; padding:12px 16px; }
+.altair-pairs strong { font:400 18px/1.2 var(--sf-font-display); }
+.altair-pairs em { font:400 16px/1.2 var(--sf-font-display); color:#6b4a30; font-style:normal; }
+.altair-book-card { background:#e9dcc8; border-radius:6px; padding:26px 26px 24px; position:sticky; top:24px; }
+.altair-book-card h2 { font:400 32px/1.1 var(--sf-font-display); margin:0 0 18px; }
+.altair-book-card dl { margin:0; }
+.altair-book-card dl>div { display:grid; grid-template-columns:110px 1fr; gap:12px; padding:9px 0; border-top:1px solid #cdbca9; font-size:15px; }
+.altair-book-card dt { color:#6b5643; }
+.altair-book-card dd { margin:0; }
+.altair-book-total { font:400 20px/1.2 var(--sf-font-display); }
+.altair-book-total dd { text-align:right; }
+.altair-book-button { margin-top:16px; display:flex; align-items:center; justify-content:center; gap:10px; height:46px; border-radius:999px; background:#5b3d28; color:#fff9ef; text-decoration:none; font:400 17px/1 var(--sf-font-display); }
+.altair-book-button svg { width:18px; height:18px; }
+@media(max-width:1100px) { .altair-detail-body { padding-inline:32px; grid-template-columns:minmax(0,1fr) 380px; gap:32px; } }
+@media(max-width:767px) {
+ .altair-detail-hero { height:300px; }
+ .altair-detail-body { grid-template-columns:minmax(0,1fr); padding:22px 22px 48px; gap:28px; }
+ .altair-detail-main h1 { font-size:40px; }
+ .altair-detail-meta { font-size:22px; }
+ .altair-pairs>div { grid-template-columns:minmax(0,1fr); }
+ .altair-book-card { position:static; }
+}

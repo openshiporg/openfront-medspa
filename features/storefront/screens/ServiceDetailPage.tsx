@@ -1,12 +1,11 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { ArrowLeft } from "lucide-react"
-import { getServiceById } from "../lib/data/services"
+import { ArrowRight } from "lucide-react"
+import { getAllServices, getServiceById } from "../lib/data/services"
 import { getProvidersForService } from "../lib/data/providers"
 import { ProviderCard } from "../components/ProviderCard"
 import { ProviderProfilesUnavailable } from "../components/ProviderProfilesUnavailable"
 import { ServiceCatalogUnavailable } from "../components/ServiceCatalogUnavailable"
-import { Lens, PillLink, StateCard, Track } from "../components/ui/primitives"
 import { getStorefrontImageSrc } from "../lib/images"
 import { formatDuration, formatPrice } from "../lib/format"
 import { getStorefrontReviews } from "../lib/data/storefrontReviews"
@@ -31,22 +30,37 @@ export async function ServiceDetailPage({ params }: ServiceDetailPageProps) {
   const imageSrc = getStorefrontImageSrc(service.image)
   const bookable = providerResult.status === "loaded" && providers.length > 0
 
+  const allServices = await getAllServices()
+  const pairs = allServices.status === "loaded" ? allServices.data.filter(other => other.id !== id && other.image).slice(0, 2) : []
+
   return (
-    <div className="sf-container sf-page-pad">
-      <Track><Link href="/services" className="sf-pill sf-pill-sm"><ArrowLeft />Treatments</Link></Track>
+    <div className="altair-detail">
+      <div className="altair-detail-hero">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={imageSrc ?? undefined} alt={service.image?.altText || service.name} />
+      </div>
+      <div className="altair-detail-body">
+        <div className="altair-detail-main">
+          <p className="altair-eyebrow"><Link href="/services">Treatments</Link></p>
+          <h1>{service.name}</h1>
+          <p className="altair-detail-meta">{formatDuration(service.baseDuration)} &middot; {service.basePrice === 0 ? "complimentary" : formatPrice(service.basePrice)}</p>
+          {reviews.length ? <a href="#reviews" className="altair-detail-rating"><Stars rating={averageRating(reviews)} /><span>{averageRating(reviews).toFixed(1)} &middot; {reviews.length} {reviews.length === 1 ? "review" : "reviews"}</span></a> : null}
 
-      <div className="mt-[var(--sf-space-lg)] grid gap-[var(--sf-space-xl)] lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)]">
-        <div className="grid min-w-0 content-start gap-[var(--sf-space-lg)]">
-          <header className="grid gap-5">
-            <h1 className="sf-display text-[length:var(--sf-text-display-s)]">{service.name}</h1>
-            {service.category ? <p className="sf-eyebrow">{service.category.name}</p> : null}
-            {reviews.length ? <a href="#reviews" className="flex items-center gap-2 text-[length:var(--sf-text-sm)] text-[var(--sf-ink-2)] no-underline"><Stars rating={averageRating(reviews)} /><span className="sf-num">{averageRating(reviews).toFixed(1)} · {reviews.length} {reviews.length === 1 ? "review" : "reviews"}</span></a> : null}
-          </header>
+          {pairs.length ? (
+            <section aria-labelledby="pairs-heading" className="altair-pairs">
+              <h2 id="pairs-heading">Pairs well with</h2>
+              <div>{pairs.map(other => (
+                <Link key={other.id} href={`/services/${encodeURIComponent(other.id)}`}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={getStorefrontImageSrc(other.image) ?? undefined} alt={other.image?.altText || other.name} />
+                  <span><strong>{other.name}</strong><em>{other.basePrice === 0 ? "complimentary" : formatPrice(other.basePrice)}</em></span>
+                </Link>
+              ))}</div>
+            </section>
+          ) : null}
 
-          <Lens src={imageSrc} alt={service.image?.altText || service.name} name={service.name} className="w-[min(100%,22rem)]" />
-
-          <section aria-labelledby="providers-heading" className="grid gap-4">
-            <h2 id="providers-heading" className="sf-eyebrow">Performed by</h2>
+          <section aria-labelledby="providers-heading" className="altair-detail-section">
+            <h2 id="providers-heading">Performed by</h2>
             {providerResult.status === "unavailable" ? (
               <ProviderProfilesUnavailable retryHref={`/services/${encodeURIComponent(id)}`} />
             ) : providers.length ? (
@@ -54,31 +68,31 @@ export async function ServiceDetailPage({ params }: ServiceDetailPageProps) {
                 {providers.map((provider) => <ProviderCard key={provider.id} provider={provider} variant="compact" showSpecializations={false} />)}
               </div>
             ) : (
-              <p role="status" className="text-[length:var(--sf-text-sm)] text-[var(--sf-ink-3)]">No providers listed for this treatment</p>
+              <p role="status">No providers listed for this treatment</p>
             )}
           </section>
 
           {reviews.length ? (
-            <section id="reviews" aria-labelledby="reviews-heading" className="grid scroll-mt-24 gap-4">
-              <h2 id="reviews-heading" className="sf-eyebrow">Reviews</h2>
+            <section id="reviews" aria-labelledby="reviews-heading" className="altair-detail-section">
+              <h2 id="reviews-heading">Reviews</h2>
               <ReviewList reviews={reviews} showTreatment={false} />
             </section>
           ) : null}
         </div>
 
-        <aside className="lg:sticky lg:top-28 lg:self-start">
-          <div className="sf-card grid gap-5 p-[var(--sf-space-md)]">
-            <dl>
-              <div className="sf-ticket-row"><dt>Price</dt><dd className="sf-num">{formatPrice(service.basePrice)}</dd></div>
-              <div className="sf-ticket-row"><dt>Duration</dt><dd className="sf-num">{formatDuration(service.baseDuration)}</dd></div>
-              {service.category ? <div className="sf-ticket-row"><dt>Category</dt><dd>{service.category.name}</dd></div> : null}
-            </dl>
-            {bookable ? (
-              <Track block><PillLink href={`/book?service=${encodeURIComponent(id)}`} variant="primary">Book this treatment</PillLink></Track>
-            ) : (
-              <StateCard title={providerResult.status === "unavailable" ? "Booking unavailable" : "Not bookable online"} action={<Track><PillLink href="/contact" size="sm">Contact the practice</PillLink></Track>} />
-            )}
-          </div>
+        <aside className="altair-book-card">
+          <h2>Choose a time</h2>
+          <dl>
+            <div><dt>Treatment</dt><dd>{service.name}</dd></div>
+            <div><dt>Duration</dt><dd>{formatDuration(service.baseDuration)}</dd></div>
+            {providers.length ? <div><dt>With</dt><dd>{providers.map(provider => provider.user?.name).filter(Boolean).join(", ")}</dd></div> : null}
+            <div className="altair-book-total"><dt>Total</dt><dd>{service.basePrice === 0 ? "complimentary" : formatPrice(service.basePrice)}</dd></div>
+          </dl>
+          {bookable ? (
+            <Link href={`/book?service=${encodeURIComponent(id)}`} className="altair-book-button">Request this time <ArrowRight aria-hidden="true" /></Link>
+          ) : (
+            <Link href="/contact" className="altair-book-button">Contact the practice</Link>
+          )}
         </aside>
       </div>
     </div>
