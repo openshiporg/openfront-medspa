@@ -1,5 +1,4 @@
 import { keystoneContext, ownedLocalRuntimeReady } from '../../features/keystone/context'
-import { useDemoGuardErrors } from '../../features/keystone/lib/demo-guard'
 import { createYoga, type Plugin } from "graphql-yoga";
 import { parseBoundedGraphQL, assertGraphQLExecutionBudget } from "../../features/keystone/security/graphql-budget";
 import processRequest from "graphql-upload/processRequest.js";
@@ -71,7 +70,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           </body>
         </html>`;
     },
-    plugins: [queryBudgetPlugin, useDemoGuardErrors()],
+    plugins: [queryBudgetPlugin],
     graphqlEndpoint: "/api/graphql",
     schema: keystoneContext.graphql.schema,
     context: ({ req, res }: { req: any; res: any }) => {

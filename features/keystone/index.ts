@@ -4,7 +4,6 @@ import { config } from '@keystone-6/core'
 import { statelessSessions } from '@keystone-6/core/session'
 import 'dotenv/config'
 import { models } from './models'
-import { withDemoGuard } from './lib/demo-guard'
 import { extendGraphqlSchema } from './mutations'
 import { sendPasswordResetEmail } from './lib/mail'
 import { permissions } from './access'
@@ -72,7 +71,7 @@ const { withAuth } = createAuth({
 
 export default withAuth(config({
   db: { provider: 'postgresql', url: databaseURL, onConnect: async context => { await assertOwnedLocalDatabase(context.prisma) } },
-  lists: withDemoGuard(models),
+  lists: models,
   storage: {
     my_images: localRuntime ? {
       kind: 'local',
