@@ -46,7 +46,7 @@ export default function Nav({ brandName, logoSvg, logoHue }: NavProps) {
 
           <div className="flex items-center gap-2">
             <div className="sf-track hidden sm:inline-flex">
-              <Link href="/book" className="sf-pill sf-pill-primary">Book an appointment</Link>
+              <Link href="/book" className="sf-pill sf-pill-primary altair-header-book">Book an appointment</Link>
             </div>
             <div className="sf-track lg:hidden">
               <button
