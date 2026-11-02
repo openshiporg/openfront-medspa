@@ -1,20 +1,45 @@
 import { tenantFilter } from './tenantAccess';
-import { list } from '@keystone-6/core'
-import { checkbox, integer, json, relationship, select, text, timestamp } from '@keystone-6/core/fields'
-import { permissions, practiceId } from '../access'
+import { graphql, list } from '@keystone-6/core'
+import { checkbox, image, integer, json, relationship, select, text, timestamp, virtual } from '@keystone-6/core/fields'
+import { activeListPermissions, permissions } from '../access'
 import { createLifecycleHooks } from '../lifecycle'
 import { trackingFields } from './trackingFields'
 
+function photographyOnlyFields<T extends Record<string, any>>(fields: T): T {
+  return Object.fromEntries(Object.entries(fields).map(([key, field]) => [key,
+    key === 'image' || key === 'photoUrl' ? field : (...args: any[]) => {
+      const initialized = field(...args);
+      return { ...initialized, access: { ...initialized.access, update: () => false } };
+    },
+  ])) as T;
+}
+
 export const Resource = list({
   access: {
-    operation: { query: permissions.canSchedule, create: () => false, update: () => false, delete: () => false },
-    filter: { query: tenantFilter },
+    operation: {
+      query: permissions.canSchedule, create: () => false, delete: () => false,
+      // Native admin uploads may change photography only. Scheduling/readiness
+      // still require the revision-checked workflow mutations.
+      update: activeListPermissions.canManagePractice,
+    },
+    filter: { query: tenantFilter, update: tenantFilter },
   },
   hooks: createLifecycleHooks('resource', ['name', 'type', 'capacity', 'isActive', 'revision', 'locationId']),
   ui: { listView: { initialColumns: ['name', 'type', 'location', 'capacity', 'isActive', 'isPublic'] }, labelField: 'name' },
-  fields: {
+  fields: photographyOnlyFields({
     practice: relationship({ ref: 'Practice' }),
     name: text({ validation: { isRequired: true } }),
+    image: image({ storage: 'my_images', label: 'Room photo' }),
+    photoUrl: virtual({
+      field: graphql.field({
+        type: graphql.String,
+        resolve(item: any, _args, context) {
+          return item.image_id && item.image_extension
+            ? context.images('my_images').getUrl(item.image_id, item.image_extension) : null;
+        },
+      }),
+      ui: { itemView: { fieldMode: 'hidden' }, listView: { fieldMode: 'hidden' } },
+    }),
     type: select({ type: 'enum', options: [
       { label: 'Treatment Room', value: 'room' }, { label: 'Device', value: 'device' },
       { label: 'Equipment', value: 'equipment' }, { label: 'Station', value: 'station' }, { label: 'Other', value: 'other' },
@@ -36,5 +61,5 @@ export const Resource = list({
     readinessEvents: relationship({ ref: 'DeviceReadinessEvent.resource', many: true }),
     recallCases: relationship({ ref: 'RecallCase.device', many: true }),
     ...trackingFields,
-  },
+  }),
 })

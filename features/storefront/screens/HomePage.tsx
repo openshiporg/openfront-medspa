@@ -1,151 +1,71 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { ArrowUpRight } from "lucide-react"
+import { MapPin, Phone, Clock } from "lucide-react"
 import { getStorefrontBrand, storefrontMetadata } from "../lib/data/brand"
-import { getServicesGroupedByCategory, getFeaturedServices } from "../lib/data/services"
+import { getAllServices } from "../lib/data/services"
 import { getFeaturedProviders } from "../lib/data/providers"
-import { ServiceCard } from "../components/ServiceCard"
-import { ProviderCard } from "../components/ProviderCard"
-import { ProviderProfilesUnavailable } from "../components/ProviderProfilesUnavailable"
+import { getPublicPracticeImages } from "../lib/data/practiceImages"
 import { ServiceCatalogUnavailable } from "../components/ServiceCatalogUnavailable"
-import { Capsule, PillLink, Status, Track } from "../components/ui/primitives"
+import { ProviderProfilesUnavailable } from "../components/ProviderProfilesUnavailable"
 import { getStorefrontImageSrc } from "../lib/images"
-import { openStatus, publishedHours } from "../lib/hours"
+import { publishedHours } from "../lib/hours"
+import { formatPrice } from "../lib/format"
+import { getStorefrontRooms } from "../lib/data/rooms"
 
-export async function generateMetadata(): Promise<Metadata> {
-  return storefrontMetadata()
-}
+export async function generateMetadata(): Promise<Metadata> { return storefrontMetadata() }
 
 export async function HomePage() {
-  const [brand, categoryResult, featuredResult, providerResult] = await Promise.all([
-    getStorefrontBrand(),
-    getServicesGroupedByCategory(),
-    getFeaturedServices(4),
-    getFeaturedProviders(3),
+  const [brand, catalog, providerResult, images, rooms] = await Promise.all([
+    getStorefrontBrand(), getAllServices(), getFeaturedProviders(2), getPublicPracticeImages(), getStorefrontRooms(),
   ])
-  const catalogLoaded = categoryResult.status === "loaded" && featuredResult.status === "loaded"
-  const categories = categoryResult.status === "loaded" ? categoryResult.data.filter((category) => category.services.length) : []
-  const services = featuredResult.status === "loaded" ? featuredResult.data : []
+  const services = catalog.status === "loaded" ? catalog.data : []
   const providers = providerResult.status === "loaded" ? providerResult.data : []
-  const canBook = catalogLoaded && providerResult.status === "loaded" && services.length > 0
-
-  const status = openStatus(brand.hours, brand.timezone)
-  const today = publishedHours(brand.hours, "short").find((day) => day.key === status?.todayKey)
-  const heroPortrait = providers.map((provider) => getStorefrontImageSrc(provider.photo)).find(Boolean) || null
-  const locality = [brand.city, brand.state].filter(Boolean).join(", ")
-
-  return (
-    <div>
-      <section className="sf-hero" aria-labelledby="sf-home-title">
-        <div className="sf-container sf-hero-grid">
-          <div className="grid min-w-0 content-start gap-6">
-            <div className="grid gap-4">
-              <h1 id="sf-home-title" className="sf-display text-[length:var(--sf-text-display)]">{brand.name}</h1>
-              <div className="sf-title-line">
-                {locality ? <p className="sf-eyebrow">{locality}</p> : null}
-                {status ? <Status tone={status.open ? "ok" : "off"}>{status.label}</Status> : null}
-              </div>
-            </div>
-            <Track>
-              {canBook ? <PillLink href="/book" variant="primary">Book an appointment</PillLink> : null}
-              <PillLink href="/services">Treatments</PillLink>
-            </Track>
-            <dl className="sf-facts">
-              {today ? <div><dt className="sf-eyebrow">Today</dt><dd className="sf-num">{today.hours}</dd></div> : null}
-              {brand.phone && brand.phoneHref ? <div><dt className="sf-eyebrow">Call</dt><dd><a className="sf-link sf-num" href={brand.phoneHref}>{brand.phone}</a></dd></div> : null}
-              {catalogLoaded ? <div><dt className="sf-eyebrow">Treatments</dt><dd className="sf-num">{brand.serviceCount}</dd></div> : null}
-            </dl>
-            {categories.length ? (
-              <ul className="sf-chip-row" aria-label="Treatment categories">
-                {categories.slice(0, 6).map((category) => (
-                  <li key={category.id}><Link className="sf-chip" href={`/services#${category.id}`}>{category.name}</Link></li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
-          <div className="sf-mirror order-first lg:order-none" aria-hidden="true">
-            <span className="sf-bulbs">{Array.from({ length: 9 }, (_, index) => <span key={index} className="sf-bulb" />)}</span>
-            {heroPortrait ? <Capsule src={heroPortrait} /> : <span className="sf-capsule sf-dew block" />}
-          </div>
-        </div>
+  const hero = images.find(image => /room/i.test(image.altText || ""))
+  const heroSrc = rooms[0]?.photoUrl || (hero ? getStorefrontImageSrc(hero) : null)
+  const hours = publishedHours(brand.hours, "short").filter(day => day.hours !== "Closed")
+  return <div className="altair-home">
+    <section className="altair-hero" aria-labelledby="home-heading">
+      {heroSrc ? <img className="altair-hero-photo" src={heroSrc} alt={hero?.altText || ""} /> : null}
+      <div className="altair-hero-copy">
+        <h1 id="home-heading">{brand.city ? `A calmer moment in ${brand.city}.` : brand.name}</h1>
+        {services.length ? <p>{services.map(service => service.name).slice(0, 4).join(", ")}</p> : null}
+      </div>
+    </section>
+    <div className="altair-home-grid">
+      {rooms.length ? <section className="altair-rooms" id="rooms" aria-labelledby="rooms-heading">
+        <h2 id="rooms-heading">Our rooms</h2>
+        <div className="altair-room-grid">{rooms.map(room => <Link key={room.id} href="/book">
+          <img src={room.photoUrl} alt={room.name} /><h3>{room.name}</h3>
+        </Link>)}</div>
+      </section> : null}
+      <section className="altair-treatments" id="treatments" aria-labelledby="treatments-heading">
+        <h2 id="treatments-heading">Treatments</h2>
+        {catalog.status === "unavailable" ? <ServiceCatalogUnavailable retryHref="/" /> : services.length ? <div className="altair-menu">
+          {services.map(service => <Link className="altair-menu-row" key={service.id} href={`/services/${service.id}`}>
+            <span>{service.name}</span><span>{service.baseDuration} min</span><span>{service.basePrice === 0 ? "complimentary" : formatPrice(service.basePrice)}</span>
+          </Link>)}
+        </div> : <p>No treatments listed yet</p>}
       </section>
-
-      {!catalogLoaded ? (
-        <section className="sf-container sf-section">
-          <ServiceCatalogUnavailable retryHref="/" />
-        </section>
-      ) : null}
-
-      {catalogLoaded && services.length ? (
-        <section className="sf-container sf-section" aria-labelledby="featured-heading">
-          <div className="mb-[var(--sf-space-lg)] flex flex-wrap items-end justify-between gap-4">
-            <div className="grid gap-3">
-              <h2 id="featured-heading" className="sf-display text-[length:var(--sf-text-3xl)]">Treatments</h2>
-            </div>
-            <Track><PillLink href="/services" size="sm">Full menu <ArrowUpRight /></PillLink></Track>
-          </div>
-          <div className="sf-ledger sf-ledger-menu">
-            {services.map((service) => <ServiceCard key={service.id} service={service} showCategory />)}
-          </div>
-        </section>
-      ) : null}
-
-      {catalogLoaded && services.length === 0 ? (
-        <section className="sf-container sf-section">
-          <div role="status" className="sf-state"><h2 className="sf-display text-[length:var(--sf-text-xl)]">No treatments listed yet</h2></div>
-        </section>
-      ) : null}
-
-      {categories.length ? (
-        <section className="sf-band" aria-labelledby="menu-heading">
-          <div className="sf-container sf-section grid gap-[var(--sf-space-lg)] lg:grid-cols-[0.8fr_1.2fr]">
-            <div className="grid content-start gap-3">
-              <h2 id="menu-heading" className="sf-display text-[length:var(--sf-text-3xl)]">By concern</h2>
-            </div>
-            <nav aria-label="Treatment categories" className="sf-ledger">
-              {categories.map((category) => (
-                <Link key={category.id} href={`/services#${category.id}`} className="sf-ledger-row">
-                  <span className="sf-ledger-name">{category.name}</span>
-                  <span className="sf-ledger-figures">
-                    <span className="sf-muted">{category.services.length} {category.services.length === 1 ? "treatment" : "treatments"}</span>
-                    <ArrowUpRight className="size-4 self-center text-[var(--sf-ink-3)]" aria-hidden="true" />
-                  </span>
-                </Link>
-              ))}
-            </nav>
-          </div>
-        </section>
-      ) : null}
-
-      {providerResult.status === "unavailable" ? (
-        <section className="sf-container sf-section">
-          <ProviderProfilesUnavailable retryHref="/" />
-        </section>
-      ) : providers.length ? (
-        <section className="sf-container sf-section" aria-labelledby="providers-heading">
-          <div className="mb-[var(--sf-space-lg)] flex flex-wrap items-end justify-between gap-4">
-            <div className="grid gap-3">
-              <h2 id="providers-heading" className="sf-display text-[length:var(--sf-text-3xl)]">Choose who treats you</h2>
-            </div>
-            <Track><PillLink href="/team" size="sm">All providers <ArrowUpRight /></PillLink></Track>
-          </div>
-          <div className="grid grid-cols-2 gap-x-[var(--sf-space-sm)] gap-y-[var(--sf-space-lg)] md:grid-cols-3 md:gap-x-[var(--sf-space-lg)]">
-            {providers.map((provider) => <ProviderCard key={provider.id} provider={provider} />)}
-          </div>
-        </section>
-      ) : null}
-
-      <section className="sf-band" aria-labelledby="visit-heading">
-        <div className="sf-container sf-section grid items-end gap-[var(--sf-space-lg)] md:grid-cols-[1fr_auto]">
-          <div className="grid gap-3">
-            <h2 id="visit-heading" className="sf-display text-[length:var(--sf-text-3xl)]">{brand.addressLine || brand.name}</h2>
-          </div>
-          <Track>
-            <PillLink href="/contact">Hours & directions</PillLink>
-            {canBook ? <PillLink href="/book" variant="primary">Book</PillLink> : null}
-          </Track>
-        </div>
+      <section className="altair-team" id="team" aria-labelledby="team-heading">
+        <h2 id="team-heading">Your team</h2>
+        {providerResult.status === "unavailable" ? <ProviderProfilesUnavailable retryHref="/" /> : <div className="altair-team-grid">
+          {providers.map(provider => {
+            const src = getStorefrontImageSrc(provider.photo)
+            return <Link href={`/team/${provider.id}`} key={provider.id}>
+              {src ? <img src={src} alt={provider.photo?.altText || provider.user?.name || "Provider"} /> : null}
+              <h3>{provider.user?.name || "Provider"}</h3>
+              {provider.title ? <p className="altair-provider-title">{provider.title}</p> : null}
+            </Link>
+          })}
+        </div>}
       </section>
     </div>
-  )
+    <section className="altair-visit" id="visit" aria-labelledby="visit-heading">
+      {heroSrc ? <img src={heroSrc} alt="" /> : null}
+      <h2 id="visit-heading"><Link href="/contact">Visit</Link></h2>
+      {brand.addressLine ? <Link href="/contact"><MapPin aria-hidden="true" />{brand.addressLine}</Link> : null}
+      {hours.length ? <Link href="/contact"><Clock aria-hidden="true" />{hours.map(day => `${day.short} ${day.hours}`).join(", ")}</Link> : null}
+      {brand.phone && brand.phoneHref ? <a href={brand.phoneHref}><Phone aria-hidden="true" />{brand.phone}</a> : null}
+    </section>
+  </div>
 }

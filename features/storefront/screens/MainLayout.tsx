@@ -7,6 +7,7 @@ import { getStorefrontBrand } from "@/features/storefront/lib/data/brand"
 import { PillLink, Track } from "@/features/storefront/components/ui/primitives"
 import { brandHueColor } from "@/features/lib/store-logo"
 import "../styles/vanity.css"
+import "../styles/altair.css"
 
 // The vanity's two voices: Bodoni Moda, a beauty-editorial didone, letters names, headings and
 // prices; Jost, from the beauty counter's Futura tradition, sets everything read.

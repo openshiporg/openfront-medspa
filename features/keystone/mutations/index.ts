@@ -9,6 +9,7 @@ import { checkAvailability } from "../extendGraphqlSchema/checkAvailability";
 import { calculateCommission } from "../extendGraphqlSchema/calculateCommission";
 import { storefrontProviders, storefrontProvider } from "../extendGraphqlSchema/storefrontProviders";
 import { storefrontServices } from "../extendGraphqlSchema/storefrontServices";
+import { storefrontRooms } from "../extendGraphqlSchema/storefrontRooms";
 import { publicStorefrontSettings } from "../extendGraphqlSchema/storefrontSettings";
 import { medspaPlanJourney, medspaConsultationQueue, medspaAppointmentClinicalHeader } from "../extendGraphqlSchema/medspaPlanJourney";
 import { medspaAppointmentSchedule } from '../extendGraphqlSchema/appointmentSchedule';
@@ -58,6 +59,7 @@ export const extendGraphqlSchema = graphql.extend((base) => ({
     storefrontProviders,
     storefrontProvider,
     storefrontServices,
+    storefrontRooms,
     publicStorefrontSettings,
     medspaOperationsWorkspace,
     medspaPlanJourney,

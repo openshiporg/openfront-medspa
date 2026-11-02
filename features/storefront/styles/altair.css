@@ -1,0 +1,87 @@
+/* Altair: warm travertine, walnut and full-bleed practice photography.
+   Workflow selectors remain compatible with the existing booking/account screens. */
+.storefront {
+  --sf-paper:#faf8f4; --sf-paper-2:#f0e7d9; --sf-paper-3:#e8dac8;
+  --sf-card:#f3ebdf; --sf-ink:#24170f; --sf-ink-2:#554537; --sf-ink-3:#766451;
+  --sf-rule:#d8cbbd; --sf-rule-strong:#b5a18d; --sf-brass:#735136; --sf-brass-2:#b59e86;
+  --sf-bulb:#6b482d; --sf-bulb-ink:#fff9ef; --sf-bulb-off:#cab8a3;
+  --sf-focus:#735136; --sf-font-display:Georgia,"Times New Roman",serif;
+  color-scheme:light; background:#faf8f4; font-size:16px;
+}
+.sf-display { font-weight:400; }
+.sf-pill { border-radius:24px; }
+.sf-pill-primary { background:#6b482d; border-color:#6b482d; color:#fff9ef; font-weight:400; }
+.sf-pill-primary:hover { background:#50331e; border-color:#50331e; }
+.sf-chip { border:0; padding-inline:0; background:none; }
+.sf-slot { padding-left:0; border-radius:24px; background:transparent; }
+.sf-slot::before { display:none; }
+.sf-lens::after,.sf-capsule::after { box-shadow:none; }
+.sf-header { position:relative; border:0; background:#f6f0e7; }
+.sf-header .sf-container { max-width:none; padding-inline:5.4%; }
+.sf-header-row { min-height:76px; }
+.sf-header [data-store-logo] { width:32px; height:32px; }
+.sf-header .sf-display { font-size:23px; letter-spacing:.17em; text-transform:uppercase; }
+.altair-header-overlay { position:absolute; inset:0 0 auto; background:transparent; color:#fff9ef; }
+.altair-header-overlay .sf-header-row { --sf-ink:#fff9ef; --sf-ink-2:#fff9ef; }
+.altair-header-overlay .sf-pill { color:#fff9ef; }
+.altair-header-overlay .sf-pill-primary { background:transparent; border-color:#fff9ef; }
+.sf-header .sf-pill-quiet { padding-inline:14px; font-weight:400; }
+.sf-header .sf-sheet { color:var(--sf-ink); }
+.altair-hero { position:relative; height:337px; background:#5e4833; color:#fff9ef; isolation:isolate; }
+.altair-hero-photo { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center 53%; z-index:-2; }
+.altair-hero::after { content:""; position:absolute; inset:0; z-index:-1; background:linear-gradient(0deg,rgba(26,15,7,.5),transparent 65%); }
+.altair-hero-copy { position:absolute; bottom:39px; left:5.4%; right:5.4%; }
+.altair-hero h1 { font:400 clamp(36px,3.85vw,62px)/1.08 var(--sf-font-display); letter-spacing:-.035em; }
+.altair-hero p { margin-top:9px; font-size:16px; }
+.altair-home-grid { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:48px; padding:21px 2.9% 25px; background:#f2e9dc; }
+.altair-home h2 { margin:0 0 11px; font:400 33px/1.1 var(--sf-font-display); letter-spacing:-.035em; }
+.altair-menu-row { display:grid; grid-template-columns:minmax(0,1fr) 65px 100px; gap:10px; align-items:baseline; padding:13px 0; border-bottom:1px solid #cdbca9; text-decoration:none; color:inherit; }
+.altair-menu-row:last-child { border-bottom:0; }
+.altair-menu-row>span:first-child { font:400 18px/1.2 var(--sf-font-display); }
+.altair-menu-row>span:nth-child(2) { font-size:12px; }
+.altair-menu-row>span:last-child { text-align:right; font-size:13px; }
+.altair-team-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:15px; }
+.altair-team-grid a { text-decoration:none; color:inherit; }
+.altair-team img { width:100%; aspect-ratio: .74; object-fit:cover; object-position:center 30%; }
+.altair-team h3 { font:400 18px/1.25 var(--sf-font-display); margin-top:6px; }
+.altair-visit { position:relative; display:flex; align-items:center; gap:30px; min-height:121px; padding:25px 5.4%; color:#fff9ef; background:#664d35; isolation:isolate; }
+.altair-visit>img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; filter:brightness(.4); z-index:-1; }
+.altair-visit h2 { font-size:46px; margin:0 8% 0 0; }
+.altair-visit a { display:flex; align-items:center; gap:12px; color:inherit; text-decoration:none; font-size:12px; }
+.altair-visit h2 a { font:inherit; }
+.altair-visit svg { width:18px; height:18px; flex-shrink:0; }
+.storefront:has(.altair-home)>footer { display:none; }
+.altair-mobile-book { display:flex; justify-content:center; align-items:center; gap:30px; padding:17px; font:400 20px/1.2 var(--sf-font-display); text-decoration:none; color:#fff9ef; background:linear-gradient(100deg,#6a3d20,#51301c); border-radius:10px 10px 0 0; }
+.sf-mobile-bar { border:0; padding:0; background:transparent; }
+@media(min-width:1024px) { .altair-home-grid:has(.altair-rooms) { grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) minmax(0,.9fr); gap:45px; } }
+.altair-room-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.altair-room-grid img { width:100%; aspect-ratio:.77; object-fit:cover; }
+.altair-room-grid a { color:inherit; text-decoration:none; }
+.altair-room-grid h3 { font:400 16px/1.2 var(--sf-font-display); margin-top:6px; }
+@media(max-width:767px) {
+ .sf-header-row { min-height:88px; }
+ .sf-header .sf-container { padding-inline:22px; }
+ .sf-header .sf-display { font-size:22px; letter-spacing:.13em; }
+ .sf-header [data-store-logo] { width:24px; height:24px; }
+ .sf-header .sf-pill-icon { border:0; padding:0; width:28px; }
+ .sf-header .sf-pill-icon svg { width:27px; height:27px; }
+ .altair-hero { height:410px; }
+ .altair-hero-photo { object-position:58% center; }
+ .altair-hero-copy { left:22px; right:20px; bottom:24px; }
+ .altair-hero h1 { font-size:47px; line-height:.98; max-width:350px; }
+ .altair-hero p { display:none; }
+ .altair-home-grid { display:flex; flex-direction:column; gap:26px; padding:16px 21px 85px; background:#f6f1e8; }
+ .altair-home h2 { font-size:31px; margin-bottom:12px; }
+ .altair-menu-row { grid-template-columns:minmax(0,1fr) 53px 57px; gap:8px; padding:14px 0; }
+ .altair-menu-row>span:first-child { font-size:18px; }
+ .altair-menu-row>span:nth-child(2) { font:400 14px/1.2 var(--sf-font-display); color:#6b5643; }
+ .altair-menu-row>span:last-child { font:400 18px/1.2 var(--sf-font-display); overflow-wrap:anywhere; }
+ .altair-menu { border-top:1px solid var(--sf-rule); }
+ .altair-team,.altair-visit { display:none; }
+ .altair-rooms { order:-1; margin-inline:-3px -21px; }
+ .altair-rooms>h2 { display:none; }
+ .altair-room-grid { display:flex; overflow-x:auto; gap:8px; padding-right:18px; scrollbar-width:none; }
+ .altair-room-grid a { flex:0 0 47%; }
+ .altair-room-grid img { aspect-ratio:1.42; border-radius:6px; }
+ .altair-room-grid h3 { font-size:15px; }
+}

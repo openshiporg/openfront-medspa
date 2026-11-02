@@ -2357,6 +2357,11 @@ model Resource {
   practice                            Practice?                        @relation("Resource_practice", fields: [practiceId], references: [id])
   practiceId                          String?                          @map("practice")
   name                                String                           @default("")
+  image_id                            String?
+  image_filesize                      Int?
+  image_width                         Int?
+  image_height                        Int?
+  image_extension                     String?
   type                                ResourceTypeType                 @default(room)
   revision                            Int                              @default(1)
   capacity                            Int                              @default(1)

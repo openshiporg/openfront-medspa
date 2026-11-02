@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ArrowRight, Menu, X } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { StoreBrand } from "@/features/storefront/components/StoreBrand"
 
 interface NavProps {
@@ -14,23 +14,23 @@ interface NavProps {
 
 const navigation = [
   { name: "Treatments", href: "/services" },
-  { name: "Providers", href: "/team" },
+  { name: "Team", href: "/team" },
   { name: "Visit", href: "/contact" },
   { name: "Account", href: "/account" },
 ]
 
 export default function Nav({ brandName, logoSvg, logoHue }: NavProps) {
   const pathname = usePathname()
-  const [open, setOpen] = useState(false)
-
-  useEffect(() => { setOpen(false) }, [pathname])
+  const [openPath, setOpenPath] = useState<string | null>(null)
+  const open = openPath === pathname
+  const setOpen = (value: boolean) => setOpenPath(value ? pathname : null)
 
   const isActive = (href: string) => pathname === href || (href !== "/" && pathname?.startsWith(href + "/"))
   const onBooking = pathname === "/book" || pathname?.startsWith("/booking/")
 
   return (
     <>
-      <header className="sf-header">
+      <header className={`sf-header ${pathname === "/" || pathname?.startsWith("/services/") ? "altair-header-overlay" : ""}`}>
         <div className="sf-container sf-header-row">
           <StoreBrand name={brandName} logoSvg={logoSvg} logoHue={logoHue} />
 
@@ -46,7 +46,7 @@ export default function Nav({ brandName, logoSvg, logoHue }: NavProps) {
 
           <div className="flex items-center gap-2">
             <div className="sf-track hidden sm:inline-flex">
-              <Link href="/book" className="sf-pill sf-pill-primary">Book</Link>
+              <Link href="/book" className="sf-pill sf-pill-primary">Book an appointment</Link>
             </div>
             <div className="sf-track lg:hidden">
               <button
@@ -82,10 +82,7 @@ export default function Nav({ brandName, logoSvg, logoHue }: NavProps) {
 
       {!onBooking ? (
         <div className="sf-mobile-bar" aria-label="Quick booking">
-          <div className="sf-track sf-track-block">
-            <Link href="/services" className="sf-pill">Treatments</Link>
-            <Link href="/book" className="sf-pill sf-pill-primary">Book</Link>
-          </div>
+          <Link href="/book" className="altair-mobile-book">Book an appointment <ArrowRight aria-hidden="true" /></Link>
         </div>
       ) : null}
     </>

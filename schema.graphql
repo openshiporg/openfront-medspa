@@ -10693,6 +10693,8 @@ type Resource {
   id: ID!
   practice: Practice
   name: String
+  image: ImageFieldOutput
+  photoUrl: String
   type: ResourceTypeType
   revision: Int
   capacity: Int
@@ -10839,6 +10841,7 @@ input ResourceOrderByInput {
 input ResourceUpdateInput {
   practice: PracticeRelateToOneForUpdateInput
   name: String
+  image: ImageFieldInput
   type: ResourceTypeType
   revision: Int
   capacity: Int
@@ -10891,6 +10894,7 @@ input ResourceUpdateArgs {
 input ResourceCreateInput {
   practice: PracticeRelateToOneForCreateInput
   name: String
+  image: ImageFieldInput
   type: ResourceTypeType
   revision: Int
   capacity: Int
@@ -14759,6 +14763,7 @@ type Query {
   storefrontProviders(practiceSlug: String!, serviceId: ID, take: Int): [StorefrontProvider!]!
   storefrontProvider(id: ID!, practiceSlug: String!): StorefrontProvider
   storefrontServices(ids: [ID!]!): JSON
+  storefrontRooms: JSON
   publicStorefrontSettings(practiceSlug: String!): StorefrontPublicSettings!
   medspaOperationsWorkspace(section: String!): MedSpaOperationsWorkspace
   medspaPlanJourney(consultationId: ID!, planPage: Int, appointmentPage: Int, historyPage: Int): JSON
@@ -14830,6 +14835,7 @@ type StorefrontProvider {
   id: ID!
   user: StorefrontProviderUser
   isActive: Boolean!
+  title: String
   photo: StorefrontProviderPhoto
   specializations: [StorefrontSpecialization!]!
   workingDays: [Int!]!

@@ -9,6 +9,7 @@ import { readPublicProviderProfiles, type ProviderReadResult } from "./providerR
 export interface Provider {
   id: string
   isActive: boolean
+  title: string | null
   user: { id: string; name: string } | null
   photo: {
     image: { url: string } | null
@@ -24,6 +25,7 @@ const PROVIDER_FRAGMENT = gql`
     id
     user { id name }
     isActive
+    title
     photo { image { url } imagePath altText }
     specializations { id name }
     workingDays

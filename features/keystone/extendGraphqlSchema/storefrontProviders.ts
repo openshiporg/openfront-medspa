@@ -44,6 +44,7 @@ const StorefrontProvider = graphql.object<{
   id: string
   user: { id: string; name: string } | null
   isActive: boolean
+  title: string | null
   photo: { image: { url: string } | null; imagePath: string | null; altText: string | null } | null
   specializations: { id: string; name: string }[]
   schedules?: { dayOfWeek: number | null }[]
@@ -53,6 +54,7 @@ const StorefrontProvider = graphql.object<{
     id: graphql.field({ type: graphql.nonNull(graphql.ID) }),
     user: graphql.field({ type: StorefrontProviderUser }),
     isActive: graphql.field({ type: graphql.nonNull(graphql.Boolean) }),
+    title: graphql.field({ type: graphql.String }),
     photo: graphql.field({ type: StorefrontProviderPhoto }),
     specializations: graphql.field({
       type: graphql.nonNull(graphql.list(graphql.nonNull(StorefrontSpecialization))),
@@ -69,6 +71,7 @@ const PUBLIC_PROVIDER_SELECTION = `
   id
   user { id name }
   isActive
+  title
   photo { image { url } imagePath altText }
   specializations(where: { status: { equals: active }, isPublic: { equals: true } }, take: 50, orderBy: { name: asc }) { id name }
   schedules(where: { type: { equals: recurring }, isAvailable: { equals: true }, isPublic: { equals: true } }, take: 50) { dayOfWeek }
