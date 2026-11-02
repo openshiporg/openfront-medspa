@@ -42,8 +42,9 @@ export const DEMO_GUARD_POLICY: DemoGuardPolicy = {
   Role: { kind: 'locked' },
   StaffInvitation: { kind: 'locked' },
   PracticeMembership: { kind: 'locked' },
-  // adapter, code and config hold provider credentials / webhook secrets.
-  PaymentProvider: { kind: 'locked' },
+  // Secrets live in env vars here; code, adapter and config decide which provider and credentials-adjacent
+  // settings run. name, isInstalled and isDefault stay editable; create and delete are refused.
+  PaymentProvider: { kind: 'fields', fields: ['code', 'adapter', 'config'], allowCreateDelete: false },
   // slug is the practice's URL; name, currency and tax stay editable.
   Practice: noDelete(['slug', 'isActive']),
   Appointment: noDelete(),

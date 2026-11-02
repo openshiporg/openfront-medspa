@@ -61,6 +61,16 @@ test('demo: locked lists (roles, invitations, memberships, payment provider keys
   }
 });
 
+test('demo: PaymentProvider code/adapter/config and create/delete refused; name, isInstalled editable', async () => {
+  const item = { id: 'pp', name: 'Stripe', code: 'pp_stripe', adapter: 'stripe', isInstalled: false, config: { a: 1 } };
+  await refused(run('PaymentProvider', 'create', DEMO, { inputData: { name: 'X' } }));
+  await refused(run('PaymentProvider', 'delete', DEMO, { item }));
+  await refused(run('PaymentProvider', 'update', DEMO, { item, inputData: { code: 'pp_evil' } }));
+  await refused(run('PaymentProvider', 'update', DEMO, { item, inputData: { adapter: 'manual' } }));
+  await refused(run('PaymentProvider', 'update', DEMO, { item, inputData: { config: { a: 2 } } }));
+  await run('PaymentProvider', 'update', DEMO, { item, inputData: { name: 'Card', isInstalled: true, isDefault: true, code: 'pp_stripe', config: { a: 1 } } });
+});
+
 test('demo: changed practice slug refused, unchanged allowed, name/currency/tax allowed', async () => {
   const item = { id: 'p', name: 'Altair', slug: 'altair', isActive: true, currencyCode: 'USD', taxRate: 0.08 };
   await refused(run('Practice', 'update', DEMO, { item, inputData: { slug: 'evil' } }));
