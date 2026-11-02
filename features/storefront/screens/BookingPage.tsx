@@ -61,8 +61,9 @@ export function BookingPage({ initialServices = EMPTY_SERVICES, initialContact =
   const [step, setStep] = useState(1)
   const [selectedService, setSelectedService] = useState<string | null>(preselectedService)
   const [selectedProvider, setSelectedProvider] = useState<string | null>(preselectedProvider)
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
-  const [selectedTime, setSelectedTime] = useState<string | null>(null)
+  const preDate = /^(\d{4})-(\d{2})-(\d{2})$/.exec(searchParams?.get("date") ?? "")
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(() => preselectedProvider && preDate ? new Date(Number(preDate[1]), Number(preDate[2]) - 1, Number(preDate[3])) : undefined)
+  const [selectedTime, setSelectedTime] = useState<string | null>(preselectedProvider && preDate ? searchParams?.get("time") ?? null : null)
   const [clientInfo, setClientInfo] = useState<ClientInfo>({ name: initialContact?.name || "", email: initialContact?.email || "", phone: initialContact?.phone || "", notes: "" })
 
   const services = initialServices
@@ -79,8 +80,9 @@ export function BookingPage({ initialServices = EMPTY_SERVICES, initialContact =
   // Skip to provider choice when a known treatment is preselected.
   useEffect(() => {
     if (preselectedService && services.some((service) => service.id === preselectedService)) {
-      setStep(2)
+      setStep(preselectedProvider && preDate ? 3 : 2)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preselectedService, services])
 
   useEffect(() => {

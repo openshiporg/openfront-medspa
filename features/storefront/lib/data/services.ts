@@ -20,7 +20,7 @@ export interface Service {
   depositAmount?: number | null
   category: { id: string; name: string } | null
   image: StorefrontImage | null
-  description?: null
+  description?: string | null
   pricingTier?: null
   requiresConsultation?: false
   specialists?: []

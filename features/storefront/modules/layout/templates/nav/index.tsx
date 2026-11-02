@@ -80,7 +80,7 @@ export default function Nav({ brandName, logoSvg, logoHue }: NavProps) {
         ) : null}
       </header>
 
-      {!onBooking ? (
+      {!onBooking && !pathname?.startsWith("/services/") ? (
         <div className="sf-mobile-bar" aria-label="Quick booking">
           <Link href="/book" className="altair-mobile-book">Book an appointment <ArrowRight aria-hidden="true" /></Link>
         </div>

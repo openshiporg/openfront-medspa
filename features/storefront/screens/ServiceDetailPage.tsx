@@ -1,8 +1,8 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { ArrowRight } from "lucide-react"
 import { getAllServices, getServiceById } from "../lib/data/services"
 import { getProvidersForService } from "../lib/data/providers"
+import { ServiceTimePicker } from "../components/ServiceTimePicker"
 import { ProviderCard } from "../components/ProviderCard"
 import { ProviderProfilesUnavailable } from "../components/ProviderProfilesUnavailable"
 import { ServiceCatalogUnavailable } from "../components/ServiceCatalogUnavailable"
@@ -44,6 +44,7 @@ export async function ServiceDetailPage({ params }: ServiceDetailPageProps) {
           <p className="altair-eyebrow"><Link href="/services">Treatments</Link></p>
           <h1>{service.name}</h1>
           <p className="altair-detail-meta">{formatDuration(service.baseDuration)} &middot; {service.basePrice === 0 ? "complimentary" : formatPrice(service.basePrice)}</p>
+          {service.description ? <p className="altair-detail-desc">{service.description}</p> : null}
           {reviews.length ? <a href="#reviews" className="altair-detail-rating"><Stars rating={averageRating(reviews)} /><span>{averageRating(reviews).toFixed(1)} &middot; {reviews.length} {reviews.length === 1 ? "review" : "reviews"}</span></a> : null}
 
           {pairs.length ? (
@@ -82,14 +83,14 @@ export async function ServiceDetailPage({ params }: ServiceDetailPageProps) {
 
         <aside className="altair-book-card">
           <h2>Choose a time</h2>
-          <dl>
-            <div><dt>Treatment</dt><dd>{service.name}</dd></div>
-            <div><dt>Duration</dt><dd>{formatDuration(service.baseDuration)}</dd></div>
-            {providers.length ? <div><dt>With</dt><dd>{providers.map(provider => provider.user?.name).filter(Boolean).join(", ")}</dd></div> : null}
-            <div className="altair-book-total"><dt>Total</dt><dd>{service.basePrice === 0 ? "complimentary" : formatPrice(service.basePrice)}</dd></div>
-          </dl>
           {bookable ? (
-            <Link href={`/book?service=${encodeURIComponent(id)}`} className="altair-book-button">Request this time <ArrowRight aria-hidden="true" /></Link>
+            <ServiceTimePicker
+              serviceId={id}
+              serviceName={service.name}
+              duration={service.baseDuration}
+              total={service.basePrice === 0 ? "complimentary" : formatPrice(service.basePrice)}
+              providers={providers.map(provider => ({ id: provider.id, name: provider.user?.name || "Provider", title: provider.title, workingDays: provider.workingDays }))}
+            />
           ) : (
             <Link href="/contact" className="altair-book-button">Contact the practice</Link>
           )}

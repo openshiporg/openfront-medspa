@@ -130,3 +130,18 @@
  .altair-pairs>div { grid-template-columns:minmax(0,1fr); }
  .altair-book-card { position:static; }
 }
+.altair-detail-desc { font-size:17px; line-height:1.55; max-width:60ch; margin:16px 0 0; }
+.altair-book-card .altair-calendar { width:100%; padding:0; background:transparent; --primary:#5b3d28; --primary-foreground:#fff9ef; }
+.altair-book-card .altair-calendar [role="grid"] { width:100%; }
+.altair-book-card .altair-calendar .rdp-weekday, .altair-book-card .altair-calendar th { font-size:12px; }
+.altair-book-card .altair-calendar td button { font-size:14px; }
+.altair-times-heading { font:400 18px/1.2 var(--sf-font-display); margin:14px 0 10px; }
+.altair-times-note { font-size:14px; margin:0 0 12px; }
+.altair-times { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+.altair-times button, .altair-with button { border:1px solid #8a6a4d; border-radius:999px; padding:7px 16px; font-size:14px; background:transparent; color:inherit; cursor:pointer; }
+.altair-times button[aria-pressed="true"], .altair-with button[aria-pressed="true"] { background:#5b3d28; color:#fff9ef; border-color:#5b3d28; }
+.altair-with { display:flex; flex-wrap:wrap; gap:8px; }
+.altair-with button { padding:4px 12px; }
+.altair-header-overlay .sf-pill-quiet { color:#fff9ef; }
+.altair-header-overlay .sf-pill[aria-current="page"] { background:rgba(255,249,239,.18); color:#fff9ef; border-color:rgba(255,249,239,.7); }
+.altair-detail { padding-bottom:0; }
