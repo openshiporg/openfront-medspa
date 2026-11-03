@@ -36,7 +36,13 @@ export async function AppointmentWorkflowPage({ appointmentId }: { appointmentId
   const clinicalRequired = needsClinicalReview(appointment);
   const checkoutOpen = !appointment.transaction && !appointment.payment && ['confirmed', 'in_progress'].includes(status);
   const checkoutEligible = ['confirmed', 'in_progress'].includes(status);
-  const settlement = capabilities.canManageFinance ? appointment.payment?.status || appointment.transaction?.paymentStatus || null : null;
+  // The online deposit settles on its payment session; a refunded or cancelled one is no longer "due".
+  const depositSession = appointment.paymentSessions?.[0] ?? null;
+  const depositState = depositSession?.status === 'refunded' ? 'refunded'
+    : depositSession?.status === 'partially_refunded' ? 'partly refunded'
+    : depositSession?.status === 'completed' || depositSession?.status === 'authorized' ? 'paid'
+    : null;
+  const settlement = capabilities.canManageFinance ? appointment.payment?.status || appointment.transaction?.paymentStatus || (depositSession && depositState ? `deposit ${depositState}` : null) : null;
 
   const timeline: Array<{ label: string; value: string; tone: Tone; done: boolean }> = [
     { label: 'Booked', value: appointment.bookedAt ? formatDateTime(appointment.bookedAt, timeZone) : 'Not recorded', tone: 'violet', done: Boolean(appointment.bookedAt) },
@@ -126,7 +132,7 @@ export async function AppointmentWorkflowPage({ appointmentId }: { appointmentId
               <Fact label="Appointment">
                 <span className="inline-flex items-center gap-1.5"><StatusDot tone={checkoutEligible ? 'emerald' : 'zinc'} />{checkoutEligible ? 'Eligible' : 'Not eligible'}</span>
               </Fact>
-              <Fact label="Deposit">{appointment.depositAmount ? appointment.depositPaid ? `Paid ${usd(appointment.depositAmount)}` : `Due ${usd(appointment.depositAmount)}` : 'None'}</Fact>
+              <Fact label="Deposit">{appointment.depositAmount ? depositState === 'refunded' ? `Refunded ${usd(depositSession?.amount ?? appointment.depositAmount)}` : depositState === 'partly refunded' ? `Paid ${usd(appointment.depositAmount)}, partly refunded` : appointment.depositPaid || depositState === 'paid' ? `Paid ${usd(appointment.depositAmount)}` : status === 'cancelled' ? 'Not collected' : `Due ${usd(appointment.depositAmount)}` : 'None'}</Fact>
               <Fact label="Payment">{capabilities.canManageFinance ? settlement ? settlement.replaceAll('_', ' ') : 'Not settled' : 'Restricted'}</Fact>
             </dl>
           </Panel>
