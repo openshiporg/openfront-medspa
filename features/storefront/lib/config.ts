@@ -1,15 +1,17 @@
 import { GraphQLClient, type RequestDocument, type Variables } from "graphql-request";
 import { cookies } from "next/headers";
-import { getGraphQLEndpoint } from "./getBaseUrl";
+import { getServerGraphQLTarget } from "@/features/dashboard/lib/getBaseUrl";
 
 /** Request-scoped client: forward only the Keystone session to the canonical backend origin. */
 class MedSpaClient {
   private async getClient(): Promise<GraphQLClient> {
-    const [endpoint, cookieStore] = await Promise.all([getGraphQLEndpoint(), cookies()]);
+    // Per request: loopback with THIS request's signed end-user identity; public endpoint if PORT is unknown.
+    const [{ endpoint, fetch: internalFetch }, cookieStore] = await Promise.all([getServerGraphQLTarget(), cookies()]);
     const sessionToken = cookieStore.get("keystonejs-session")?.value;
     const headers: Record<string, string> = {};
     if (sessionToken) headers.Cookie = `keystonejs-session=${sessionToken}`;
     return new GraphQLClient(endpoint, {
+      ...(internalFetch ? { fetch: internalFetch } : {}),
       headers,
       timeout: 10_000,
     });

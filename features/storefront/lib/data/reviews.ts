@@ -1,6 +1,6 @@
 "use server"
 
-import { getGraphQLEndpoint } from "../getBaseUrl"
+import { getServerGraphQLTarget } from "@/features/dashboard/lib/getBaseUrl"
 import { practiceSlug } from "./practice"
 
 export interface Review {
@@ -58,7 +58,8 @@ export async function getApprovedReviews(limit?: number): Promise<Review[]> {
   `
 
   try {
-    const response = await fetch(await getGraphQLEndpoint(), {
+    const target = await getServerGraphQLTarget()
+    const response = await (target.fetch ?? fetch)(target.endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query, variables: { limit, practiceSlug: await practiceSlug() } }),
@@ -109,7 +110,8 @@ export async function getReviewsForService(serviceId: string): Promise<Review[]>
   `
 
   try {
-    const response = await fetch(await getGraphQLEndpoint(), {
+    const target = await getServerGraphQLTarget()
+    const response = await (target.fetch ?? fetch)(target.endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query, variables: { serviceId, practiceSlug: await practiceSlug() } }),
@@ -159,7 +161,8 @@ export async function getReviewsForProvider(providerId: string): Promise<Review[
   `
 
   try {
-    const response = await fetch(await getGraphQLEndpoint(), {
+    const target = await getServerGraphQLTarget()
+    const response = await (target.fetch ?? fetch)(target.endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query, variables: { providerId, practiceSlug: await practiceSlug() } }),
@@ -232,7 +235,8 @@ export async function createReview(data: {
   }
 
   try {
-    const response = await fetch(await getGraphQLEndpoint(), {
+    const target = await getServerGraphQLTarget()
+    const response = await (target.fetch ?? fetch)(target.endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
