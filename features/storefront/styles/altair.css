@@ -54,7 +54,12 @@
 .storefront:has(.altair-home)>footer { display:none; }
 .altair-mobile-book { display:flex; justify-content:center; align-items:center; gap:30px; padding:17px; font:400 20px/1.2 var(--sf-font-display); text-decoration:none; color:#fff9ef; background:linear-gradient(100deg,#6a3d20,#51301c); border-radius:10px 10px 0 0; }
 .sf-mobile-bar { border:0; padding:0; background:transparent; }
-@media(min-width:1024px) { .altair-home-grid:has(.altair-rooms) { grid-template-columns:auto minmax(0,1fr) minmax(0,.9fr); gap:45px; } }
+@media(min-width:1024px) {
+ .altair-home-grid:has(.altair-rooms) { grid-template-columns:auto minmax(0,1fr) minmax(0,.9fr); gap:45px; background:var(--sf-paper); isolation:isolate; }
+ .altair-rooms { position:relative; align-self:start; padding-bottom:25px; }
+ /* The band follows the rooms, not the taller treatments grid track. */
+ .altair-rooms::before { content:""; position:absolute; z-index:-1; top:-21px; bottom:0; left:-2.9vw; width:100vw; background:#f2e9dc; }
+}
 .altair-room-grid { display:flex; gap:10px; }
 .altair-room-grid img { width:100%; aspect-ratio:.77; object-fit:cover; }
 .altair-room-grid a { display:block; flex:0 0 179px; color:inherit; text-decoration:none; }
