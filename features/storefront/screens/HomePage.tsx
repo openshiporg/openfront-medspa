@@ -28,7 +28,7 @@ export async function HomePage() {
     <section className="altair-hero" aria-labelledby="home-heading">
       {heroSrc ? <img className="altair-hero-photo" src={heroSrc} alt={hero?.altText || ""} /> : null}
       <div className="altair-hero-copy">
-        <h1 id="home-heading">{brand.city ? `A calmer moment in ${brand.city}.` : brand.name}</h1>
+        <h1 id="home-heading">{brand.city ? `${brand.city}’s calmest clinic.` : brand.name}</h1>
         {services.length ? <p>{services.map(service => service.name).slice(0, 4).join(", ")}</p> : null}
       </div>
     </section>

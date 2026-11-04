@@ -82,18 +82,18 @@ export const getServicesGroupedByCategory = cache(async function (): Promise<Ser
       query GetServicesByCategory($practiceSlug: String!) {
         serviceCategories(
           where: { isVisible: { equals: true }, practice: ${PUBLISHED_PRACTICE} }
-          orderBy: { name: asc }
+          orderBy: [{ createdAt: asc }, { name: asc }]
           take: 50
         ) {
           id
           name
-          services(where: { status: { equals: active }, isPublic: { equals: true }, practice: ${PUBLISHED_PRACTICE} }, orderBy: { name: asc }, take: 50) {
+          services(where: { status: { equals: active }, isPublic: { equals: true }, practice: ${PUBLISHED_PRACTICE} }, orderBy: [{ createdAt: asc }, { name: asc }], take: 50) {
             ...StorefrontServiceFields
           }
         }
         uncategorizedServices: services(
           where: { status: { equals: active }, isPublic: { equals: true }, category: null, practice: ${PUBLISHED_PRACTICE} }
-          orderBy: { name: asc }
+          orderBy: [{ createdAt: asc }, { name: asc }]
           take: 50
         ) { ...StorefrontServiceFields }
       }
@@ -142,7 +142,7 @@ export const getAllServices = cache(async function (): Promise<ServiceCatalogRes
       query GetAllServices($practiceSlug: String!) {
         services(
           where: { status: { equals: active }, isPublic: { equals: true }, practice: ${PUBLISHED_PRACTICE} }
-          orderBy: { name: asc }
+          orderBy: [{ createdAt: asc }, { name: asc }]
           take: 100
         ) { ...StorefrontServiceFields }
       }
@@ -177,7 +177,7 @@ export const getFeaturedServices = cache(async function (limit = 4): Promise<Ser
         services(
           where: { status: { equals: active }, isPublic: { equals: true }, practice: ${PUBLISHED_PRACTICE} }
           take: $take
-          orderBy: { name: asc }
+          orderBy: [{ createdAt: asc }, { name: asc }]
         ) { ...StorefrontServiceFields }
       }
     `, { take, practiceSlug: await practiceSlug() })
