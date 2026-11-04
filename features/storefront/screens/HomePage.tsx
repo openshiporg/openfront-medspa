@@ -19,6 +19,8 @@ export async function HomePage() {
     getStorefrontBrand(), getAllServices(), getFeaturedProviders(2), getPublicPracticeImages(), getStorefrontRooms(),
   ])
   const services = catalog.status === "loaded" ? catalog.data : []
+  const paidServices = services.filter(service => service.basePrice !== 0)
+  const homeServices = paidServices.length ? paidServices : services
   const providers = providerResult.status === "loaded" ? providerResult.data : []
   const hero = images.find(image => /room/i.test(image.altText || ""))
   // Hero: the stored room hero first, then the Treatment room photo, then any room.
@@ -29,7 +31,7 @@ export async function HomePage() {
       {heroSrc ? <img className="altair-hero-photo" src={heroSrc} alt={hero?.altText || ""} /> : null}
       <div className="altair-hero-copy">
         <h1 id="home-heading">{brand.city ? `${brand.city}’s calmest clinic.` : brand.name}</h1>
-        {services.length ? <p>{services.map(service => service.name).slice(0, 4).join(", ")}</p> : null}
+        <p>Facials, peels, light therapy and injectables, delivered by nurses and licensed estheticians.</p>
       </div>
     </section>
     <div className="altair-home-grid">
@@ -42,7 +44,7 @@ export async function HomePage() {
       <section className="altair-treatments" id="treatments" aria-labelledby="treatments-heading">
         <h2 id="treatments-heading">Treatments</h2>
         {catalog.status === "unavailable" ? <ServiceCatalogUnavailable retryHref="/" /> : services.length ? <div className="altair-menu">
-          {services.map(service => <Link className="altair-menu-row" key={service.id} href={`/services/${service.id}`}>
+          {homeServices.map(service => <Link className="altair-menu-row" key={service.id} href={`/services/${service.id}`}>
             <span>{service.name}</span><span>{service.baseDuration} min</span><span>{service.basePrice === 0 ? "complimentary" : formatPrice(service.basePrice)}</span>
           </Link>)}
         </div> : <p>No treatments listed yet</p>}
