@@ -8,6 +8,7 @@ test('public catalog queries consistently order by creation then name', () => {
   const services = source('./services.ts')
   assert.equal((services.match(/orderBy: \[\{ createdAt: asc \}, \{ name: asc \}\]/g) || []).length, 5)
   assert.doesNotMatch(services, /orderBy: \{ name: asc \}/)
+  assert.ok(services.includes('a.services[0].createdAt.localeCompare(b.services[0].createdAt)'))
   assert.match(source('../../screens/HomePage.tsx'), /getAllServices\(\)/)
   assert.match(source('../../screens/BookingPageServer.tsx'), /getAllServices\(\)/)
   assert.match(source('../../screens/ServicesPage.tsx'), /getServicesGroupedByCategory\(\)/)

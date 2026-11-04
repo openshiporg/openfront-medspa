@@ -33,7 +33,7 @@ export interface ServiceCategory {
   services: Service[]
 }
 
-type ServiceRead = Pick<Service, 'id' | 'name' | 'baseDuration' | 'basePrice'>
+type ServiceRead = Pick<Service, 'id' | 'name' | 'baseDuration' | 'basePrice'> & { createdAt: string }
 type ServiceWithScopedCategory = ServiceRead & { category: Service["category"] }
 
 function toStorefrontService(service: Service): Service {
@@ -58,6 +58,7 @@ const SERVICE_FIELDS = gql`
     name
     baseDuration
     basePrice: price
+    createdAt
   }
 `
 
@@ -102,7 +103,12 @@ export const getServicesGroupedByCategory = cache(async function (): Promise<Ser
       serviceCategories: Array<{ id: string; name: string; services: ServiceRead[] }>
       uncategorizedServices: ServiceRead[]
     }>(query, { practiceSlug: await practiceSlug() })
-    const groupedCategories = data.serviceCategories.filter(category => category.services?.length > 0)
+    // Match the flat home/booking catalog: categories follow their first treatment,
+    // not the creation date of the category record itself.
+    const groupedCategories = data.serviceCategories
+      .filter(category => category.services?.length > 0)
+      .sort((a, b) => a.services[0].createdAt.localeCompare(b.services[0].createdAt)
+        || a.services[0].name.localeCompare(b.services[0].name))
     const categorizedReads: ServiceWithScopedCategory[] = groupedCategories.flatMap(category =>
       category.services.map(service => ({
         ...service,
