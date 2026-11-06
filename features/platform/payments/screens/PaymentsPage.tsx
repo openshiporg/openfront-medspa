@@ -83,7 +83,7 @@ export async function PaymentsPage({ searchParams }: { searchParams?: Promise<{ 
                   <Link href={`${BASE}/${payment.id}`} className="grid gap-1 px-4 py-3 transition-colors hover:bg-muted/40 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center md:px-5">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <span className="truncate font-medium">{payment.appointment?.client?.user?.name || payment.notes || 'Payment'}</span>
+                        <span className="truncate font-medium">{payment.appointment?.client?.user?.name || payment.appointment?.metadata?.guest?.name || (payment.notes || '').replace(/\s+for appointment\s+\S+$/i, '') || 'Payment'}</span>
                         <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><StatusDot tone={paymentTone[payment.status || ''] || 'zinc'} />{paymentStatusLabel[payment.status || ''] || payment.status}</span>
                       </div>
                       <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground">

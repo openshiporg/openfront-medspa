@@ -12,7 +12,7 @@ export const paymentMethodLabel: Record<string, string> = {
 export interface PaymentRow {
   id: string; totalAmount: number | null; refundedAmount: number | null; tip: number | null; status: string | null; paymentMethod: string | null;
   processedAt: string | null; createdAt: string | null; notes: string | null;
-  appointment: { id: string; startTime: string | null; client: { id: string; user: { name: string | null } | null } | null } | null;
+  appointment: { id: string; startTime: string | null; metadata?: { guest?: { name?: string | null } | null } | null; client: { id: string; user: { name: string | null } | null } | null } | null;
 }
 
 export interface PaymentFilters { status: PaymentStatus | 'all'; from: string; to: string }

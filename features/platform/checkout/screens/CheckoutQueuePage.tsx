@@ -190,8 +190,8 @@ export function CheckoutCard({ appointment, products }: { appointment: CheckoutA
 function MoneyInput({ name, label }: { name: string; label: string }) {
   return (
     <label className={fieldLabel}>
-      {label} (cents)
-      <input name={name} type="number" min="0" step="1" defaultValue="0" className={inputClass} />
+      {label} ($)
+      <input name={name} type="number" inputMode="decimal" min="0" step="0.01" defaultValue="0" className={inputClass} />
     </label>
   );
 }

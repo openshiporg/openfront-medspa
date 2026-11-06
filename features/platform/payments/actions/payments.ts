@@ -6,7 +6,7 @@ import { PAYMENT_STATUSES, type PaymentDetailRead, type PaymentFilters, type Pay
 
 const ROW_FIELDS = `
   id totalAmount refundedAmount tip status paymentMethod processedAt createdAt notes
-  appointment { id startTime client { id user { name } } }
+  appointment { id startTime metadata client { id user { name } } }
 `;
 
 function dateWhere(from: string, to: string) {

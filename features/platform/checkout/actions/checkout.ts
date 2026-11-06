@@ -2,6 +2,7 @@ import { configuredTaxRate } from '@/features/keystone/checkoutInput';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { keystoneClient } from '@/features/dashboard/lib/keystoneClient';
+import { getPracticeTimeZone, getTodayRange } from '@/features/platform/lib/practiceDay';
 
 export interface CheckoutPackageBenefit {
   id: string;
@@ -173,12 +174,10 @@ const CLIENT_MEMBERSHIP_QUERY = `
   membership { id name discountPercent includedServices { id } }
 `;
 
-function todayRange() {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date();
-  end.setHours(23, 59, 59, 999);
-  return { start: start.toISOString(), end: end.toISOString() };
+/** Front desk enters dollars; the checkout mutation takes whole cents. */
+function dollarsToCents(value: FormDataEntryValue | null) {
+  const amount = Number(String(value ?? '').replace(/[$,\s]/g, '') || 0);
+  return Number.isFinite(amount) && amount > 0 ? Math.round(amount * 100) : 0;
 }
 
 export function calculateCheckoutTotals(appointment: CheckoutAppointment) {
@@ -359,7 +358,7 @@ async function attachClientBenefits(appointment: CheckoutAppointment): Promise<C
 }
 
 export async function getCheckoutQueue(): Promise<CheckoutQueueData> {
-  const range = todayRange();
+  const range = getTodayRange(await getPracticeTimeZone());
   const response = await keystoneClient<{
     appointments: CheckoutAppointment[];
     products: CheckoutRetailProduct[];
@@ -464,8 +463,8 @@ export async function completeAppointmentCheckout(formData: FormData): Promise<v
   `, {
     appointmentId,
     paymentMethod: normalizePaymentMethod(formData.get('paymentMethod')?.toString()),
-    tipAmount: Number(formData.get('tip') || 0),
-    discountAmount: Number(formData.get('discount') || 0),
+    tipAmount: dollarsToCents(formData.get('tip')),
+    discountAmount: dollarsToCents(formData.get('discount')),
     discountReason: formData.get('discountReason')?.toString().trim() || null,
     retailItems,
     clientPackageId: formData.get('clientPackageId')?.toString() || null,

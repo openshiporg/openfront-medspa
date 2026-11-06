@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { keystoneClient } from '@/features/dashboard/lib/keystoneClient';
+import { getPracticeTimeZone, getTodayRange } from '@/features/platform/lib/practiceDay';
 
 export type AppointmentStatus = 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'no_show';
 
@@ -111,19 +112,11 @@ const APPOINTMENT_QUERY = `
   }
 `;
 
-function getTodayRange() {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date();
-  end.setHours(23, 59, 59, 999);
-  return { start: start.toISOString(), end: end.toISOString() };
-}
-
-function buildWhere(status?: string | null) {
+function buildWhere(status: string | null | undefined, today: { start: string; end: string }) {
   if (!status || status === 'all') return {};
 
   if (status === 'today') {
-    const { start, end } = getTodayRange();
+    const { start, end } = today;
     return { startTime: { gte: start, lte: end } };
   }
 
@@ -198,6 +191,7 @@ export async function cancelAppointmentFromQueue(formData: FormData): Promise<vo
 }
 
 export async function getAppointmentOperations(status?: string | null): Promise<AppointmentOperationsData> {
+  const today = getTodayRange(await getPracticeTimeZone());
   const query = `
     query AppointmentOperations($where: AppointmentWhereInput!) {
       appointments(where: $where, orderBy: { startTime: asc }, take: 100) {
@@ -210,7 +204,7 @@ export async function getAppointmentOperations(status?: string | null): Promise<
       completedCount: appointmentsCount(where: { status: { equals: completed } })
       cancelledCount: appointmentsCount(where: { status: { equals: cancelled } })
       noShowCount: appointmentsCount(where: { status: { equals: no_show } })
-      todayCount: appointmentsCount(where: { startTime: { gte: "${getTodayRange().start}", lte: "${getTodayRange().end}" } })
+      todayCount: appointmentsCount(where: { startTime: { gte: "${today.start}", lte: "${today.end}" } })
     }
   `;
 
@@ -224,7 +218,7 @@ export async function getAppointmentOperations(status?: string | null): Promise<
     cancelledCount: number;
     noShowCount: number;
     todayCount: number;
-  }>(query, { where: buildWhere(status) });
+  }>(query, { where: buildWhere(status, today) });
 
   if (!response.success) {
     console.error('Failed to load appointment operations:', response.error);
