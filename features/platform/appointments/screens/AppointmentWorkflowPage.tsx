@@ -116,7 +116,7 @@ export async function AppointmentWorkflowPage({ appointmentId }: { appointmentId
               <div className="border-t p-4 md:p-5">
                 {capabilities.canManageClinical && clinical ? (
                   <div className="flex items-start gap-3 text-sm">
-                    <FileCheck2 className="mt-0.5 size-4 shrink-0 text-violet-600 dark:text-violet-300" />
+                    <FileCheck2 className="mt-0.5 size-4 shrink-0 text-teal-600 dark:text-teal-300" />
                     <dl className="grid flex-1 grid-cols-2 gap-3">
                       <Fact label="Consent records">{clinical.consents.length}</Fact>
                       <Fact label="Treatment sessions">{clinical.sessions.length}</Fact>

@@ -46,7 +46,7 @@ export function StorefrontSettingsForm({ setting, locations }: StorefrontSetting
 
       <section className="flex flex-wrap items-center justify-between gap-4 rounded-[6px] border bg-background p-4 md:p-6">
         <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm font-medium">
-          <input type="checkbox" name="isPublished" checked={published} onChange={event => setPublished(event.target.checked)} className="size-5 shrink-0 accent-violet-600" />
+          <input type="checkbox" name="isPublished" checked={published} onChange={event => setPublished(event.target.checked)} className="size-5 shrink-0 accent-teal-600" />
           Publish storefront
           <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><span aria-hidden="true" className={`size-2 rounded-full ${published ? 'bg-emerald-500' : 'bg-zinc-400'}`} />{published ? 'Live' : 'Hidden'}</span>
         </label>

@@ -18,7 +18,7 @@ const dotTones: Record<Tone, string> = {
   emerald: 'bg-emerald-500 outline-emerald-100 dark:bg-emerald-400 dark:outline-emerald-900/50',
   amber: 'bg-amber-500 outline-amber-100 dark:bg-amber-400 dark:outline-amber-900/50',
   blue: 'bg-blue-500 outline-blue-100 dark:bg-blue-400 dark:outline-blue-900/50',
-  violet: 'bg-violet-500 outline-violet-100 dark:bg-violet-400 dark:outline-violet-900/50',
+  violet: 'bg-teal-500 outline-teal-100 dark:bg-teal-400 dark:outline-teal-900/50',
   rose: 'bg-rose-500 outline-rose-100 dark:bg-rose-400 dark:outline-rose-900/50',
   zinc: 'bg-zinc-400 outline-zinc-100 dark:bg-zinc-500 dark:outline-zinc-800/60',
   sky: 'bg-sky-500 outline-sky-100 dark:bg-sky-400 dark:outline-sky-900/50',
@@ -26,7 +26,7 @@ const dotTones: Record<Tone, string> = {
 };
 
 const textTones: Record<Tone, string> = {
-  emerald: 'text-emerald-700 dark:text-emerald-400', amber: 'text-amber-700 dark:text-amber-400', blue: 'text-blue-700 dark:text-blue-400', violet: 'text-violet-700 dark:text-violet-400',
+  emerald: 'text-emerald-700 dark:text-emerald-400', amber: 'text-amber-700 dark:text-amber-400', blue: 'text-blue-700 dark:text-blue-400', violet: 'text-teal-700 dark:text-teal-400',
   rose: 'text-rose-700 dark:text-rose-400', zinc: 'text-muted-foreground', sky: 'text-sky-700 dark:text-sky-400', orange: 'text-orange-700 dark:text-orange-400',
 };
 
@@ -193,5 +193,5 @@ export function initials(name?: string | null) {
 }
 
 export function Avatar({ name, className }: { name?: string | null; className?: string }) {
-  return <span aria-hidden="true" className={cn('flex size-8 shrink-0 items-center justify-center rounded-[5px] bg-violet-50 text-xs font-semibold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300', className)}>{initials(name)}</span>;
+  return <span aria-hidden="true" className={cn('flex size-8 shrink-0 items-center justify-center rounded-[5px] bg-muted text-xs font-semibold text-foreground', className)}>{initials(name)}</span>;
 }

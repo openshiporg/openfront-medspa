@@ -86,14 +86,15 @@ export function AppointmentSchedulingPanel({ appointmentId, customerOnly = false
   if (customerOnly) {
     const cancellable = Boolean(data?.allowedTransitions.includes('cancelled'));
     // Clients see one plain control; nothing renders once there is nothing to do.
-    if (!cancellable && !intent) return message && message !== 'Scheduling loaded.' && message !== 'Loading scheduling…' ? <p role="status" className="text-sm text-muted-foreground">{message}</p> : null;
+    if (!cancellable && !intent) return message && message !== 'Scheduling loaded.' && message !== 'Loading scheduling…' ? <p role="status" className="text-[length:var(--sf-text-sm)] text-[var(--sf-ink-2)]">{message}</p> : null;
+    // Storefront styling (sf-*) so the client control matches the rest of the account page.
     return <form onSubmit={event => { if (!intent && !window.confirm('Cancel this appointment?')) { event.preventDefault(); return; } void submit(event); }} className="grid gap-3" aria-label="Cancel appointment">
       <input type="hidden" name="status" value="cancelled" />
-      {!intent ? <label className={fieldLabelClass}>Reason (optional)<input name="reason" className={inputClass} maxLength={1000} disabled={busy || blocked} /></label> : null}
-      {message && !['Scheduling loaded.', 'Loading scheduling…'].includes(message) ? <p role="status" className="text-sm text-muted-foreground">{message}</p> : null}
-      <div className={`${trackClass} w-fit`}>
-        <button className={pillClass('danger')} disabled={busy || blocked || !data}>{busy ? 'Cancelling…' : intent ? 'Retry cancellation' : 'Cancel appointment'}</button>
-        {intent && <button type="button" className={pillClass('quiet')} disabled={busy} onClick={retrieve}>Refresh</button>}
+      {!intent ? <label className="sf-field">Reason <span className="font-normal text-[var(--sf-ink-3)]">Optional</span><input name="reason" className="sf-input" maxLength={1000} disabled={busy || blocked} /></label> : null}
+      {message && !['Scheduling loaded.', 'Loading scheduling…'].includes(message) ? <p role="status" className="text-[length:var(--sf-text-sm)] text-[var(--sf-ink-2)]">{message}</p> : null}
+      <div className="sf-track self-start">
+        <button className="sf-pill" disabled={busy || blocked || !data}>{busy ? <><span className="sf-spinner" aria-hidden="true" />Cancelling</> : intent ? 'Retry cancellation' : 'Cancel appointment'}</button>
+        {intent && <button type="button" className="sf-pill" disabled={busy} onClick={retrieve}>Refresh</button>}
       </div>
     </form>;
   }

@@ -12,7 +12,7 @@ export function pillClass(variant: PillVariant = 'raised', size: 'sm' | 'md' = '
     size === 'sm' ? 'h-7 px-2.5 text-xs' : 'h-8 px-3 text-[13px] max-sm:h-10',
     variant === 'quiet' && 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground',
     variant === 'raised' && 'border-border bg-background text-foreground shadow-xs hover:bg-muted',
-    variant === 'primary' && 'border-violet-700 bg-violet-700 text-white hover:bg-violet-800 dark:border-violet-500 dark:bg-violet-600 dark:hover:bg-violet-500',
+    variant === 'primary' && 'border-foreground bg-foreground text-background hover:bg-foreground/85',
     variant === 'danger' && 'border-border bg-background text-rose-700 shadow-xs hover:border-rose-300 hover:bg-rose-50 dark:text-rose-400 dark:hover:border-rose-900 dark:hover:bg-rose-950/40',
   );
 }

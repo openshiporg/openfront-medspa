@@ -114,7 +114,7 @@ export function WaitlistAddDrawer({ options }: { options: WaitlistOptions }) {
               <div className="flex flex-wrap gap-2">
                 {providers.map((provider) => (
                   <button key={provider.id} type="button" aria-pressed={form.providerIds.includes(provider.id)} onClick={() => toggle('providerIds', provider.id)}
-                    className={cn('h-8 rounded-[5px] border px-3 text-xs', form.providerIds.includes(provider.id) ? 'border-violet-600 bg-violet-600 text-white' : 'bg-background hover:border-foreground/40')}>{provider.name}</button>
+                    className={cn('h-8 rounded-[5px] border px-3 text-xs', form.providerIds.includes(provider.id) ? 'border-teal-600 bg-teal-600 text-white' : 'bg-background hover:border-foreground/40')}>{provider.name}</button>
                 ))}
               </div>
             </fieldset>
@@ -125,7 +125,7 @@ export function WaitlistAddDrawer({ options }: { options: WaitlistOptions }) {
             <div className="flex flex-wrap gap-2">
               {WEEKDAYS.map((day) => (
                 <button key={day} type="button" aria-pressed={form.days.includes(day)} onClick={() => toggle('days', day)}
-                  className={cn('h-8 min-w-11 rounded-[5px] border px-2.5 text-xs capitalize', form.days.includes(day) ? 'border-violet-600 bg-violet-600 text-white' : 'bg-background hover:border-foreground/40')}>{day.slice(0, 3)}</button>
+                  className={cn('h-8 min-w-11 rounded-[5px] border px-2.5 text-xs capitalize', form.days.includes(day) ? 'border-teal-600 bg-teal-600 text-white' : 'bg-background hover:border-foreground/40')}>{day.slice(0, 3)}</button>
               ))}
             </div>
           </fieldset>

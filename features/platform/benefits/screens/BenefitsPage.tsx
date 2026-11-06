@@ -216,7 +216,7 @@ function ClientPackagesTab({ rows, status }: { rows: ClientPackageRow[]; status:
                 <div className="grid gap-3">
                   <div>
                     <div className="flex justify-between text-sm"><span className="tabular-nums">{usd(Math.max(0, total - used))} left</span><span className="tabular-nums text-muted-foreground">{usd(used)} of {usd(total)} used</span></div>
-                    <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true"><div className="h-full rounded-full bg-violet-500" style={{ width: `${percent}%` }} /></div>
+                    <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true"><div className="h-full rounded-full bg-teal-500" style={{ width: `${percent}%` }} /></div>
                   </div>
                   {row.usageHistory.length ? (
                     <details className="group rounded-[6px] border">

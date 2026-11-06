@@ -18,7 +18,7 @@ function RevenueBars({ daily }: { daily: Array<{ day: string; net: number }> }) 
       <div className="flex h-40 items-end gap-[2px]" aria-hidden="true">
         {daily.map((entry) => (
           <div key={entry.day} className="group relative flex h-full min-w-0 flex-1 items-end" title={`${dayLabel(entry.day, 'long')} · ${usd(entry.net)}`}>
-            <div className="w-full rounded-t-[4px] bg-violet-500 transition-opacity group-hover:opacity-80 dark:bg-violet-400" style={{ height: max > 0 ? `${Math.max((entry.net / max) * 100, entry.net > 0 ? 2 : 0)}%` : '0%' }} />
+            <div className="w-full rounded-t-[4px] bg-teal-500 transition-opacity group-hover:opacity-80 dark:bg-teal-400" style={{ height: max > 0 ? `${Math.max((entry.net / max) * 100, entry.net > 0 ? 2 : 0)}%` : '0%' }} />
             <span className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded-[6px] border bg-background px-2 py-1 text-xs shadow-sm group-hover:block">{dayLabel(entry.day, 'long')} · {usd(entry.net)}</span>
           </div>
         ))}
@@ -47,7 +47,7 @@ function RankList({ rows, empty }: { rows: Array<{ name: string; detail: string;
             <span className="min-w-0 truncate font-medium">{row.name}</span>
             <span className="shrink-0 tabular-nums">{usd(row.value)}</span>
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-violet-500 dark:bg-violet-400" style={{ width: `${(row.value / max) * 100}%` }} /></div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-teal-500 dark:bg-teal-400" style={{ width: `${(row.value / max) * 100}%` }} /></div>
           <span className="text-xs text-muted-foreground">{row.detail}</span>
         </li>
       ))}

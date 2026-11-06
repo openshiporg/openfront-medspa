@@ -15,7 +15,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 function ActiveToggle({ defaultChecked }: { defaultChecked: boolean }) {
   return (
     <label className="flex min-h-10 cursor-pointer items-center gap-2.5 text-sm font-medium">
-      <input type="checkbox" name="isActive" defaultChecked={defaultChecked} className="size-4 accent-violet-600" />Available to sell
+      <input type="checkbox" name="isActive" defaultChecked={defaultChecked} className="size-4 accent-teal-600" />Available to sell
     </label>
   );
 }

@@ -148,7 +148,7 @@ export function FrontDeskBookingForm({ services, locations, clients }: { service
                 <div className="flex flex-wrap gap-2">
                   {openSlots.map((slot) => (
                     <button key={slot.startTime} type="button" aria-pressed={slot.startTime === startTime} onClick={() => setStartTime(slot.startTime)}
-                      className={cn('h-9 rounded-[5px] border px-3 text-sm tabular-nums transition-colors', slot.startTime === startTime ? 'border-violet-600 bg-violet-600 text-white' : 'bg-background hover:border-foreground/40')}>
+                      className={cn('h-9 rounded-[5px] border px-3 text-sm tabular-nums transition-colors', slot.startTime === startTime ? 'border-teal-600 bg-teal-600 text-white' : 'bg-background hover:border-foreground/40')}>
                       {slot.time}
                     </button>
                   ))}

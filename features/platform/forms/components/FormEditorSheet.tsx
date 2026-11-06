@@ -121,7 +121,7 @@ export function FormEditorSheet({ kind, row, links, triggerLabel, triggerVariant
                   {links.map((option) => {
                     const checked = linked.includes(option.value);
                     return (
-                      <label key={option.value} className={cn('inline-flex h-8 cursor-pointer items-center gap-2 rounded-[5px] border px-3 text-xs font-medium', checked ? 'border-violet-500 bg-violet-50 text-violet-800 dark:bg-violet-950/40 dark:text-violet-200' : 'bg-background text-muted-foreground')}>
+                      <label key={option.value} className={cn('inline-flex h-8 cursor-pointer items-center gap-2 rounded-[5px] border px-3 text-xs font-medium', checked ? 'border-teal-500 bg-teal-50 text-teal-800 dark:bg-teal-950/40 dark:text-teal-200' : 'bg-background text-muted-foreground')}>
                         <input type="checkbox" className="sr-only" checked={checked} onChange={() => setLinked((current) => checked ? current.filter((id) => id !== option.value) : [...current, option.value])} />{option.label}
                       </label>
                     );
