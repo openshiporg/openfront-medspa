@@ -9608,7 +9608,7 @@ var seed_default = {
     state: "NY",
     zipCode: "11201",
     phone: "+1 (212) 555-0147",
-    email: "hello@juniper-vale.example",
+    email: "hello@medspa.openship.org",
     timezone: "America/New_York",
     hours: {
       monday: { closed: true },

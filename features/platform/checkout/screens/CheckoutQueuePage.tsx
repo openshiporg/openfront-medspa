@@ -63,7 +63,7 @@ export async function CheckoutQueuePage() {
 export function CheckoutCard({ appointment, products }: { appointment: CheckoutAppointment; products: { id: string; name?: string | null; price?: number | null; quantity?: number | null; category?: string | null }[] }) {
   if (appointment.payment || appointment.transaction) return <RecordedCheckout appointment={appointment} />;
   const totals = calculateCheckoutTotals(appointment);
-  const clientName = appointment.client?.user?.name || 'Client unavailable';
+  const clientName = appointment.client?.user?.name || (appointment.guest?.name ? `${appointment.guest.name} (guest)` : appointment.client ? 'Client unavailable' : 'Guest request');
   const providerName = appointment.provider?.user?.name || 'Unassigned';
   const status = appointment.status || '';
   const checkoutEligible = ['confirmed', 'in_progress'].includes(status) && !appointment.payment && !appointment.benefitsUnavailable && totals.tax !== null;
@@ -216,7 +216,7 @@ function RecordedCheckout({ appointment }: { appointment: CheckoutAppointment })
     try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: payment.currencyCode }).format(Number(value) / 100); }
     catch { return 'Unavailable'; }
   }
-  const clientName = appointment.client?.user?.name || 'Client unavailable';
+  const clientName = appointment.client?.user?.name || (appointment.guest?.name ? `${appointment.guest.name} (guest)` : appointment.client ? 'Client unavailable' : 'Guest request');
   return (
     <article className="grid min-w-0 gap-4 rounded-[6px] border bg-background p-4 md:p-5">
       <div className="flex items-start gap-3">

@@ -3,6 +3,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { keystoneClient } from '@/features/dashboard/lib/keystoneClient';
 import { getPracticeTimeZone, getTodayRange } from '@/features/platform/lib/practiceDay';
+import { getAppointmentSchedule } from '@/features/platform/appointments/actions/appointmentSchedule';
 
 export interface CheckoutPackageBenefit {
   id: string;
@@ -42,6 +43,8 @@ export interface CheckoutRetailProduct {
 
 export interface CheckoutAppointment {
   id: string;
+  /** Contact for a storefront guest request, which has no client record (scheduler readback). */
+  guest?: { name: string; email: string; phone: string } | null;
   startTime?: string | null;
   location?: { timezone?: string | null } | null;
   practice?: { taxRate?: number | null } | null;
@@ -322,9 +325,16 @@ async function loadSelectedRetailItems(productIds: string[], quantities: number[
     .filter((item): item is NonNullable<typeof item> => Boolean(item));
 }
 
+/** Guest requests carry their contact in the scheduling readback, as on the appointment page. */
+async function attachGuest(appointment: CheckoutAppointment): Promise<CheckoutAppointment> {
+  if (appointment.client) return appointment;
+  const schedule = await getAppointmentSchedule(appointment.id, undefined, 'scheduler').catch(() => null);
+  return schedule?.guest?.name ? { ...appointment, guest: schedule.guest } : appointment;
+}
+
 async function attachClientBenefits(appointment: CheckoutAppointment): Promise<CheckoutAppointment> {
   const userId = appointment.client?.user?.id;
-  if (!userId) return appointment;
+  if (!userId) return attachGuest(appointment);
 
   const response = await keystoneClient<{
     clientPackages: CheckoutPackageBenefit[];

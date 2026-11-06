@@ -7,7 +7,7 @@
     "state": "NY",
     "zipCode": "11201",
     "phone": "+1 (212) 555-0147",
-    "email": "hello@juniper-vale.example",
+    "email": "hello@medspa.openship.org",
     "timezone": "America/New_York",
     "hours": {
       "monday": {
@@ -239,7 +239,7 @@
       "key": "maya-ortiz",
       "imagePath": "/images/salon/provider-maya.webp",
       "name": "Maya Ortiz",
-      "email": "maya.ortiz@juniper-vale.example",
+      "email": "maya.ortiz@medspa.openship.org",
       "phone": "+1 (212) 555-0162",
       "role": "nurse",
       "tier": "senior",
@@ -260,7 +260,7 @@
       "key": "lena-park",
       "imagePath": "/images/salon/provider-priya.webp",
       "name": "Lena Park",
-      "email": "lena.park@juniper-vale.example",
+      "email": "lena.park@medspa.openship.org",
       "phone": "+1 (212) 555-0163",
       "role": "esthetician",
       "tier": "senior",
