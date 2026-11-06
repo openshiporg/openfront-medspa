@@ -83,8 +83,7 @@ export function CheckoutCard({ appointment, products }: { appointment: CheckoutA
           <Avatar name={clientName} />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-              <h2 className="min-w-0 truncate text-lg font-semibold">{clientName}</h2>
-            {isGuest ? <Chip>Guest booking</Chip> : null}
+              <h2 className="min-w-0 truncate text-lg font-semibold">{clientName}{isGuest ? <span className="font-normal text-muted-foreground"> · Guest</span> : null}</h2>
               <TitleStatus tone={appointmentTone[status] || 'zinc'}>{appointmentLabel[status] || humanize(status)}</TitleStatus>
             </div>
             <p className="mt-0.5 text-sm text-muted-foreground">{formatTime(appointment.startTime, appointment.location?.timezone || 'UTC')} · {appointment.duration || 60} min · {providerName}</p>
@@ -226,8 +225,7 @@ function RecordedCheckout({ appointment }: { appointment: CheckoutAppointment })
         <Avatar name={clientName} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-            <h2 className="min-w-0 truncate text-lg font-semibold">{clientName}</h2>
-            {isGuest ? <Chip>Guest booking</Chip> : null}
+            <h2 className="min-w-0 truncate text-lg font-semibold">{clientName}{isGuest ? <span className="font-normal text-muted-foreground"> · Guest</span> : null}</h2>
             <TitleStatus tone={payment ? statusTone(payment.status) : 'amber'}>{payment ? humanize(payment.status) : 'Receipt unavailable'}</TitleStatus>
           </div>
           <p className="mt-0.5 text-sm text-muted-foreground">{formatTime(appointment.startTime, appointment.location?.timezone || 'UTC')}</p>
