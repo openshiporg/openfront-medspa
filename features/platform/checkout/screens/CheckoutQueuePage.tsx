@@ -236,13 +236,13 @@ function RecordedCheckout({ appointment }: { appointment: CheckoutAppointment })
       </div>
       {payment ? (
         <dl className="grid grid-cols-2 gap-3 rounded-[6px] border p-3 sm:grid-cols-3">
-          <Fact label="Tender">{payment.paymentMethod || 'Unavailable'}</Fact>
+          <Fact label="Tender">{payment.paymentMethod ? humanize(payment.paymentMethod) : 'Unavailable'}</Fact>
           {([['Subtotal', payment.subtotal], ['Discount', payment.discount], ['Tax', payment.tax], ['Tip', payment.tip], ['Total', payment.totalAmount], ['Refunded', payment.refundedAmount]] as const).map(([label, value]) => <Fact key={label} label={label}><span className="tabular-nums">{amount(value)}</span></Fact>)}
         </dl>
       ) : <p role="status" className="text-sm text-muted-foreground">Transaction recorded; payment receipt unavailable.</p>}
       {lines.length ? (
         <div className="relative overflow-x-auto rounded-[6px] border">
-          <table className="w-full min-w-[22rem] text-sm">
+          <table className="w-full text-sm">
             <caption className="sr-only">Sale lines</caption>
             <thead className="bg-muted/40 text-xs text-muted-foreground"><tr><th className="px-3 py-2 text-left font-medium">Item</th><th className="px-3 py-2 text-center font-medium">Qty</th><th className="px-3 py-2 text-right font-medium">Net</th></tr></thead>
             <tbody>{lines.slice(0, 100).map(line => <tr className="border-t" key={line.id}><td className="px-3 py-2">{typeof line.metadata?.title === 'string' ? line.metadata.title : 'Title unavailable'}</td><td className="px-3 py-2 text-center tabular-nums">{line.quantity ?? '—'}</td><td className="px-3 py-2 text-right tabular-nums">{line.quantity != null && line.unitPrice != null ? amount(line.quantity * line.unitPrice - (line.discount || 0)) : 'Unavailable'}</td></tr>)}</tbody>
