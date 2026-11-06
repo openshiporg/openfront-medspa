@@ -14,28 +14,40 @@ import { amountDueAfterDeposit, netDepositMinor } from "../depositCheckoutCore";
 
 type CheckoutResult = { success: boolean; transactionId: string | null; paymentId: string | null; error: string | null };
 
-export async function completeAppointmentCheckoutTransaction(
-  context: Context,
-  args: {
-    appointmentId: string; paymentMethod: string; tipAmount: number; discountAmount: number; discountReason?: string | null;
-    retailItems?: unknown; clientPackageId?: string | null; clientMembershipId?: string | null; idempotencyKey: string;
-  },
-): Promise<CheckoutResult> {
-  let actor;
+export type CheckoutArgs = {
+  appointmentId: string; paymentMethod: string; tipAmount: number; discountAmount: number; discountReason?: string | null;
+  retailItems?: unknown; clientPackageId?: string | null; clientMembershipId?: string | null; idempotencyKey: string;
+};
+export type CheckoutActor = { actorId: string; practiceId: string; canManagePractice: boolean };
+/**
+ * cash: operator-recorded tender through the manual provider.
+ * quote: compute what is due and stop before any sale write (the card flow charges exactly this).
+ * card: settle a paid Stripe Checkout; the amount Stripe collected must equal the recomputed total.
+ */
+export type CheckoutMode = { kind: "cash" } | { kind: "quote" } | { kind: "card"; sessionId: string; paymentIntentId: string };
+export class CheckoutQuote extends Error { constructor(readonly total: number, readonly description: string, readonly email: string | null) { super("checkout-quote"); } }
+
+export async function completeAppointmentCheckoutTransaction(context: Context, args: CheckoutArgs): Promise<CheckoutResult> {
+  let actor: CheckoutActor;
   try {
-    actor = requireActorPractice(context, permissions.canManageFinance, "Authorized finance access is required");
+    actor = { ...requireActorPractice(context, permissions.canManageFinance, "Authorized finance access is required"), canManagePractice: permissions.canManagePractice({ session: context.session as any }) };
     await assertPracticeRecord(context, "Appointment", args.appointmentId);
   } catch (error) {
     return { success: false, transactionId: null, paymentId: null, error: error instanceof Error ? error.message : "Appointment not found" };
   }
+  if (args.paymentMethod !== "cash") return { success: false, transactionId: null, paymentId: null, error: "Card payments are taken with Charge card" };
+  return runControlledCheckout(context, actor, args, { kind: "cash" });
+}
+
+export async function runControlledCheckout(context: Context, actor: CheckoutActor, args: CheckoutArgs, mode: CheckoutMode): Promise<CheckoutResult> {
   if (!args.idempotencyKey?.trim() || args.idempotencyKey.length < 12) {
     return { success: false, transactionId: null, paymentId: null, error: "A valid idempotency key is required" };
   }
   let retail: RetailInput[];
   try {
     retail = parseRetail(args.retailItems);
-    if (args.paymentMethod !== "cash") throw new Error("Controlled checkout currently supports operator-recorded cash only");
-    if (args.discountAmount > 0 && (!permissions.canManagePractice({ session: context.session as any }) || !args.discountReason?.trim() || args.discountReason.length > 1_000)) throw new Error("Discretionary discounts require current practice-manager authority and a reason");
+    if (mode.kind === "cash" && args.paymentMethod !== "cash") throw new Error("Cash checkout records cash only");
+    if (args.discountAmount > 0 && (!actor.canManagePractice || !args.discountReason?.trim() || args.discountReason.length > 1_000)) throw new Error("Discretionary discounts require current practice-manager authority and a reason");
     if (!Number.isInteger(args.tipAmount) || !Number.isInteger(args.discountAmount)
       || args.tipAmount < 0 || args.discountAmount < 0 || args.tipAmount > 10_000_000 || args.discountAmount > 10_000_000) {
       throw new Error("Checkout amounts must be nonnegative integer cents");
@@ -45,7 +57,8 @@ export async function completeAppointmentCheckoutTransaction(
   }
 
   const scopedCheckoutKey = aggregateIdempotencyKey(actor.practiceId, `checkout:${evidenceHash(args.idempotencyKey)}`);
-  const checkoutRequestHash = evidenceHash({ practiceId: actor.practiceId, appointmentId: args.appointmentId, paymentMethod: args.paymentMethod, tipAmount: args.tipAmount, discountAmount: args.discountAmount, discountReason: args.discountReason?.trim() || null, retail, clientPackageId: args.clientPackageId || null, clientMembershipId: args.clientMembershipId || null });
+  const tender = mode.kind === "cash" ? "cash" : "credit_card";
+  const checkoutRequestHash = evidenceHash({ practiceId: actor.practiceId, appointmentId: args.appointmentId, paymentMethod: tender, tipAmount: args.tipAmount, discountAmount: args.discountAmount, discountReason: args.discountReason?.trim() || null, retail, clientPackageId: args.clientPackageId || null, clientMembershipId: args.clientMembershipId || null });
   try {
     return await serializableWorkflow(context, "medspa-domain-resource", [
       `appointment:${args.appointmentId}`,
@@ -203,6 +216,10 @@ export async function completeAppointmentCheckoutTransaction(
         throw new Error("The recorded deposit has no settled payment to credit. Reconcile it from Payments first");
       }
       const total = amountDueAfterDeposit(taxable + tax + tip, depositCredit);
+      if (mode.kind === "quote") {
+        const description = appointment.lineItems.map((line: any) => line.serviceTitle).filter(Boolean).join(", ") || "Appointment";
+        throw new CheckoutQuote(total, description, appointment.client?.user?.email || null);
+      }
       const now = new Date().toISOString();
 
       const transaction = await sudo.query.MedSpaTransaction.createOne({
@@ -211,9 +228,9 @@ export async function completeAppointmentCheckoutTransaction(
           practice: { connect: { id: actor.practiceId } }, type: "appointment", location: { connect: { id: checkoutLocationId } },
           client: appointment.client?.id ? { connect: { id: appointment.client.id } } : undefined,
           appointment: { connect: { id: appointment.id } }, staff: appointment.provider?.id ? { connect: { id: appointment.provider.id } } : undefined,
-          tip, paymentMethod: packageCredit ? "split" : "cash",
+          tip, paymentMethod: packageCredit ? "split" : mode.kind === "card" ? "card" : "cash",
           paymentStatus: "paid", status: "completed", completedAt: now,
-          metadata: { source: "controlled_checkout", serviceSubtotal, retailSubtotal, discount, discountReason: args.discountReason?.trim() || null, membershipDiscount, packageCredit, discountAllocations: appointment.lineItems.map((line: any) => ({ lineItemId: line.id, serviceId: line.service?.id || null, ...(lineDiscountComponents.get(line.id) || { manual: 0, membership: 0, package: 0 }) })), tax, depositCredit, total },
+          metadata: { source: "controlled_checkout", tender, serviceSubtotal, retailSubtotal, discount, discountReason: args.discountReason?.trim() || null, membershipDiscount, packageCredit, discountAllocations: appointment.lineItems.map((line: any) => ({ lineItemId: line.id, serviceId: line.service?.id || null, ...(lineDiscountComponents.get(line.id) || { manual: 0, membership: 0, package: 0 }) })), tax, depositCredit, total },
         }, query: "id",
       });
 
@@ -267,25 +284,45 @@ export async function completeAppointmentCheckoutTransaction(
         if (!movement.success) throw new Error(movement.error || "Inventory movement failed");
       }
 
-      const providers = await sudo.query.PaymentProvider.findMany({
-        where: { practice: { id: { equals: actor.practiceId } }, adapter: { equals: "manual" }, isInstalled: { equals: true } }, take: 1,
-        query: "id code adapter config",
-      });
-      const provider = providers[0];
-      if (!provider) throw new Error("Operator payment provider is unavailable");
-      const providerConfig = paymentProviderFromRecord(provider as any);
-      const initiated = await createProviderPaymentSession({ provider: providerConfig, amount: total, currency: "usd", idempotencyKey: scopedCheckoutKey, metadata: { appointmentId: appointment.id, operatorId: context.session!.itemId } });
-      const confirmed = await confirmProviderPayment({ provider: providerConfig, providerReference: initiated.providerReference, amount: total, idempotencyKey: `${scopedCheckoutKey}:confirm` });
-      if (confirmed.status !== "completed") throw new Error("Operator payment was not completed");
-      const session = await sudo.query.PaymentSession.createOne({
-        data: { practice: { connect: { id: actor.practiceId } }, appointment: { connect: { id: appointment.id } }, provider: { connect: { id: provider.id } }, idempotencyKey: scopedCheckoutKey, amount: total, currency: "usd", status: "completed", providerReference: initiated.providerReference, completedAt: now, data: { source: "controlled_checkout", purpose: "controlled_checkout", settlementMethod: "operator_recorded_cash", checkoutRequestHash, discountReason: args.discountReason?.trim() || null, ...(initiated.data || {}), ...(confirmed.data || {}) } },
-        query: "id",
-      });
-      const payment = await sudo.query.Payment.createOne({
-        data: { idempotencyKey: aggregateIdempotencyKey(scopedCheckoutKey, "payment"), practice: { connect: { id: actor.practiceId } }, appointment: { connect: { id: appointment.id } }, session: { connect: { id: session.id } }, subtotal, tax, tip, discount, totalAmount: total, paymentMethod: args.paymentMethod, status: "completed", processedAt: now, processedBy: { connect: { id: context.session!.itemId } }, receiptEmail: appointment.client?.user?.email || "", notes: "Recorded by controlled appointment checkout" },
-        query: "id",
-      });
-      await sudo.query.PaymentSession.updateOne({ where: { id: session.id }, data: { payment: { connect: { id: payment.id } } }, query: "id" });
+      let payment: { id: string };
+      if (mode.kind === "card") {
+        // The card was charged on Stripe Checkout before this transaction; it must match what is due now.
+        const card: any = await sudo.query.PaymentSession.findOne({ where: { id: mode.sessionId }, query: "id status amount data practice { id } appointment { id } payment { id }" });
+        const cardData = card?.data && typeof card.data === "object" ? card.data : {};
+        if (!card || cardData.purpose !== "checkout_card" || card.practice?.id !== actor.practiceId || card.appointment?.id !== appointment.id) throw new Error("Card payment session not found");
+        if (!card.payment?.id || !["pending", "requires_action"].includes(card.status)) throw new Error("Card payment was already settled");
+        if (Number(card.amount) !== total) throw new CardAmountMismatch(Number(card.amount), total);
+        payment = await sudo.query.Payment.updateOne({
+          where: { id: card.payment.id },
+          data: {
+            appointment: { connect: { id: appointment.id } }, subtotal, tax, tip, discount, totalAmount: total,
+            status: "completed", processedAt: now, stripePaymentIntentId: mode.paymentIntentId,
+            processedBy: { connect: { id: actor.actorId } }, receiptEmail: appointment.client?.user?.email || "", notes: "Card payment taken at checkout (Stripe)",
+          },
+          query: "id",
+        }) as { id: string };
+        await sudo.query.PaymentSession.updateOne({ where: { id: card.id }, data: { status: "completed", completedAt: now, providerReference: mode.paymentIntentId, data: { ...cardData, checkoutRequestHash, paymentIntentId: mode.paymentIntentId, checkoutUrl: null, settledAt: now, transactionId: transaction.id } }, query: "id" });
+      } else {
+        const providers = await sudo.query.PaymentProvider.findMany({
+          where: { practice: { id: { equals: actor.practiceId } }, adapter: { equals: "manual" }, isInstalled: { equals: true } }, take: 1,
+          query: "id code adapter config",
+        });
+        const provider = providers[0];
+        if (!provider) throw new Error("Operator payment provider is unavailable");
+        const providerConfig = paymentProviderFromRecord(provider as any);
+        const initiated = await createProviderPaymentSession({ provider: providerConfig, amount: total, currency: "usd", idempotencyKey: scopedCheckoutKey, metadata: { appointmentId: appointment.id, operatorId: actor.actorId } });
+        const confirmed = await confirmProviderPayment({ provider: providerConfig, providerReference: initiated.providerReference, amount: total, idempotencyKey: `${scopedCheckoutKey}:confirm` });
+        if (confirmed.status !== "completed") throw new Error("Operator payment was not completed");
+        const session = await sudo.query.PaymentSession.createOne({
+          data: { practice: { connect: { id: actor.practiceId } }, appointment: { connect: { id: appointment.id } }, provider: { connect: { id: provider.id } }, idempotencyKey: scopedCheckoutKey, amount: total, currency: "usd", status: "completed", providerReference: initiated.providerReference, completedAt: now, data: { source: "controlled_checkout", purpose: "controlled_checkout", settlementMethod: "operator_recorded_cash", checkoutRequestHash, discountReason: args.discountReason?.trim() || null, ...(initiated.data || {}), ...(confirmed.data || {}) } },
+          query: "id",
+        });
+        payment = await sudo.query.Payment.createOne({
+          data: { idempotencyKey: aggregateIdempotencyKey(scopedCheckoutKey, "payment"), practice: { connect: { id: actor.practiceId } }, appointment: { connect: { id: appointment.id } }, session: { connect: { id: session.id } }, subtotal, tax, tip, discount, totalAmount: total, paymentMethod: args.paymentMethod, status: "completed", processedAt: now, processedBy: { connect: { id: actor.actorId } }, receiptEmail: appointment.client?.user?.email || "", notes: "Recorded by controlled appointment checkout" },
+          query: "id",
+        }) as { id: string };
+        await sudo.query.PaymentSession.updateOne({ where: { id: session.id }, data: { payment: { connect: { id: payment.id } } }, query: "id" });
+      }
       for (const deposit of heldDeposits) {
         const depositData = deposit.data && typeof deposit.data === "object" ? deposit.data : {};
         await sudo.query.PaymentSession.updateOne({ where: { id: deposit.id }, data: { data: { ...depositData, appliedToCheckout: true, appliedCheckoutPaymentId: payment.id, appliedAt: now } }, query: "id" });
@@ -322,9 +359,14 @@ export async function completeAppointmentCheckoutTransaction(
       return { success: true, transactionId: transaction.id, paymentId: payment.id, error: null };
     });
   } catch (error) {
+    if (error instanceof CheckoutQuote || error instanceof CardAmountMismatch) throw error;
     console.error("Controlled appointment checkout failed", error);
     return { success: false, transactionId: null, paymentId: null, error: error instanceof Error ? error.message : "Checkout failed" };
   }
+}
+
+export class CardAmountMismatch extends Error {
+  constructor(readonly paid: number, readonly due: number) { super(`Card payment of ${paid} does not match the ${due} now due`); }
 }
 
 const resultType = graphql.object<CheckoutResult>()({

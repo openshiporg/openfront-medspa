@@ -4,6 +4,7 @@ import { canTransitionPayment, paymentRecordStatus, type PaymentLifecycleStatus 
 import { parseProviderWebhook, paymentProviderFromRecord } from "./utils/paymentProviderAdapter";
 import { processRefundOutbox, reconcileRefundFromWebhook, signalRefundRecheck } from "./refundOutbox";
 import { settleDepositCheckout } from "./depositCheckout";
+import { settleHostedCheckoutWebhook } from "./hostedCheckouts";
 
 export type PaymentWebhookOutcome = {
   replayed: boolean;
@@ -53,6 +54,25 @@ export async function reconcilePaymentWebhook(
       query: "id",
     }).catch(() => undefined); // a concurrent delivery of the same event already recorded it
     return { replayed: false, processed: applied, status };
+  }
+
+  // Desk card payments and online gift cards settle through their own locked workflows (the card one writes the sale).
+  if (event.checkout) {
+    const sudo = context.sudo();
+    const seen = (await (sudo.query as any).PaymentWebhookEvent.findMany({ where: { replayKey: { equals: replayKey } }, take: 1, query: "id status" }))[0];
+    if (seen) return { replayed: true, processed: seen.status === "processed", status: seen.status };
+    const hosted = await settleHostedCheckoutWebhook(context, provider.id, event.checkout);
+    if (hosted) {
+      const status = hosted.applied ? "processed" : "ignored";
+      await (sudo.query as any).PaymentWebhookEvent.createOne({
+        data: {
+          practice: { connect: { id: provider.practice.id } }, provider: { connect: { id: provider.id } }, replayKey, eventId: event.eventId,
+          type: event.type, providerReference: event.providerReference || "", payloadHash, status, data: { ...(event.data || {}), outcome: hosted.outcome }, processedAt: new Date().toISOString(),
+        },
+        query: "id",
+      }).catch(() => undefined);
+      return { replayed: false, processed: hosted.applied, status };
+    }
   }
 
   let refundAttemptToKick: string | null = null;

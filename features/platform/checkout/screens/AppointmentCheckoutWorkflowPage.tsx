@@ -4,8 +4,9 @@ import { ErrorState, Notice, PageHeader, PillLink, PlatformPage, Track } from '@
 import { getAppointmentWorkflowDetail } from '@/features/platform/appointments/actions/appointmentWorkflow';
 import { getCheckoutAppointment } from '../actions/checkout';
 import { CheckoutCard } from './CheckoutQueuePage';
+import { CardPaymentStatus } from '../components/CardCheckoutControls';
 
-export async function AppointmentCheckoutWorkflowPage({ appointmentId, checkoutNotice }: { appointmentId: string; checkoutNotice?: 'completed' | 'failed' | null }) {
+export async function AppointmentCheckoutWorkflowPage({ appointmentId, checkoutNotice, cardNotice }: { appointmentId: string; checkoutNotice?: 'completed' | 'failed' | null; cardNotice?: 'return' | 'cancelled' | null }) {
   const workflow = await getAppointmentWorkflowDetail(appointmentId);
   if (!workflow.appointment) return <WorkflowUnavailable flow="checkout" />;
   const checkout = await getCheckoutAppointment(appointmentId);
@@ -30,6 +31,8 @@ export async function AppointmentCheckoutWorkflowPage({ appointmentId, checkoutN
 
       {checkoutNotice === 'failed' && <Notice role="alert" tone="amber" title="Checkout was not completed">Review the appointment and payment state before retrying.</Notice>}
       {checkoutNotice !== 'failed' && settled && <Notice tone="emerald" title="Payment recorded" />}
+      {!settled && cardNotice === 'cancelled' && <Notice tone="amber" title="Card payment was not completed">Charge the card again or record cash.</Notice>}
+      {!settled && cardNotice === 'return' && <CardPaymentStatus appointmentId={appointmentId} auto />}
 
       {checkout.status === 'loaded' ? (
         <CheckoutCard appointment={checkout.appointment} products={checkout.products} />

@@ -483,3 +483,4 @@ export async function completeAppointmentCheckout(formData: FormData): Promise<v
   revalidatePath('/dashboard/medspa-transactions');
   redirect(`/dashboard/platform/checkout/${encodeURIComponent(appointmentId)}?checkout=completed`);
 }
+

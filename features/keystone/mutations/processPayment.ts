@@ -55,6 +55,7 @@ async function paymentTransaction<T>(
 
 const SAFE_PAYMENT_ERRORS = new Set([
   "Appointment not found",
+  "Payment can be refunded only in full while the gift card is unspent",
   "Appointment is not eligible for payment",
   "Appointment already has a payment",
   "Appointment has no payable line items",
@@ -263,7 +264,8 @@ export const refundPayment = graphql.field({
           const session = await loadSession(sudo, paymentSessionId);
           if (!session?.provider || !session.providerReference || !session.payment) throw new Error("Payment session not found");
           const sessionData = session.data && typeof session.data === "object" ? session.data as Record<string, any> : {};
-          if (sessionData.purpose !== "appointment_deposit") throw new Error("Use the controlled settlement reversal workflow");
+          const purpose = sessionData.purpose;
+          if (purpose !== "appointment_deposit" && purpose !== "checkout_card" && !(purpose === "gift_card" && sessionData.channel === "online")) throw new Error("Use the controlled settlement reversal workflow");
           const scopedKey = aggregateIdempotencyKey(actor.practiceId, `refund:${key}`);
           const replay = (await sudo.query.Refund.findMany({ where: { practice: { id: { equals: actor.practiceId } }, idempotencyKey: { equals: scopedKey } }, take: 1, query: "id payment { id } attempt { id }" }))[0];
           if (replay) {
@@ -278,6 +280,12 @@ export const refundPayment = graphql.field({
           const refundCents = amount ?? refundable;
           if (!Number.isInteger(refundCents) || refundCents <= 0) throw new Error("Invalid refund amount");
           if (refundCents > refundable) throw new Error("Refund exceeds what is still refundable");
+          if (purpose === "gift_card") {
+            // A sold gift card is refunded whole and only while unspent; it stops working as the refund is queued.
+            const giftCard: any = await sudo.query.GiftCard.findOne({ where: { id: sessionData.giftCardId }, query: "id initialValue currentBalance" });
+            if (!giftCard || giftCard.currentBalance !== giftCard.initialValue || refundCents !== session.amount) throw new Error("Payment can be refunded only in full while the gift card is unspent");
+            await sudo.query.GiftCard.updateOne({ where: { id: giftCard.id }, data: { isActive: false, currentBalance: 0 }, query: "id" });
+          }
           return enqueueRefund(sudo, {
             practiceId: actor.practiceId, paymentId: session.payment.id, sessionId: session.id, amountMinor: refundCents,
             currencyCode: session.currency, reason: (reason || "").trim() || "Refund requested", idempotencyKey: scopedKey,

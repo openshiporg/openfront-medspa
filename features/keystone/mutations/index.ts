@@ -44,6 +44,7 @@ import { enrollClientMembership, issueGiftCard, sellClientPackage, upsertMembers
 import { createPurchaseOrder, transitionPurchaseOrder, upsertProduct } from "./procurementWorkflows";
 import { upsertFormTemplate, upsertIntakeForm } from "./formWorkflows";
 import { confirmDepositCheckout, startDepositCheckout } from "../depositCheckout";
+import { confirmCardCheckout, confirmGiftCardOnline, purchaseGiftCardOnline, startCardCheckout } from "../hostedCheckouts";
 import { cancelGuestAppointment, clientIntakeForms, requestWaitlistSpot, storefrontAppointment, storefrontReviews, submitAppointmentReview } from "./storefrontClientWorkflows";
 
 const gql = String.raw;
@@ -155,6 +156,10 @@ export const extendGraphqlSchema = graphql.extend((base) => ({
     requestWaitlistSpot,
     cancelGuestAppointment,
     startDepositCheckout,
+    startCardCheckout,
+    confirmCardCheckout,
+    purchaseGiftCardOnline,
+    confirmGiftCardOnline,
     confirmDepositCheckout,
     upsertResource,
     updateProviderProfile,

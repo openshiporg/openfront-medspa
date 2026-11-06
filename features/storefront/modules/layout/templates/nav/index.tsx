@@ -15,6 +15,7 @@ interface NavProps {
 const navigation = [
   { name: "Treatments", href: "/services" },
   { name: "Team", href: "/team" },
+  { name: "Gift cards", href: "/gift-cards" },
   { name: "Visit", href: "/contact" },
   { name: "Account", href: "/account" },
 ]

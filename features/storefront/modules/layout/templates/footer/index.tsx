@@ -8,6 +8,7 @@ const links = [
   { name: "Providers", href: "/team" },
   { name: "Book", href: "/book" },
   { name: "Reviews", href: "/reviews" },
+  { name: "Gift cards", href: "/gift-cards" },
   { name: "Visit", href: "/contact" },
   { name: "Account", href: "/account" },
 ]

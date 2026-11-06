@@ -11,6 +11,7 @@ import {
   getMembershipDiscountOptions,
   getPackageRedemptionOptions,
 } from '../actions/checkout';
+import { ChargeCardButton } from '../components/CardCheckoutControls';
 
 function formatTime(value?: string | null, timeZone = 'UTC') {
   if (!value) return 'Unscheduled';
@@ -118,7 +119,7 @@ export function CheckoutCard({ appointment, products }: { appointment: CheckoutA
         <form action={completeAppointmentCheckout} className="grid min-w-0 gap-3">
           <input type="hidden" name="appointmentId" value={appointment.id} />
           <input type="hidden" name="paymentMethod" value="cash" />
-          <h3 className="text-sm font-semibold">Record cash payment</h3>
+          <h3 className="text-sm font-semibold">Take payment</h3>
 
           {(membershipOptions.length > 0 || packageOptions.length > 0) && (
             <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300"><PackageCheck className="size-3.5" /> Benefits available</p>
@@ -179,6 +180,7 @@ export function CheckoutCard({ appointment, products }: { appointment: CheckoutA
             <button type="submit" disabled={!checkoutEligible} className={pillClass('primary')}>
               {checkoutEligible ? 'Record cash payment' : 'Checkout unavailable'}
             </button>
+            <ChargeCardButton disabled={!checkoutEligible} />
             <PillLink href={`/dashboard/platform/appointments/${appointment.id}`} variant="quiet">Appointment</PillLink>
           </div>
         </form>

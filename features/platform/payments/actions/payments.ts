@@ -46,7 +46,8 @@ export async function getPayments(filters: PaymentFilters): Promise<PaymentList>
 function refundRouteFor(session: any): RefundRoute {
   const purpose = session?.data && typeof session.data === 'object' ? session.data.purpose : null;
   if (!session) return null;
-  if (purpose === 'appointment_deposit') return 'deposit';
+  if (purpose === 'appointment_deposit' || purpose === 'checkout_card') return 'deposit';
+  if (purpose === 'gift_card' && session.data?.channel === 'online') return 'deposit';
   if (session.provider?.adapter === 'manual' && purpose === 'controlled_checkout') return 'settlement';
   return null;
 }
