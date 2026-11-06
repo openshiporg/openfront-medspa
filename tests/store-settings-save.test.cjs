@@ -11,7 +11,7 @@ function load(relative, deps = {}) {
   const filename = path.resolve(root, relative);
   const output = ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const module = { exports: {} };
-  const req = (name) => (name in deps ? deps[name] : require(name));
+  const req = (name) => (name in deps ? deps[name] : name.startsWith('.') ? load(path.relative(root, path.resolve(path.dirname(filename), name + '.ts'))) : require(name));
   vm.runInNewContext(output, { module, exports: module.exports, require: req }, { filename });
   return module.exports;
 }
