@@ -1,7 +1,7 @@
 import { LOGO_ICONS } from '../platform/storefront-settings/lib/icon-registry'
 import { sanitizeStoreLogoSvg } from './sanitize-store-logo'
 
-export const DEFAULT_LOGO_SVG = LOGO_ICONS[0].lightSvg
+export const DEFAULT_LOGO_SVG = LOGO_ICONS.find((icon) => icon.id === 'flora-fauna')!.lightSvg
 export function publicLogoSvg(value: unknown): string {
   return (typeof value === 'string' && sanitizeStoreLogoSvg(value)) || DEFAULT_LOGO_SVG
 }

@@ -1,5 +1,5 @@
 import { LOGO_ICONS } from './icon-registry';
-export const DEFAULT_STORE_LOGO_ICON = LOGO_ICONS.find((icon) => icon.id === '3portals')!.lightSvg;
+export const DEFAULT_STORE_LOGO_ICON = LOGO_ICONS.find((icon) => icon.id === 'flora-fauna')!.lightSvg;
 export const DEFAULT_STORE_LOGO_COLOR = '0';
 
 // This module is intentionally browser-safe. Server-only SVG parsing and
