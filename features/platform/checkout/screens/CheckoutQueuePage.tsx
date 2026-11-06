@@ -63,7 +63,8 @@ export async function CheckoutQueuePage() {
 export function CheckoutCard({ appointment, products }: { appointment: CheckoutAppointment; products: { id: string; name?: string | null; price?: number | null; quantity?: number | null; category?: string | null }[] }) {
   if (appointment.payment || appointment.transaction) return <RecordedCheckout appointment={appointment} />;
   const totals = calculateCheckoutTotals(appointment);
-  const clientName = appointment.client?.user?.name || (appointment.guest?.name ? `${appointment.guest.name} (guest)` : appointment.client ? 'Client unavailable' : 'Guest request');
+  const clientName = appointment.client?.user?.name || appointment.guest?.name || (appointment.client ? 'Client unavailable' : 'Guest request');
+  const isGuest = !appointment.client?.user?.name && Boolean(appointment.guest?.name);
   const providerName = appointment.provider?.user?.name || 'Unassigned';
   const status = appointment.status || '';
   const checkoutEligible = ['confirmed', 'in_progress'].includes(status) && !appointment.payment && !appointment.benefitsUnavailable && totals.tax !== null;
@@ -83,6 +84,7 @@ export function CheckoutCard({ appointment, products }: { appointment: CheckoutA
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
               <h2 className="min-w-0 truncate text-lg font-semibold">{clientName}</h2>
+            {isGuest ? <Chip>Guest booking</Chip> : null}
               <TitleStatus tone={appointmentTone[status] || 'zinc'}>{appointmentLabel[status] || humanize(status)}</TitleStatus>
             </div>
             <p className="mt-0.5 text-sm text-muted-foreground">{formatTime(appointment.startTime, appointment.location?.timezone || 'UTC')} · {appointment.duration || 60} min · {providerName}</p>
@@ -216,7 +218,8 @@ function RecordedCheckout({ appointment }: { appointment: CheckoutAppointment })
     try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: payment.currencyCode }).format(Number(value) / 100); }
     catch { return 'Unavailable'; }
   }
-  const clientName = appointment.client?.user?.name || (appointment.guest?.name ? `${appointment.guest.name} (guest)` : appointment.client ? 'Client unavailable' : 'Guest request');
+  const clientName = appointment.client?.user?.name || appointment.guest?.name || (appointment.client ? 'Client unavailable' : 'Guest request');
+  const isGuest = !appointment.client?.user?.name && Boolean(appointment.guest?.name);
   return (
     <article className="grid min-w-0 gap-4 rounded-[6px] border bg-background p-4 md:p-5">
       <div className="flex items-start gap-3">
@@ -224,6 +227,7 @@ function RecordedCheckout({ appointment }: { appointment: CheckoutAppointment })
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
             <h2 className="min-w-0 truncate text-lg font-semibold">{clientName}</h2>
+            {isGuest ? <Chip>Guest booking</Chip> : null}
             <TitleStatus tone={payment ? statusTone(payment.status) : 'amber'}>{payment ? humanize(payment.status) : 'Receipt unavailable'}</TitleStatus>
           </div>
           <p className="mt-0.5 text-sm text-muted-foreground">{formatTime(appointment.startTime, appointment.location?.timezone || 'UTC')}</p>
