@@ -151,7 +151,7 @@ export function Fact({ label, children, wrap = false }: { label: string; childre
 }
 
 export function Chip({ children, tone }: { children: ReactNode; tone?: Tone }) {
-  return <span className="inline-flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-[3px] border bg-background px-1.5 py-0.5 text-xs font-medium text-muted-foreground">{tone ? <StatusDot tone={tone} /> : null}<span className="truncate">{children}</span></span>;
+  return <span className="inline-flex max-w-full items-center gap-1.5 whitespace-nowrap text-xs font-medium text-muted-foreground">{tone ? <StatusDot tone={tone} /> : null}<span className="truncate">{children}</span></span>;
 }
 
 export function EmptyState({ icon: Icon, title, action }: { icon: ComponentType<{ className?: string }>; title: string; action?: ReactNode }) {
