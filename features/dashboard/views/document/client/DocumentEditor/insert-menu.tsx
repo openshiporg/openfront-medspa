@@ -144,18 +144,19 @@ function insertOption(editor: Editor, text: Text, option: Option) {
 }
 
 export function InsertMenu({ children, text }: { children: ReactNode; text: Text }) {
-  // Safety check for text node
+  // Guard before any hooks run: an invalid node renders plainly and never mounts the menu.
   if (!text || typeof text.text !== 'string') {
     console.warn("Dashboard operation failed (details redacted).")
     return <>{children}</>
   }
-
-  // Safety check for children
   if (children === undefined || children === null) {
     console.warn("Dashboard operation failed (details redacted).")
     return <span>{text.text}</span>
   }
+  return <InsertMenuWithHooks text={text}>{children}</InsertMenuWithHooks>
+}
 
+function InsertMenuWithHooks({ children, text }: { children: ReactNode; text: Text }) {
   const editor = useSlate()
   const componentBlocks = useContext(ComponentBlockContext)
   const relationships = useDocumentFieldRelationships()

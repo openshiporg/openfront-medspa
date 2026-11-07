@@ -6,9 +6,10 @@ import { activeListPermissions, rules } from "../access";
 import { trackingFields } from "./trackingFields";
 import { validateTenantInput } from "./tenantAccess";
 import { categoryChildrenRemainInPractice } from "../serviceCategoryPolicy";
+import { historyDeleteGuard } from '../deleteHistoryGuard';
 
 export const ServiceCategory = list({
-  hooks: { validateInput: validateTenantInput },
+  hooks: { validateInput: validateTenantInput, validateDelete: historyDeleteGuard('ServiceCategory') },
   access: {
     operation: {
       query: () => true, create: activeListPermissions.canManagePractice, update: activeListPermissions.canManagePractice, delete: activeListPermissions.canManagePractice,

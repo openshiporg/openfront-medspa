@@ -13,9 +13,10 @@ import { activeListPermissions, permissions } from "../access";
 
 import { trackingFields } from "./trackingFields";
 import { validateTenantInput } from "./tenantAccess";
+import { historyDeleteGuard } from '../deleteHistoryGuard';
 
 export const MessageTemplate = list({
-  hooks: { validateInput: validateTenantInput },
+  hooks: { validateInput: validateTenantInput, validateDelete: historyDeleteGuard('MessageTemplate') },
   access: {
     operation: {
       query: permissions.canManageCommunications,

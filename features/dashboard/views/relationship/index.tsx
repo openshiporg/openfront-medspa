@@ -144,17 +144,10 @@ function useRelationshipFilterValues({
   const foreignIds = getForeignIds(value);
   const where = { id: { in: foreignIds } };
 
-  // If prefetched values are provided, use them
-  if (prefetchedValues) {
-    return {
-      filterValues: prefetchedValues,
-      loading: false,
-    };
-  }
 
   // Otherwise use SWR to fetch the data
   const { data, error } = useSWR(
-    foreignIds.length && list
+    !prefetchedValues && foreignIds.length && list
       ? [`relationship-filter-${list.key}`, foreignIds.join(",")] // Ensure key is stable string
       : null,
     async () => {
@@ -194,6 +187,8 @@ function useRelationshipFilterValues({
       }
     }
   );
+
+  if (prefetchedValues) return { filterValues: prefetchedValues, loading: false };
 
   const loading = !data && !error;
   const labelField = list.labelField || "name";

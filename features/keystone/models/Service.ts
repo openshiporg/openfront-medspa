@@ -13,6 +13,7 @@ import {
 import { activeListPermissions, practiceId, rules } from "../access";
 import { trackingFields } from "./trackingFields";
 import { validateTenantInput } from "./tenantAccess";
+import { historyDeleteGuard } from '../deleteHistoryGuard';
 
 const formatCurrency = (amount: number): string => {
   return new Intl.NumberFormat("en-US", {
@@ -22,7 +23,7 @@ const formatCurrency = (amount: number): string => {
 };
 
 export const Service = list({
-  hooks: { validateInput: validateTenantInput },
+  hooks: { validateInput: validateTenantInput, validateDelete: historyDeleteGuard('Service') },
   access: {
     operation: {
       query: () => true,

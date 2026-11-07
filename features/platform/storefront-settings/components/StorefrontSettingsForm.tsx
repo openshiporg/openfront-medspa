@@ -17,6 +17,8 @@ export function StorefrontSettingsForm({ setting, locations }: StorefrontSetting
   return <form action={action} className="grid min-w-0 gap-6">
     {state.message && <div role={state.status === 'saved' ? 'status' : 'alert'} className={`flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[6px] border px-4 py-3 text-sm ${state.status === 'saved' ? '' : 'border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100'}`}>
       <span aria-hidden="true" className={`size-2 rounded-full ${state.status === 'saved' ? 'bg-emerald-500' : 'bg-amber-500'}`} />{state.message}
+      {/* A full reload is intended: it drops the conflicting draft and re-reads the saved settings. */}
+      {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
       {state.status === 'conflict' && <a className="font-medium underline underline-offset-4" href="/dashboard/platform/storefront">Reload latest settings (discards this draft)</a>}
     </div>}
     <fieldset disabled={pending} className="grid min-w-0 gap-6 disabled:opacity-70">

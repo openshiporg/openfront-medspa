@@ -4,9 +4,10 @@ import { activeListPermissions, permissions } from "../access";
 import { trackingFields } from "./trackingFields";
 import { tenantFilter, validateTenantInput } from "./tenantAccess";
 import { REFUND_OUTBOX_PROCESSOR } from "../refundOutbox";
+import { historyDeleteGuard } from '../deleteHistoryGuard';
 
 export const PaymentProvider = list({
-  hooks: { validateInput: async args => {
+  hooks: { validateDelete: historyDeleteGuard('PaymentProvider'), validateInput: async args => {
     await validateTenantInput(args);
     const adapter = args.resolvedData.adapter ?? args.item?.adapter;
     const installed = args.resolvedData.isInstalled ?? args.item?.isInstalled;

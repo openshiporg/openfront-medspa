@@ -56,6 +56,19 @@ export function CreatePageClient({ listKey, list }: CreatePageClientProps) {
   // Use the create item hook with enhanced fields
   const createItem = useCreateItem(list, enhancedFields)
 
+  // Split fields by position for sidebar/main layout (same pattern as ItemPage)
+  const fieldsSplit = useMemo(() => {
+    const sidebarFields: Record<string, any> = {}
+    const mainFields: Record<string, any> = {}
+    
+    Object.entries(enhancedFields).forEach(([key, field]) => {
+      // For now, put all fields in main - same as ItemPage logic
+      mainFields[key] = field
+    })
+    
+    return { sidebarFields, mainFields }
+  }, [enhancedFields])
+
   const handleSave = useCallback(async () => {
     if (!createItem) return
     
@@ -107,19 +120,6 @@ export function CreatePageClient({ listKey, list }: CreatePageClientProps) {
     { type: 'page' as const, label: 'Create' }
   ]
 
-  // Split fields by position for sidebar/main layout (same pattern as ItemPage)
-  const fieldsSplit = useMemo(() => {
-    const sidebarFields: Record<string, any> = {}
-    const mainFields: Record<string, any> = {}
-    
-    Object.entries(enhancedFields).forEach(([key, field]) => {
-      // For now, put all fields in main - same as ItemPage logic
-      mainFields[key] = field
-    })
-    
-    return { sidebarFields, mainFields }
-  }, [enhancedFields])
-
   return (
     <>
       {/* Breadcrumbs */}
@@ -163,7 +163,6 @@ export function CreatePageClient({ listKey, list }: CreatePageClientProps) {
             </div>
 
           </aside>
-
 
           {/* Main content */}
           <div className="space-y-6">
