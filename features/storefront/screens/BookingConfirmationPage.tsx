@@ -49,24 +49,38 @@ export async function BookingConfirmationPage({ params, searchParams }: Props) {
         </dl>
       </div>
 
-      {visit.depositAmount ? (
-        <div className="sf-card mt-[var(--sf-space-md)] grid gap-3 p-[var(--sf-space-md)]" aria-labelledby="deposit-heading">
-          <div className="sf-title-line">
-            <h2 id="deposit-heading" className="sf-display text-[length:var(--sf-text-xl)]">Deposit</h2>
-            <Status tone={visit.depositPaid ? "ok" : "wait"}>{visit.depositPaid ? "Paid" : "Due"}</Status>
+      {visit.depositAmount ? (() => {
+        // The deposit block follows the real money state; a closed visit never shows "Due" or "still being confirmed".
+        const state = visit.depositState
+        const refunded = formatPrice((visit.depositRefundedAmount || visit.depositAmount) / 100)
+        const refundedOn = visit.depositRefundedAt ? new Date(visit.depositRefundedAt).toLocaleDateString("en-US", { timeZone: zone, month: "long", day: "numeric", year: "numeric" }) : null
+        const open = ["pending", "confirmed"].includes(visit.status)
+        const badge = state === "refunded" ? { tone: "off" as const, label: "Refunded" }
+          : state === "refund_pending" ? { tone: "wait" as const, label: "Refund on the way" }
+          : state === "refund_failed" ? { tone: "wait" as const, label: "Refund delayed" }
+          : state === "paid" ? { tone: "ok" as const, label: "Paid" }
+          : state === "not_charged" ? { tone: "off" as const, label: "Not charged" }
+          : { tone: "wait" as const, label: "Due" }
+        const message = state === "refunded" ? `Deposit refunded: ${refunded} returned to your card${refundedOn ? ` on ${refundedOn}` : ""}.`
+          : state === "refund_pending" ? `Refund on the way: your ${depositLabel} deposit is being returned to your card. It usually shows within 5–10 business days.`
+          : state === "refund_failed" ? `Your ${depositLabel} deposit refund didn't go through yet. The practice will follow up.`
+          : state === "paid" ? (open ? `${depositLabel} received. It is taken off your total at your visit.` : `${depositLabel} deposit received.`)
+          : state === "not_charged" ? "No deposit was charged for this visit."
+          : visit.depositOnline ? `A ${depositLabel} deposit holds this time. It is taken off your total at your visit, and returned if you cancel.`
+          : `A ${depositLabel} deposit is due. The practice will collect it before your visit.`
+        return (
+          <div className="sf-card mt-[var(--sf-space-md)] grid gap-3 p-[var(--sf-space-md)]" aria-labelledby="deposit-heading">
+            <div className="sf-title-line">
+              <h2 id="deposit-heading" className="sf-display text-[length:var(--sf-text-xl)]">Deposit</h2>
+              <Status tone={badge.tone}>{badge.label}</Status>
+            </div>
+            <p className="text-[length:var(--sf-text-md)] text-[var(--sf-ink-2)]">{message}</p>
+            {open && reconcile?.error ? <p role="alert" className="sf-alert">{reconcile.error}</p> : null}
+            {open && query.deposit === "return" && state === "due" && !reconcile?.error ? <p role="status" className="text-[length:var(--sf-text-sm)] text-[var(--sf-ink-3)]">Your payment is still being confirmed. Refresh in a moment.</p> : null}
+            {open && state === "due" && visit.depositOnline ? <DepositPay appointmentId={visit.id} token={token} label={`Pay ${depositLabel} deposit`} /> : null}
           </div>
-          <p className="text-[length:var(--sf-text-md)] text-[var(--sf-ink-2)]">
-            {visit.depositPaid
-              ? `${depositLabel} received. It is taken off your total at your visit.`
-              : visit.depositOnline
-                ? `A ${depositLabel} deposit holds this time. It is taken off your total at your visit, and returned if you cancel.`
-                : `A ${depositLabel} deposit is due. The practice will collect it before your visit.`}
-          </p>
-          {reconcile?.error ? <p role="alert" className="sf-alert">{reconcile.error}</p> : null}
-          {query.deposit === "return" && !visit.depositPaid && !reconcile?.error ? <p role="status" className="text-[length:var(--sf-text-sm)] text-[var(--sf-ink-3)]">Your payment is still being confirmed. Refresh in a moment.</p> : null}
-          {!visit.depositPaid && visit.depositOnline ? <DepositPay appointmentId={visit.id} token={token} label={`Pay ${depositLabel} deposit`} /> : null}
-        </div>
-      ) : null}
+        )
+      })() : null}
 
       {token && visit.cancellable ? <div className="mt-[var(--sf-space-md)]"><GuestCancelForm appointmentId={visit.id} token={token} /></div> : null}
 

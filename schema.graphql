@@ -14947,6 +14947,9 @@ type StorefrontGuestAppointment {
   depositAmount: Int
   depositPaid: Boolean!
   depositOnline: Boolean!
+  depositState: String!
+  depositRefundedAmount: Int!
+  depositRefundedAt: String
 }
 
 union AuthenticatedItem = User

@@ -5,6 +5,7 @@ import { assertActiveActor, evidenceHash, requireActorPractice, validIdempotency
 import { validGuestAccessToken } from "../lib/guestAccess";
 import { kickRefundAttempts, onlineDepositProvider, queueDepositRefundsOnCancel } from "../depositCheckout";
 import { serializableWorkflow } from "./serializableWorkflow";
+import { depositDisplay } from "../depositDisplay";
 import { storefrontPracticeSlug } from "../lib/storefrontPractice";
 
 /*
@@ -214,7 +215,7 @@ export const requestWaitlistSpot = graphql.field({
   },
 });
 
-type GuestAppointment = { id: string; status: string; startTime: string; duration: number | null; timezone: string | null; serviceNames: string[]; providerName: string | null; locationName: string | null; price: number | null; cancellable: boolean; depositAmount: number | null; depositPaid: boolean; depositOnline: boolean };
+type GuestAppointment = { id: string; status: string; startTime: string; duration: number | null; timezone: string | null; serviceNames: string[]; providerName: string | null; locationName: string | null; price: number | null; cancellable: boolean; depositAmount: number | null; depositPaid: boolean; depositOnline: boolean; depositState: string; depositRefundedAmount: number; depositRefundedAt: string | null };
 
 const GuestAppointmentType = graphql.object<GuestAppointment>()({
   name: "StorefrontGuestAppointment",
@@ -232,10 +233,14 @@ const GuestAppointmentType = graphql.object<GuestAppointment>()({
     depositAmount: graphql.field({ type: graphql.Int }),
     depositPaid: graphql.field({ type: graphql.nonNull(graphql.Boolean) }),
     depositOnline: graphql.field({ type: graphql.nonNull(graphql.Boolean) }),
+    // due | paid | not_charged | refund_pending | refund_failed | refunded
+    depositState: graphql.field({ type: graphql.nonNull(graphql.String) }),
+    depositRefundedAmount: graphql.field({ type: graphql.nonNull(graphql.Int) }),
+    depositRefundedAt: graphql.field({ type: graphql.String }),
   },
 });
 
-const GUEST_FIELDS = "id status startTime duration revision metadata depositAmount depositPaid client { id } practice { id } location { id name timezone } provider { user { name } } lineItems { serviceTitle price quantity } payment { id } transaction { id } consentsCount treatmentSessionsCount resourceReservations(where: { status: { in: [reserved, in_use] } }) { id } supervisorReservations(where: { status: { equals: reserved } }) { id }";
+const GUEST_FIELDS = "id status startTime duration revision metadata depositAmount depositPaid client { id } practice { id } location { id name timezone } provider { user { name } } lineItems { serviceTitle price quantity } payment { id } transaction { id } consentsCount treatmentSessionsCount resourceReservations(where: { status: { in: [reserved, in_use] } }) { id } supervisorReservations(where: { status: { equals: reserved } }) { id } paymentSessions { status amount refundedAt data payment { refunds { status amountMinor processedAt createdAt } } }";
 
 async function guestRecord(context: Context, appointmentId: string, token: string) {
   if (!validGuestAccessToken(appointmentId, token)) throw new Error("Appointment not found");
@@ -264,6 +269,9 @@ export const storefrontAppointment = graphql.field({
       }
       if (!appointment) return null
       const lines = appointment.lineItems || []
+      const deposit = depositDisplay(appointment, (appointment.paymentSessions || [])
+        .filter((session: any) => session.data?.purpose === "appointment_deposit")
+        .map((session: any) => ({ status: session.status, amount: Number(session.amount || 0), refundedAt: session.refundedAt, refunds: session.payment?.refunds || [] })))
       return {
         id: appointment.id, status: appointment.status, startTime: new Date(appointment.startTime).toISOString(), duration: appointment.duration ?? null,
         timezone: appointment.location?.timezone || null, serviceNames: lines.map((line: any) => line.serviceTitle).filter(Boolean),
@@ -276,6 +284,7 @@ export const storefrontAppointment = graphql.field({
         // Only offered while the visit can still take it and the practice has Stripe installed and configured.
         depositOnline: Number(appointment.depositAmount || 0) > 0 && appointment.depositPaid !== true && ["pending", "confirmed"].includes(appointment.status)
           && Boolean(await onlineDepositProvider(context.sudo(), appointment.practice.id)),
+        depositState: deposit.state, depositRefundedAmount: deposit.refundedAmount, depositRefundedAt: deposit.refundedAt,
       }
     } catch { return null }
   },

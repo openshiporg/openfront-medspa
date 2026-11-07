@@ -17,6 +17,10 @@ export interface StorefrontVisit {
   depositAmount: number | null
   depositPaid: boolean
   depositOnline: boolean
+  /** due | paid | not_charged | refund_pending | refund_failed | refunded */
+  depositState: string
+  depositRefundedAmount: number
+  depositRefundedAt: string | null
 }
 
 /** The signed-in owner's visit, or a guest's via the confirmation link token. */
@@ -25,7 +29,7 @@ export async function getStorefrontVisit(appointmentId: string, token?: string |
     const data = await medspaClient.request<{ storefrontAppointment: StorefrontVisit | null }>(gql`
       query StorefrontVisit($appointmentId: ID!, $token: String) {
         storefrontAppointment(appointmentId: $appointmentId, token: $token) {
-          id status startTime duration timezone serviceNames providerName locationName price cancellable depositAmount depositPaid depositOnline
+          id status startTime duration timezone serviceNames providerName locationName price cancellable depositAmount depositPaid depositOnline depositState depositRefundedAmount depositRefundedAt
         }
       }
     `, { appointmentId, token: token || null })
