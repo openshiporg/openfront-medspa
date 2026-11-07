@@ -23,3 +23,19 @@ export function depositWebhookAppointmentEffect(appointmentStatus: string | null
   if (appointmentStatus === "confirmed") return "mark_paid";
   return "refund";
 }
+
+/** Recall case order. A case only moves forward; closed is final (a new finding opens a new case). */
+export const RECALL_STATUS_ORDER: readonly string[] = ["open", "applicability_review", "quarantined", "patients_identified", "notifications_in_progress", "disposition_complete", "closed"];
+
+/**
+ * Status a recall case takes for a step, or an error when the step would reopen or rewind it.
+ * Per-client notify/assessment steps can still be recorded after disposition; they just don't rewind the case.
+ */
+export function recallStepOutcome(current: string, action: string, target: string): { status: string } | { error: string } {
+  if (current === "closed") return { error: "This recall is closed and can't be reopened; open a new recall case" };
+  const from = RECALL_STATUS_ORDER.indexOf(current); const to = RECALL_STATUS_ORDER.indexOf(target);
+  if (from < 0 || to < 0) return { error: "Recall step is invalid" };
+  if (to >= from) return { status: target };
+  if (action === "notify" || action === "clinical_assessment") return { status: current };
+  return { error: `A recall at ${current.replace(/_/g, " ")} can't go back to ${target.replace(/_/g, " ")}` };
+}
