@@ -9,6 +9,7 @@ import { sendPasswordResetEmail } from './lib/mail'
 import { permissions } from './access'
 import { assertOwnedLocalDatabase, localRuntimeDescriptor } from './localRuntime'
 import { pooledDatabaseUrl } from './database-url';
+import { throwKeystonePrismaErrors } from './lib/keystonePrismaErrors';
 
 function required(name: string) {
   const value = process.env[name]
@@ -71,7 +72,7 @@ const { withAuth } = createAuth({
 })
 
 export default withAuth(config({
-  db: { provider: 'postgresql', url: pooledDatabaseUrl(databaseURL), onConnect: async context => { await assertOwnedLocalDatabase(context.prisma) } },
+  db: { provider: 'postgresql', url: pooledDatabaseUrl(databaseURL), extendPrismaClient: throwKeystonePrismaErrors, onConnect: async context => { await assertOwnedLocalDatabase(context.prisma) } },
   lists: models,
   storage: {
     my_images: localRuntime ? {
