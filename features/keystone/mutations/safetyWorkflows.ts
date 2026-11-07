@@ -1,4 +1,5 @@
 import { graphql } from "@keystone-6/core";
+import { canQuarantineLot, recallChangesLotStatus } from "../lotLifecycle";
 import type { Context, DeviceReadinessEventActionType, IncidentActionActionType, IncidentSeverityType, IncidentStatusType, RecallActionActionType, RecallCaseStatusType, ResourceReadinessStatusType } from ".keystone/types";
 import { permissions } from "../access";
 import { assertPracticeRecord, assertProviderActor, bounded, evidenceHash, requireActorPractice, validIdempotencyKey } from "../workflowAuth";
@@ -24,7 +25,11 @@ export async function reportIncidentTransaction(context: Context, args: {
       const incident = await tx.sudo().query.Incident.createOne({ data: { practice: { connect: { id: actor.practiceId } }, location: { connect: { id: args.locationId } }, client: { connect: { id: args.clientId } }, appointment: args.appointmentId ? { connect: { id: args.appointmentId } } : undefined, treatmentSession: args.treatmentSessionId ? { connect: { id: args.treatmentSessionId } } : undefined, administration: args.administrationId ? { connect: { id: args.administrationId } } : undefined, suspectLot: args.suspectLotId ? { connect: { id: args.suspectLotId } } : undefined, suspectDevice: args.suspectDeviceId ? { connect: { id: args.suspectDeviceId } } : undefined, reportedBy: { connect: { id: actor.actorId } }, occurredAt, summary: args.summary.trim(), severity: args.severity, status: args.severity === "critical" ? "under_review" : "open", triageDisposition: args.severity === "critical" ? "immediate_clinician_and_emergency_escalation_required" : "awaiting_clinical_triage", interventions: { symptoms, immediateActions, onsetAt: args.onsetAt || null }, evidenceHash: hash, idempotencyKey: args.idempotencyKey }, query: "id status" });
       await tx.sudo().query.IncidentAction.createOne({ data: { practice: { connect: { id: actor.practiceId } }, incident: { connect: { id: incident.id } }, actor: { connect: { id: actor.actorId } }, action: "report", toStatus: incident.status, severity: args.severity, rationale: args.summary.trim(), evidence: bounded(evidence), evidenceHash: hash, occurredAt: evidence.reportedAt, idempotencyKey: `${args.idempotencyKey}:report` }, query: "id" });
       if (args.suspectDeviceId && ["high","critical"].includes(args.severity)) await tx.sudo().query.Resource.updateOne({ where: { id: args.suspectDeviceId }, data: { readinessStatus: "incident_lockout", isActive: false }, query: "id" });
-      if (args.suspectLotId && ["high","critical"].includes(args.severity)) await tx.sudo().query.InventoryLot.updateOne({ where: { id: args.suspectLotId }, data: { status: "quarantined" }, query: "id" });
+      if (args.suspectLotId && ["high","critical"].includes(args.severity)) {
+        // Only stock still in play is held; a recalled, expired or gone lot keeps its stronger status.
+        const suspect = await tx.sudo().query.InventoryLot.findOne({ where: { id: args.suspectLotId }, query: "id status" });
+        if (suspect && canQuarantineLot(suspect.status)) await tx.sudo().query.InventoryLot.updateOne({ where: { id: args.suspectLotId }, data: { status: "quarantined" }, query: "id" });
+      }
       return { success: true, recordId: incident.id, affectedCount: 1, status: incident.status, error: null };
     });
   } catch (error) { return fail(error); }
@@ -74,7 +79,11 @@ export async function openRecallCaseTransaction(context: Context, args: { locati
     await Promise.all([assertPracticeRecord(context, "Location", args.locationId), args.lotId ? assertPracticeRecord(context, "InventoryLot", args.lotId) : Promise.resolve(null), args.deviceId ? assertPracticeRecord(context, "Resource", args.deviceId) : Promise.resolve(null)]);
     return await serializableWorkflow(context, "medspa-recall", [...(args.lotId ? [`lot:${args.lotId}`] : [`device:${args.deviceId}`]), `idempotency:${args.idempotencyKey}`], async tx => {
       const sudo = tx.sudo(); const openedAt = new Date().toISOString(); const hash = evidenceHash({ ...args, actorId: actor.actorId, openedAt });
-      if (args.lotId) await sudo.query.InventoryLot.updateOne({ where: { id: args.lotId }, data: { status: "recalled" }, query: "id" });
+      if (args.lotId) {
+        // A lot already destroyed or returned stays that way; the recall case still tracks its exposure.
+        const target = await sudo.query.InventoryLot.findOne({ where: { id: args.lotId }, query: "id status" });
+        if (target && recallChangesLotStatus(target.status)) await sudo.query.InventoryLot.updateOne({ where: { id: args.lotId }, data: { status: "recalled" }, query: "id" });
+      }
       if (args.deviceId) await sudo.query.Resource.updateOne({ where: { id: args.deviceId }, data: { readinessStatus: "recall_quarantine", isActive: false }, query: "id" });
       const recall = await sudo.query.RecallCase.createOne({ data: { practice: { connect: { id: actor.practiceId } }, location: { connect: { id: args.locationId } }, lot: args.lotId ? { connect: { id: args.lotId } } : undefined, device: args.deviceId ? { connect: { id: args.deviceId } } : undefined, openedBy: { connect: { id: actor.actorId } }, sourceReference: args.sourceReference.trim(), scopeReason: args.scopeReason.trim(), status: "quarantined", openedAt, evidenceHash: hash, idempotencyKey: args.idempotencyKey }, query: "id status" });
       await sudo.query.RecallAction.createOne({ data: { practice: { connect: { id: actor.practiceId } }, recall: { connect: { id: recall.id } }, actor: { connect: { id: actor.actorId } }, action: "quarantine", reason: args.scopeReason.trim(), evidence: { lotId: args.lotId || null, deviceId: args.deviceId || null }, evidenceHash: hash, occurredAt: openedAt, idempotencyKey: `${args.idempotencyKey}:quarantine` }, query: "id" });

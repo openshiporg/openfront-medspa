@@ -103,6 +103,7 @@ export async function dispositionInventoryLotTransaction(context: Context, args:
   try {
     const lot = await assertPracticeRecord(context, "InventoryLot", args.lotId, "id practice { id } status remainingQuantity location { id } product { id quantity }"); if (args.witnessId) await assertPracticeRecord(context, "User", args.witnessId);
     if (["recalled","destroyed","returned"].includes(lot.status)) throw new Error("Lot cannot be dispositioned from its current state");
+    if (args.action === "quarantine" && lot.status === "expired") throw new Error("An expired lot cannot be moved to quarantine; destroy or return it");
     return await serializableWorkflow(context, "medspa-lot-disposition", [`lot:${lot.id}`, `idempotency:${args.idempotencyKey}`], async tx => {
       const sudo = tx.sudo(); const removing = ["destroy","return","expire"].includes(args.action); const quantity = removing ? args.quantity : 0; if (quantity > lot.remainingQuantity) throw new Error("Lot disposition exceeds remaining quantity"); const after = lot.remainingQuantity - quantity;
       const status = args.action === "quarantine" ? "quarantined" : args.action === "return" ? "returned" : args.action === "destroy" ? "destroyed" : "expired";

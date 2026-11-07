@@ -5,6 +5,8 @@ import { parseProviderWebhook, paymentProviderFromRecord } from "./utils/payment
 import { processRefundOutbox, reconcileRefundFromWebhook, signalRefundRecheck } from "./refundOutbox";
 import { settleDepositCheckout } from "./depositCheckout";
 import { settleHostedCheckoutWebhook } from "./hostedCheckouts";
+import { enqueueRefund } from "./refundOutbox";
+import { depositWebhookAppointmentEffect } from "./lotLifecycle";
 
 export type PaymentWebhookOutcome = {
   replayed: boolean;
@@ -128,7 +130,7 @@ export async function reconcilePaymentWebhook(
             provider: { id: { equals: provider.id } },
           },
           take: 1,
-          query: "id status amount idempotencyKey data payment { id status refundedAmount } appointment { id }",
+          query: "id status amount currency idempotencyKey data payment { id status refundedAmount } appointment { id status }",
         })
       : [];
     const session = sessions[0];
@@ -184,7 +186,18 @@ export async function reconcilePaymentWebhook(
       }
       if (session.appointment?.id && sessionData.purpose === "appointment_deposit") {
         if (targetStatus === "completed") {
-          await sudo.query.Appointment.updateOne({ where: { id: session.appointment.id }, data: { depositPaid: true, status: "confirmed", confirmedAt: now }, query: "id" });
+          // A late deposit never revives a cancelled, completed or no-show visit: the money goes back through the refund outbox.
+          const effect = depositWebhookAppointmentEffect(session.appointment.status);
+          if (effect === "confirm") await sudo.query.Appointment.updateOne({ where: { id: session.appointment.id }, data: { depositPaid: true, status: "confirmed", confirmedAt: now }, query: "id" });
+          else if (effect === "mark_paid") await sudo.query.Appointment.updateOne({ where: { id: session.appointment.id }, data: { depositPaid: true }, query: "id" });
+          else if (session.payment?.id) {
+            const queued = await enqueueRefund(sudo, {
+              practiceId: provider.practice.id, paymentId: session.payment.id, sessionId: session.id, amountMinor: session.amount, currencyCode: session.currency || "usd",
+              reason: "Deposit paid after the appointment was no longer open", idempotencyKey: `${provider.practice.id}:late-deposit:${session.id}`,
+              providerReference: event.providerReference || "", actorId: null,
+            });
+            if (queued.attemptId && !queued.replayed) refundAttemptToKick = queued.attemptId;
+          }
         } else if (targetStatus === "refunded") {
           await sudo.query.Appointment.updateOne({ where: { id: session.appointment.id }, data: { depositPaid: false }, query: "id" });
         }
