@@ -2,6 +2,7 @@
 
 import { createTransport, getTestMessageUrl } from "nodemailer";
 import { escapeMailText, receiptBookingLink } from "./mailRendering";
+import { emailButton, emailHeading, emailLayout, emailMuted, emailPanel, emailParagraph } from "./email-layout";
 
 // Utility function to get base URL for emails
 function getBaseUrlForEmails(): string {
@@ -29,38 +30,13 @@ const transport = createTransport({
 });
 
 function passwordResetEmail({ url }: { url: string }): string {
-  const backgroundColor = "#f9f9f9";
-  const textColor = "#444444";
-  const mainBackgroundColor = "#ffffff";
-  const buttonBackgroundColor = "#346df1";
-  const buttonBorderColor = "#346df1";
-  const buttonTextColor = "#ffffff";
-
-  return `
-    <body style="background: ${backgroundColor};">
-      <table width="100%" border="0" cellspacing="20" cellpadding="0" style="background: ${mainBackgroundColor}; max-width: 600px; margin: auto; border-radius: 10px;">
-        <tr>
-          <td align="center" style="padding: 10px 0px 0px 0px; font-size: 18px; font-family: Helvetica, Arial, sans-serif; color: ${textColor};">
-            Please click below to reset your password
-          </td>
-        </tr>
-        <tr>
-          <td align="center" style="padding: 20px 0;">
-            <table border="0" cellspacing="0" cellpadding="0">
-              <tr>
-                <td align="center" style="border-radius: 5px;" bgcolor="${buttonBackgroundColor}"><a href="${url}" target="_blank" style="font-size: 18px; font-family: Helvetica, Arial, sans-serif; color: ${buttonTextColor}; text-decoration: none; border-radius: 5px; padding: 10px 20px; border: 1px solid ${buttonBorderColor}; display: inline-block; font-weight: bold;">Reset Password</a></td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <tr>
-          <td align="center" style="padding: 0px 0px 10px 0px; font-size: 16px; line-height: 22px; font-family: Helvetica, Arial, sans-serif; color: ${textColor};">
-            If you did not request this email you can safely ignore it.
-          </td>
-        </tr>
-      </table>
-    </body>
-  `;
+  return emailLayout({
+    preheader: "Use this link to choose a new password.",
+    title: "Reset your password",
+    body: `${emailParagraph("We received a request to reset the password for your account. Use the button below to choose a new one.")}
+${emailButton("Reset password", url)}
+${emailMuted("If you did not request this, you can safely ignore this email. Your password will not change.")}`,
+  });
 }
 
 export async function sendPasswordResetEmail(resetToken: string, to: string, baseUrl?: string): Promise<void> {
@@ -89,104 +65,16 @@ function appointmentRequestReceiptEmail(params: {
   appointmentTime: string;
   duration: number;
 }): string {
-  const backgroundColor = "#f9f9f9";
-  const textColor = "#444444";
-  const mainBackgroundColor = "#ffffff";
-  const primaryColor = "#8b5cf6";
-  const borderColor = "#e5e7eb";
-
-  return `
-    <body style="background: ${backgroundColor}; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">
-      <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background: ${backgroundColor}; padding: 40px 0;">
-        <tr>
-          <td align="center">
-            <table width="600" border="0" cellspacing="0" cellpadding="0" style="background: ${mainBackgroundColor}; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-
-              <!-- Header -->
-              <tr>
-                <td style="padding: 40px 40px 20px 40px; text-align: center; border-bottom: 2px solid ${primaryColor};">
-                  <h1 style="margin: 0; font-size: 28px; color: ${primaryColor}; font-weight: bold;">Appointment request received</h1>
-                </td>
-              </tr>
-
-              <!-- Greeting -->
-              <tr>
-                <td style="padding: 30px 40px 20px 40px;">
-                  <p style="margin: 0; font-size: 16px; color: ${textColor}; line-height: 1.6;">
-                    Hi ${escapeMailText(params.clientName)},
-                  </p>
-                  <p style="margin: 15px 0 0 0; font-size: 16px; color: ${textColor}; line-height: 1.6;">
-                    We received your pending request. This receipt does not confirm availability, candidacy, credentials, clinical authorization, safety, outcomes, or payment readiness.
-                  </p>
-                </td>
-              </tr>
-
-              <!-- Appointment Details -->
-              <tr>
-                <td style="padding: 20px 40px;">
-                  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background: #f8f9fa; border-radius: 8px; border: 1px solid ${borderColor};">
-                    <tr>
-                      <td style="padding: 25px;">
-                        <h2 style="margin: 0 0 20px 0; font-size: 18px; color: ${textColor}; font-weight: 600;">Requested details</h2>
-
-                        <table width="100%" border="0" cellspacing="0" cellpadding="8">
-                          <tr>
-                            <td style="font-size: 14px; color: #6b7280; width: 120px;">Service:</td>
-                            <td style="font-size: 14px; color: ${textColor}; font-weight: 500;">${escapeMailText(params.serviceName)}</td>
-                          </tr>
-                          <tr>
-                            <td style="font-size: 14px; color: #6b7280;">Provider:</td>
-                            <td style="font-size: 14px; color: ${textColor}; font-weight: 500;">${escapeMailText(params.providerName)}</td>
-                          </tr>
-                          <tr>
-                            <td style="font-size: 14px; color: #6b7280;">Date:</td>
-                            <td style="font-size: 14px; color: ${textColor}; font-weight: 500;">${escapeMailText(params.appointmentDate)}</td>
-                          </tr>
-                          <tr>
-                            <td style="font-size: 14px; color: #6b7280;">Time:</td>
-                            <td style="font-size: 14px; color: ${textColor}; font-weight: 500;">${escapeMailText(params.appointmentTime)}</td>
-                          </tr>
-                          <tr>
-                            <td style="font-size: 14px; color: #6b7280;">Duration:</td>
-                            <td style="font-size: 14px; color: ${textColor}; font-weight: 500;">${escapeMailText(params.duration)} minutes</td>
-                          </tr>
-
-                        </table>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-
-              <!-- Important Info -->
-              <tr>
-                <td style="padding: 20px 40px;">
-                  <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; border-radius: 4px;">
-                    <p style="margin: 0; font-size: 14px; color: #92400e; line-height: 1.6;">
-                      <strong>No appointment has been confirmed.</strong> The operator must review the request before communicating any next step.
-                    </p>
-                  </div>
-                </td>
-              </tr>
-
-              <!-- Footer -->
-              <tr>
-                <td style="padding: 30px 40px; border-top: 1px solid ${borderColor}; text-align: center;">
-                  <p style="margin: 0; font-size: 14px; color: #6b7280; line-height: 1.6;">
-                    Keep this email only as a receipt of the submitted request.
-                  </p>
-                  <p style="margin: 15px 0 0 0; font-size: 12px; color: #9ca3af;">
-                    Appointment request receipt
-                  </p>
-                </td>
-              </tr>
-
-            </table>
-          </td>
-        </tr>
-      </table>
-    </body>
-  `;
+  return emailLayout({
+    preheader: "We received your pending appointment request.",
+    title: "Appointment request received",
+    body: `${emailParagraph(`Hi ${escapeMailText(params.clientName)},`)}
+${emailParagraph("We received your pending request. This receipt does not confirm availability, candidacy, credentials, clinical authorization, safety, outcomes, or payment readiness.")}
+${emailHeading("Requested details")}
+${emailPanel(`<strong>Service:</strong> ${escapeMailText(params.serviceName)}<br><strong>Provider:</strong> ${escapeMailText(params.providerName)}<br><strong>Date:</strong> ${escapeMailText(params.appointmentDate)}<br><strong>Time:</strong> ${escapeMailText(params.appointmentTime)}<br><strong>Duration:</strong> ${escapeMailText(params.duration)} minutes`)}
+${emailParagraph("<strong>No appointment has been confirmed.</strong> The operator must review the request before communicating any next step.")}
+${emailMuted("Keep this email only as a receipt of the submitted request.")}`,
+  });
 }
 
 export async function sendAppointmentRequestReceipt(params: {
@@ -225,92 +113,17 @@ function giftCardEmail(params: {
   code: string;
   message?: string;
 }): string {
-  const backgroundColor = "#f9f9f9";
-  const textColor = "#444444";
-  const mainBackgroundColor = "#ffffff";
-  const primaryColor = "#8b5cf6";
-
-  return `
-    <body style="background: ${backgroundColor}; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">
-      <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background: ${backgroundColor}; padding: 40px 0;">
-        <tr>
-          <td align="center">
-            <table width="600" border="0" cellspacing="0" cellpadding="0" style="background: ${mainBackgroundColor}; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-
-              <!-- Header -->
-              <tr>
-                <td style="padding: 40px; text-align: center; background: linear-gradient(135deg, ${primaryColor}, #a78bfa); border-radius: 12px 12px 0 0;">
-                  <h1 style="margin: 0; font-size: 32px; color: #ffffff; font-weight: bold;">You've Received a Gift Card!</h1>
-                  <p style="margin: 10px 0 0 0; font-size: 18px; color: #f3e8ff;">From ${escapeMailText(params.senderName)}</p>
-                </td>
-              </tr>
-
-              <!-- Greeting -->
-              <tr>
-                <td style="padding: 30px 40px 20px 40px;">
-                  <p style="margin: 0; font-size: 16px; color: ${textColor}; line-height: 1.6;">
-                    Hi ${escapeMailText(params.recipientName)},
-                  </p>
-                  ${params.message ? `
-                    <div style="margin: 20px 0; padding: 20px; background: #f8f9fa; border-left: 4px solid ${primaryColor}; border-radius: 4px;">
-                      <p style="margin: 0; font-size: 15px; color: ${textColor}; font-style: italic; line-height: 1.6;">
-                        "${escapeMailText(params.message)}"
-                      </p>
-                    </div>
-                  ` : ''}
-                </td>
-              </tr>
-
-              <!-- Gift Card Amount -->
-              <tr>
-                <td style="padding: 20px 40px;">
-                  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background: linear-gradient(135deg, #faf5ff, #f3e8ff); border-radius: 8px; border: 2px solid ${primaryColor};">
-                    <tr>
-                      <td style="padding: 30px; text-align: center;">
-                        <p style="margin: 0; font-size: 14px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px;">Gift Card Value</p>
-                        <p style="margin: 10px 0 20px 0; font-size: 48px; color: ${primaryColor}; font-weight: bold;">$${params.amount.toFixed(2)}</p>
-                        <p style="margin: 0; font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px;">Gift Card Code</p>
-                        <p style="margin: 10px 0 0 0; font-size: 24px; color: ${textColor}; font-weight: bold; letter-spacing: 2px; font-family: 'Courier New', monospace;">
-                          ${escapeMailText(params.code)}
-                        </p>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-
-              <!-- Redemption Instructions -->
-              <tr>
-                <td style="padding: 20px 40px 40px 40px;">
-                  <h3 style="margin: 0 0 15px 0; font-size: 18px; color: ${textColor};">How to Use Your Gift Card</h3>
-                  <ol style="margin: 0; padding-left: 20px; font-size: 14px; color: ${textColor}; line-height: 1.8;">
-                    <li>Keep this code private</li>
-                    <li>Contact the practice to review the accepted terms and balance</li>
-                    <li>Confirm available redemption options before booking</li>
-                  </ol>
-                  ${receiptBookingLink(process.env.SMTP_STORE_LINK) ? `<div style="margin-top: 20px; text-align: center;">
-                    <a href="${receiptBookingLink(process.env.SMTP_STORE_LINK)}" style="display: inline-block; padding: 15px 30px; background: ${primaryColor}; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
-                      Book Your Appointment
-                    </a>
-                  </div>` : ''}
-                </td>
-              </tr>
-
-              <!-- Footer -->
-              <tr>
-                <td style="padding: 30px 40px; border-top: 1px solid #e5e7eb; text-align: center;">
-                  <p style="margin: 0; font-size: 12px; color: #9ca3af; line-height: 1.6;">
-                    Contact the practice to review the accepted gift card terms and available redemption options.
-                  </p>
-                </td>
-              </tr>
-
-            </table>
-          </td>
-        </tr>
-      </table>
-    </body>
-  `;
+  const bookingLink = receiptBookingLink(process.env.SMTP_STORE_LINK);
+  return emailLayout({
+    preheader: `${params.senderName} sent you a gift card.`,
+    title: "You've received a gift card",
+    body: `${emailParagraph(`Hi ${escapeMailText(params.recipientName)}, ${escapeMailText(params.senderName)} sent you a gift card.`)}
+${params.message ? emailPanel(`&ldquo;${escapeMailText(params.message)}&rdquo;`) : ""}
+${emailPanel(`<span style="font-size:13px;text-transform:uppercase;letter-spacing:1px;">Gift card value</span><br><span style="font-size:36px;font-weight:700;line-height:48px;">$${params.amount.toFixed(2)}</span><br><span style="font-size:13px;text-transform:uppercase;letter-spacing:1px;">Code</span><br><span style="font-family:Menlo,Consolas,monospace;font-size:22px;font-weight:700;letter-spacing:2px;">${escapeMailText(params.code)}</span>`, "center")}
+${emailHeading("How to use it")}
+${emailParagraph("Keep this code private. Contact the practice to review the accepted terms and balance, and confirm available redemption options before booking.")}
+${bookingLink ? emailButton("Book your appointment", bookingLink) : ""}`,
+  });
 }
 
 export async function sendGiftCardEmail(params: {
