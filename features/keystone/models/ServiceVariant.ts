@@ -31,6 +31,8 @@ export const ServiceVariant = list({
         findServices: (query) => args.context.sudo().query.Service.findMany(query),
         addValidationError: args.addValidationError,
       });
+      const duration = (args.resolvedData as any).duration;
+      if (duration != null && duration <= 0) args.addValidationError('Duration must be at least 1 minute.');
     },
   },
   access: {

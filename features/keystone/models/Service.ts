@@ -23,7 +23,18 @@ const formatCurrency = (amount: number): string => {
 };
 
 export const Service = list({
-  hooks: { validateInput: validateTenantInput, validateDelete: historyDeleteGuard('Service') },
+  hooks: {
+    validateInput: async (args) => {
+      await validateTenantInput(args);
+      const value = (key: string) => (args.resolvedData as any)[key] !== undefined ? (args.resolvedData as any)[key] : (args.item as any)?.[key];
+      const price = value('price'), duration = value('baseDuration'), deposit = value('depositAmount');
+      if (price != null && price < 0) args.addValidationError('Price can’t be negative.');
+      if (duration != null && duration <= 0) args.addValidationError('Duration must be at least 1 minute.');
+      if (deposit != null && deposit < 0) args.addValidationError('Deposit can’t be negative.');
+      else if (deposit != null && price != null && deposit > price) args.addValidationError('The deposit can’t be more than the service price.');
+    },
+    validateDelete: historyDeleteGuard('Service'),
+  },
   access: {
     operation: {
       query: () => true,

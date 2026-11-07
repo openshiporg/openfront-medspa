@@ -35,6 +35,20 @@ test('history is named with the retire option; unused records can go', async () 
   assert.equal(await deleteHistoryProblem(none, 'Vendor', 'v'), null);
 });
 
+test('service price, duration and deposit are refused readably before the DB CHECK fires', async () => {
+  const { Service } = await import('./models/Service');
+  const validateInput = (Service as any).hooks.validateInput;
+  const run = async (resolvedData: any, item: any = null) => {
+    const errors: string[] = [];
+    const context = { session: null, sudo: () => context, query: {} };
+    await validateInput({ resolvedData, item, operation: item ? 'update' : 'create', context, session: { data: {} }, listKey: 'Service', inputData: resolvedData, addValidationError: (m: string) => errors.push(m) });
+    return errors.filter(m => !/practice access/i.test(m));
+  };
+  assert.deepEqual(await run({ depositAmount: 9000 }, { price: 6500, baseDuration: 30 }), ['The deposit can’t be more than the service price.']);
+  assert.deepEqual(await run({ baseDuration: 0 }, { price: 6500, depositAmount: 0 }), ['Duration must be at least 1 minute.']);
+  assert.deepEqual(await run({ depositAmount: 2500 }, { price: 6500, baseDuration: 30 }), []);
+});
+
 test('the money/time migration fails closed and enforces the processor reference', () => {
   const sql = readFileSync(new URL('../../migrations/20261107170000_medspa_money_time_and_payment_reference/migration.sql', import.meta.url), 'utf8');
   assert.match(sql, /RAISE EXCEPTION/);
