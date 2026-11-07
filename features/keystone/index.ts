@@ -8,6 +8,7 @@ import { extendGraphqlSchema } from './mutations'
 import { sendPasswordResetEmail } from './lib/mail'
 import { permissions } from './access'
 import { assertOwnedLocalDatabase, localRuntimeDescriptor } from './localRuntime'
+import { pooledDatabaseUrl } from './database-url';
 
 function required(name: string) {
   const value = process.env[name]
@@ -70,7 +71,7 @@ const { withAuth } = createAuth({
 })
 
 export default withAuth(config({
-  db: { provider: 'postgresql', url: databaseURL, onConnect: async context => { await assertOwnedLocalDatabase(context.prisma) } },
+  db: { provider: 'postgresql', url: pooledDatabaseUrl(databaseURL), onConnect: async context => { await assertOwnedLocalDatabase(context.prisma) } },
   lists: models,
   storage: {
     my_images: localRuntime ? {
