@@ -1558,27 +1558,6 @@ model MessageTemplate {
   @@index([practiceId])
 }
 
-model OutboxEvent {
-  id            String                @id @default(cuid())
-  practice      Practice?             @relation("OutboxEvent_practice", fields: [practiceId], references: [id])
-  practiceId    String?               @map("practice")
-  eventKey      String                @unique @default("")
-  topic         String                @default("")
-  version       Int?                  @default(1)
-  aggregateType String                @default("")
-  aggregateId   String                @default("")
-  payload       Json?
-  status        OutboxEventStatusType @default(pending)
-  attempts      Int?                  @default(0)
-  availableAt   DateTime?             @default(now())
-  deliveredAt   DateTime?
-  lastError     String                @default("")
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @default(now()) @updatedAt
-
-  @@index([practiceId])
-}
-
 model Payment {
   id                      String          @id @default(cuid())
   practice                Practice?       @relation("Payment_practice", fields: [practiceId], references: [id])
@@ -1857,7 +1836,6 @@ model Practice {
   from_MembershipLedgerEntry_practice            MembershipLedgerEntry[]            @relation("MembershipLedgerEntry_practice")
   from_MessageLog_practice                       MessageLog[]                       @relation("MessageLog_practice")
   from_MessageTemplate_practice                  MessageTemplate[]                  @relation("MessageTemplate_practice")
-  from_OutboxEvent_practice                      OutboxEvent[]                      @relation("OutboxEvent_practice")
   from_Payment_practice                          Payment[]                          @relation("Payment_practice")
   from_PaymentProvider_practice                  PaymentProvider[]                  @relation("PaymentProvider_practice")
   from_PaymentSession_practice                   PaymentSession[]                   @relation("PaymentSession_practice")
@@ -3346,13 +3324,6 @@ enum MembershipLedgerEntryTypeType {
   nonrenew
   cancel
   expire
-}
-
-enum OutboxEventStatusType {
-  pending
-  processing
-  delivered
-  dead_letter
 }
 
 enum PaymentProviderAdapterType {

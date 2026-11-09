@@ -7275,118 +7275,6 @@ input MessageTemplateCreateInput {
   updatedAt: DateTime
 }
 
-type OutboxEvent {
-  id: ID!
-  practice: Practice
-  eventKey: String
-  topic: String
-  version: Int
-  aggregateType: String
-  aggregateId: String
-  payload: JSON
-  status: OutboxEventStatusType
-  attempts: Int
-  availableAt: DateTime
-  deliveredAt: DateTime
-  lastError: String
-  createdAt: DateTime
-  updatedAt: DateTime
-}
-
-enum OutboxEventStatusType {
-  pending
-  processing
-  delivered
-  dead_letter
-}
-
-input OutboxEventWhereUniqueInput {
-  id: ID
-  eventKey: String
-}
-
-input OutboxEventWhereInput {
-  AND: [OutboxEventWhereInput!]
-  OR: [OutboxEventWhereInput!]
-  NOT: [OutboxEventWhereInput!]
-  id: IDFilter
-  practice: PracticeWhereInput
-  eventKey: StringFilter
-  topic: StringFilter
-  version: IntNullableFilter
-  aggregateType: StringFilter
-  aggregateId: StringFilter
-  status: OutboxEventStatusTypeNullableFilter
-  attempts: IntNullableFilter
-  availableAt: DateTimeNullableFilter
-  deliveredAt: DateTimeNullableFilter
-  lastError: StringFilter
-  createdAt: DateTimeFilter
-  updatedAt: DateTimeFilter
-}
-
-input OutboxEventStatusTypeNullableFilter {
-  equals: OutboxEventStatusType
-  in: [OutboxEventStatusType!]
-  notIn: [OutboxEventStatusType!]
-  not: OutboxEventStatusTypeNullableFilter
-}
-
-input OutboxEventOrderByInput {
-  id: OrderDirection
-  eventKey: OrderDirection
-  topic: OrderDirection
-  version: OrderDirection
-  aggregateType: OrderDirection
-  aggregateId: OrderDirection
-  status: OrderDirection
-  attempts: OrderDirection
-  availableAt: OrderDirection
-  deliveredAt: OrderDirection
-  lastError: OrderDirection
-  createdAt: OrderDirection
-  updatedAt: OrderDirection
-}
-
-input OutboxEventUpdateInput {
-  practice: PracticeRelateToOneForUpdateInput
-  eventKey: String
-  topic: String
-  version: Int
-  aggregateType: String
-  aggregateId: String
-  payload: JSON
-  status: OutboxEventStatusType
-  attempts: Int
-  availableAt: DateTime
-  deliveredAt: DateTime
-  lastError: String
-  createdAt: DateTime
-  updatedAt: DateTime
-}
-
-input OutboxEventUpdateArgs {
-  where: OutboxEventWhereUniqueInput!
-  data: OutboxEventUpdateInput!
-}
-
-input OutboxEventCreateInput {
-  practice: PracticeRelateToOneForCreateInput
-  eventKey: String
-  topic: String
-  version: Int
-  aggregateType: String
-  aggregateId: String
-  payload: JSON
-  status: OutboxEventStatusType
-  attempts: Int
-  availableAt: DateTime
-  deliveredAt: DateTime
-  lastError: String
-  createdAt: DateTime
-  updatedAt: DateTime
-}
-
 type Payment {
   id: ID!
   practice: Practice
@@ -13744,12 +13632,6 @@ type Mutation {
   updateMessageTemplates(data: [MessageTemplateUpdateArgs!]!): [MessageTemplate]
   deleteMessageTemplate(where: MessageTemplateWhereUniqueInput!): MessageTemplate
   deleteMessageTemplates(where: [MessageTemplateWhereUniqueInput!]!): [MessageTemplate]
-  createOutboxEvent(data: OutboxEventCreateInput!): OutboxEvent
-  createOutboxEvents(data: [OutboxEventCreateInput!]!): [OutboxEvent]
-  updateOutboxEvent(where: OutboxEventWhereUniqueInput!, data: OutboxEventUpdateInput!): OutboxEvent
-  updateOutboxEvents(data: [OutboxEventUpdateArgs!]!): [OutboxEvent]
-  deleteOutboxEvent(where: OutboxEventWhereUniqueInput!): OutboxEvent
-  deleteOutboxEvents(where: [OutboxEventWhereUniqueInput!]!): [OutboxEvent]
   createPayment(data: PaymentCreateInput!): Payment
   createPayments(data: [PaymentCreateInput!]!): [Payment]
   updatePayment(where: PaymentWhereUniqueInput!, data: PaymentUpdateInput!): Payment
@@ -14109,6 +13991,10 @@ type Mutation {
   requestWaitlistSpot(serviceId: ID!, providerId: ID, preferredDays: [String!], preferredTimeRange: String, notes: String, idempotencyKey: String!): RequestWaitlistSpotResult!
   cancelGuestAppointment(appointmentId: ID!, token: String!, reason: String): CancelGuestAppointmentResult!
   startDepositCheckout(appointmentId: ID!, token: String): StorefrontDepositResult!
+  startCardCheckout(appointmentId: ID!, tipAmount: Int!, discountAmount: Int!, discountReason: String, retailItems: JSON, clientPackageId: ID, clientMembershipId: ID): DeskCardCheckoutResult!
+  confirmCardCheckout(appointmentId: ID!): DeskCardCheckoutResult!
+  purchaseGiftCardOnline(amount: Int!, purchaserName: String!, purchaserEmail: String!, recipientName: String, recipientEmail: String, message: String): PurchaseGiftCardOnlineResult!
+  confirmGiftCardOnline(ref: ID!, token: String!): StorefrontGiftCardPurchase
   confirmDepositCheckout(appointmentId: ID!, token: String): StorefrontDepositResult!
   upsertResource(resourceId: ID, expectedRevision: Int, name: String!, type: String!, locationId: ID!, capacity: Int!, isPublic: Boolean!, notes: String, manufacturer: String, model: String, serialNumber: String, maintenanceDueAt: String, calibrationDueAt: String, serviceIds: [ID!]!, idempotencyKey: String!): ResourceUpsertResult
   updateProviderProfile(providerId: ID!, title: String, bio: String, role: String!, tier: String!, status: String!, isActive: Boolean!, isPublic: Boolean!, specializationIds: [ID!]!, locationIds: [ID!]!, idempotencyKey: String!): PracticeAdminWorkflowResult
@@ -14390,6 +14276,28 @@ type StorefrontDepositResult {
   paid: Boolean
 }
 
+type DeskCardCheckoutResult {
+  success: Boolean!
+  error: String
+  url: String
+  amount: Int
+  outcome: String
+}
+
+type PurchaseGiftCardOnlineResult {
+  success: Boolean!
+  error: String
+  url: String
+}
+
+type StorefrontGiftCardPurchase {
+  status: String!
+  amount: Int!
+  code: String
+  recipientName: String
+  recipientEmail: String
+}
+
 type ResourceUpsertResult {
   success: Boolean!
   resourceId: ID
@@ -14613,9 +14521,6 @@ type Query {
   messageTemplate(where: MessageTemplateWhereUniqueInput!): MessageTemplate
   messageTemplates(where: MessageTemplateWhereInput! = {}, orderBy: [MessageTemplateOrderByInput!]! = [], take: Int! = 5000, skip: Int! = 0, cursor: MessageTemplateWhereUniqueInput): [MessageTemplate!]
   messageTemplatesCount(where: MessageTemplateWhereInput! = {}): Int
-  outboxEvent(where: OutboxEventWhereUniqueInput!): OutboxEvent
-  outboxEvents(where: OutboxEventWhereInput! = {}, orderBy: [OutboxEventOrderByInput!]! = [], take: Int! = 5000, skip: Int! = 0, cursor: OutboxEventWhereUniqueInput): [OutboxEvent!]
-  outboxEventsCount(where: OutboxEventWhereInput! = {}): Int
   payment(where: PaymentWhereUniqueInput!): Payment
   payments(where: PaymentWhereInput! = {}, orderBy: [PaymentOrderByInput!]! = [], take: Int! = 5000, skip: Int! = 0, cursor: PaymentWhereUniqueInput): [Payment!]
   paymentsCount(where: PaymentWhereInput! = {}): Int

@@ -30,6 +30,22 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
+// features/integrations/payment/types.ts
+var ProviderRejectedError;
+var init_types = __esm({
+  "features/integrations/payment/types.ts"() {
+    "use strict";
+    ProviderRejectedError = class extends Error {
+      constructor(message2, code) {
+        super(message2);
+        this.code = code;
+        this.definitive = true;
+        this.name = "ProviderRejectedError";
+      }
+    };
+  }
+});
+
 // features/integrations/payment/manual.ts
 var manual_exports = {};
 __export(manual_exports, {
@@ -75,12 +91,56 @@ var init_manual = __esm({
 // features/integrations/payment/stripe.ts
 var stripe_exports = {};
 __export(stripe_exports, {
+  stripeConfigured: () => stripeConfigured,
   stripePaymentAdapter: () => stripePaymentAdapter
 });
+function stripeConfigured() {
+  return Boolean(process.env.STRIPE_SECRET_KEY?.trim());
+}
 function stripeClient() {
   const secretKey = process.env.STRIPE_SECRET_KEY;
   if (!secretKey) throw new Error("Stripe is not configured");
-  return new import_stripe.default(secretKey);
+  return new import_stripe.default(secretKey, { maxNetworkRetries: 2, timeout: 3e4 });
+}
+function definitiveRejection(error) {
+  const stripeError = error;
+  const status = stripeError?.statusCode;
+  if (stripeError?.type === "StripeInvalidRequestError" || stripeError?.type === "StripeCardError") {
+    if (typeof status === "number" && status >= 400 && status < 500 && status !== 429 && status !== 409) {
+      return new ProviderRejectedError(stripeError.message || "Stripe rejected the request", stripeError.code);
+    }
+  }
+  return null;
+}
+function mapRefundStatus(status) {
+  if (status === "succeeded") return "succeeded";
+  if (status === "failed") return "failed";
+  if (status === "canceled") return "canceled";
+  if (status === "requires_action") return "requires_action";
+  return "pending";
+}
+function toProviderRefund(refund) {
+  return {
+    providerRefundId: refund.id,
+    status: mapRefundStatus(refund.status),
+    amount: refund.amount,
+    currency: refund.currency,
+    failureReason: refund.failure_reason ?? null
+  };
+}
+function refundPaymentIntent(refund) {
+  const intent = refund.payment_intent;
+  return intent ? typeof intent === "string" ? intent : intent.id : null;
+}
+function mapCheckoutState(session) {
+  if (session.payment_status === "paid") return "paid";
+  if (session.status === "expired") return "expired";
+  if (session.status === "open") return "open";
+  return "unpaid";
+}
+function sessionPaymentIntent(session) {
+  const intent = session.payment_intent;
+  return intent ? typeof intent === "string" ? intent : intent.id : null;
 }
 function mapStatus(status) {
   if (status === "succeeded") return "completed";
@@ -94,6 +154,7 @@ var init_stripe = __esm({
   "features/integrations/payment/stripe.ts"() {
     "use strict";
     import_stripe = __toESM(require("stripe"));
+    init_types();
     stripePaymentAdapter = {
       async createSession({ amount, currency, idempotencyKey, metadata }) {
         const intent = await stripeClient().paymentIntents.create(
@@ -121,16 +182,64 @@ var init_stripe = __esm({
           data: { status: intent.status }
         };
       },
-      async refund({ providerReference, amount, idempotencyKey }) {
-        const refund = await stripeClient().refunds.create(
-          { payment_intent: providerReference, ...amount ? { amount } : {} },
-          { idempotencyKey }
-        );
+      async refund({ providerReference, amount, currency, idempotencyKey, metadata }) {
+        let refund;
+        try {
+          refund = await stripeClient().refunds.create(
+            { payment_intent: providerReference, ...amount ? { amount } : {}, ...metadata ? { metadata } : {} },
+            { idempotencyKey }
+          );
+        } catch (error) {
+          throw definitiveRejection(error) ?? error;
+        }
+        if (currency && refund.currency !== currency.toLowerCase()) throw new Error("Stripe refund currency does not match the payment");
         return {
           status: refund.status === "succeeded" ? "refunded" : "pending",
           providerReference,
           amount: refund.amount,
-          data: { refundId: refund.id, status: refund.status }
+          currency: refund.currency,
+          data: { refundId: refund.id, status: refund.status, failureReason: refund.failure_reason ?? null }
+        };
+      },
+      async getRefundStatus({ providerReference, providerRefundId, attemptId }) {
+        const stripe = stripeClient();
+        if (providerRefundId) return toProviderRefund(await stripe.refunds.retrieve(providerRefundId));
+        for await (const refund of stripe.refunds.list({ payment_intent: providerReference, limit: 100 })) {
+          if (refund.metadata?.refundAttemptId === attemptId) return toProviderRefund(refund);
+        }
+        return null;
+      },
+      async createCheckout({ amount, currency, idempotencyKey, description, successUrl, cancelUrl, customerEmail, metadata }) {
+        let session;
+        try {
+          session = await stripeClient().checkout.sessions.create(
+            {
+              mode: "payment",
+              line_items: [{ quantity: 1, price_data: { currency: currency.toLowerCase(), unit_amount: amount, product_data: { name: description } } }],
+              success_url: successUrl,
+              cancel_url: cancelUrl,
+              ...customerEmail ? { customer_email: customerEmail } : {},
+              metadata,
+              payment_intent_data: { metadata },
+              expires_at: Math.floor(Date.now() / 1e3) + 3600
+            },
+            { idempotencyKey }
+          );
+        } catch (error) {
+          throw definitiveRejection(error) ?? error;
+        }
+        if (!session.url) throw new Error("Stripe did not return a checkout URL");
+        return { providerReference: session.id, url: session.url, expiresAt: session.expires_at ? new Date(session.expires_at * 1e3).toISOString() : null };
+      },
+      async getCheckoutStatus({ providerReference }) {
+        const session = await stripeClient().checkout.sessions.retrieve(providerReference);
+        return {
+          providerReference: session.id,
+          state: mapCheckoutState(session),
+          amount: session.amount_total ?? 0,
+          currency: session.currency ?? "",
+          paymentIntentId: sessionPaymentIntent(session),
+          metadata: session.metadata || {}
         };
       },
       async parseWebhook({ payload, headers }) {
@@ -138,20 +247,45 @@ var init_stripe = __esm({
         const signature = headers["stripe-signature"];
         if (!secret || !signature) throw new Error("Stripe webhook verification is not configured");
         const event = stripeClient().webhooks.constructEvent(payload, signature, secret);
+        const base = { isValid: true, eventId: event.id, type: event.type, data: { livemode: event.livemode } };
+        if (event.type === "refund.created" || event.type === "refund.updated" || event.type === "refund.failed") {
+          const refund = event.data.object;
+          const parsed = {
+            providerRefundId: refund.id,
+            providerReference: refundPaymentIntent(refund),
+            status: mapRefundStatus(refund.status),
+            amount: refund.amount,
+            currency: refund.currency,
+            attemptId: refund.metadata?.refundAttemptId || null
+          };
+          return { ...base, providerReference: parsed.providerReference, status: null, amount: refund.amount, refund: parsed };
+        }
+        if (event.type === "charge.refunded") {
+          const charge = event.data.object;
+          const intent = charge.payment_intent ? typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent.id : null;
+          return { ...base, providerReference: intent, status: null, amount: charge.amount_refunded, refundSignal: true };
+        }
+        if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded" || event.type === "checkout.session.expired" || event.type === "checkout.session.async_payment_failed") {
+          const session = event.data.object;
+          return {
+            ...base,
+            providerReference: session.id,
+            status: null,
+            amount: session.amount_total ?? 0,
+            checkout: {
+              providerReference: session.id,
+              state: event.type === "checkout.session.expired" ? "expired" : event.type === "checkout.session.async_payment_failed" ? "unpaid" : mapCheckoutState(session),
+              amount: session.amount_total ?? 0,
+              currency: session.currency ?? "",
+              paymentIntentId: sessionPaymentIntent(session)
+            }
+          };
+        }
         const resource = event.data.object;
-        const paymentIntent = "payment_intent" in resource ? resource.payment_intent : null;
-        const providerReference = paymentIntent ? typeof paymentIntent === "string" ? paymentIntent : paymentIntent.id : resource.object === "payment_intent" ? resource.id : null;
-        const amount = resource.object === "payment_intent" ? resource.amount_received || resource.amount : resource.object === "charge" ? resource.amount_refunded : resource.amount;
-        const status = event.type === "payment_intent.succeeded" ? "completed" : event.type === "payment_intent.payment_failed" ? "requires_action" : event.type === "payment_intent.canceled" ? "cancelled" : event.type === "charge.refunded" || event.type === "refund.updated" ? "refunded" : null;
-        return {
-          isValid: true,
-          eventId: event.id,
-          type: event.type,
-          providerReference,
-          status,
-          amount,
-          data: { livemode: event.livemode }
-        };
+        const providerReference = resource.object === "payment_intent" ? resource.id : null;
+        const amount = resource.object === "payment_intent" ? resource.amount_received || resource.amount : void 0;
+        const status = event.type === "payment_intent.succeeded" ? "completed" : event.type === "payment_intent.payment_failed" ? "requires_action" : event.type === "payment_intent.canceled" ? "cancelled" : null;
+        return { ...base, providerReference, status, amount };
       }
     };
   }
@@ -164,9 +298,19 @@ __export(keystone_exports, {
 });
 module.exports = __toCommonJS(keystone_exports);
 
+// features/keystone/lib/s3-storage.ts
+function s3ForcePathStyle(endpoint) {
+  let hostname = "";
+  try {
+    hostname = endpoint ? new URL(endpoint).hostname : "";
+  } catch {
+  }
+  return !(hostname === "storageapi.dev" || hostname.endsWith(".storageapi.dev"));
+}
+
 // features/keystone/index.ts
 var import_auth = require("@keystone-6/auth");
-var import_core133 = require("@keystone-6/core");
+var import_core144 = require("@keystone-6/core");
 var import_session = require("@keystone-6/core/session");
 var import_config = require("dotenv/config");
 
@@ -175,60 +319,64 @@ var import_graphql = require("graphql");
 var GRAPHQL_MAX_TAKE = 5e3;
 
 // features/keystone/appointmentSchedulingAuthority.ts
-async function currentMember(sudo, practiceId5, actorId) {
-  const members = await sudo.query.PracticeMembership.findMany({ where: { practice: { id: { equals: practiceId5 } }, user: { id: { equals: actorId } } }, take: 2, query: "id status practice { id } user { id } locations(take: 101) { id isActive practice { id } }" });
+async function currentMember(sudo, practiceId4, actorId) {
+  const members = await sudo.query.PracticeMembership.findMany({ where: { practice: { id: { equals: practiceId4 } }, user: { id: { equals: actorId } } }, take: 2, query: "id status practice { id } user { id } locations(take: 101) { id isActive practice { id } }" });
   const member = members[0];
-  if (members.length !== 1 || !member?.id || member.status !== "active" || member.practice?.id !== practiceId5 || member.user?.id !== actorId || member.locations.length > 100 || member.locations.some((location) => location.practice?.id !== practiceId5 || location.isActive !== true)) throw new Error("Current scheduling membership is unavailable");
+  if (members.length !== 1 || !member?.id || member.status !== "active" || member.practice?.id !== practiceId4 || member.user?.id !== actorId || member.locations.length > 100 || member.locations.some((location) => location.practice?.id !== practiceId4 || location.isActive !== true)) throw new Error("Current scheduling membership is unavailable");
   return member;
 }
 async function currentSchedulerReadScope(context) {
-  const actorId = context.session?.itemId, practiceId5 = context.session?.data.practice?.id;
-  if (!actorId || !practiceId5 || !permissions.canSchedule({ session: context.session })) throw new Error("Scheduling authority is unavailable");
+  const actorId = context.session?.itemId, practiceId4 = context.session?.data.practice?.id;
+  if (!actorId || !practiceId4 || !permissions.canSchedule({ session: context.session })) throw new Error("Scheduling authority is unavailable");
   const actor = await context.sudo().query.User.findOne({ where: { id: actorId }, query: "id status practice { id } role { practice { id } canSchedule canManagePractice }" });
-  if (!actor || actor.id !== actorId || actor.status !== "active" || actor.practice?.id !== practiceId5 || actor.role?.practice?.id !== practiceId5 || actor.role.canSchedule !== true) throw new Error("Scheduling authority is unavailable");
-  const member = await currentMember(context.sudo(), practiceId5, actorId);
+  if (!actor || actor.id !== actorId || actor.status !== "active" || actor.practice?.id !== practiceId4 || actor.role?.practice?.id !== practiceId4 || actor.role.canSchedule !== true) throw new Error("Scheduling authority is unavailable");
+  const member = await currentMember(context.sudo(), practiceId4, actorId);
   const locationIds = member.locations.map((location) => location.id);
-  return { practiceId: practiceId5, practiceWide: actor.role.canManagePractice === true, locationIds };
+  return { practiceId: practiceId4, practiceWide: actor.role.canManagePractice === true, locationIds };
 }
 async function canReadAppointmentPrivateFields({ context, item }, allowOwner = false) {
   try {
-    const actorId = context.session?.itemId, practiceId5 = context.session?.data.practice?.id;
-    if (!actorId || !practiceId5) return false;
+    const actorId = context.session?.itemId, practiceId4 = context.session?.data.practice?.id;
+    if (!actorId || !practiceId4) return false;
     const sudo = context.sudo();
     const actor = await sudo.query.User.findOne({ where: { id: actorId }, query: "id status practice { id } role { practice { id } canManageClinical }" });
-    if (!actor || actor.status !== "active" || actor.practice?.id !== practiceId5) return false;
+    if (!actor || actor.status !== "active" || actor.practice?.id !== practiceId4) return false;
     const header = await sudo.query.Appointment.findOne({ where: { id: item.id.toString() }, query: "id practice { id } location { id } client { id practice { id } user { id } }" });
-    if (!header || header.practice?.id !== practiceId5 || header.client?.practice?.id !== practiceId5 || !header.location?.id) return false;
+    if (!header || header.practice?.id !== practiceId4 || header.client?.practice?.id !== practiceId4 || !header.location?.id) return false;
     if (allowOwner && header.client.user?.id === actorId) return true;
-    if (!permissions.canManageClinical({ session: context.session }) || actor.role?.canManageClinical !== true || actor.role.practice?.id !== practiceId5) return false;
-    const member = await currentMember(sudo, practiceId5, actorId);
+    if (!permissions.canManageClinical({ session: context.session }) || actor.role?.canManageClinical !== true || actor.role.practice?.id !== practiceId4) return false;
+    const member = await currentMember(sudo, practiceId4, actorId);
     return member.locations.some((location) => location.id === header.location.id);
   } catch {
     return false;
   }
 }
+function appointmentClientKey(appointment) {
+  return appointment.client?.id || `guest:${appointment.id}`;
+}
 async function assertAppointmentSchedulingAuthority(context, appointmentId, options = {}) {
   const actorId = context.session?.itemId;
-  const practiceId5 = context.session?.data.practice?.id;
-  if (!actorId || !practiceId5 || !appointmentId) throw new Error("Appointment scheduling access is unavailable");
+  const practiceId4 = context.session?.data.practice?.id;
+  if (!actorId || !practiceId4 || !appointmentId) throw new Error("Appointment scheduling access is unavailable");
   const sudo = context.sudo();
   const actor = await sudo.query.User.findOne({ where: { id: actorId }, query: "id status practice { id } role { id practice { id } canSchedule canManagePractice }" });
-  if (!actor || actor.id !== actorId || actor.status !== "active" || actor.practice?.id !== practiceId5) throw new Error("Appointment scheduling access is unavailable");
+  if (!actor || actor.id !== actorId || actor.status !== "active" || actor.practice?.id !== practiceId4) throw new Error("Appointment scheduling access is unavailable");
   const header = await sudo.query.Appointment.findOne({ where: { id: appointmentId }, query: "id practice { id } location { id } client { id practice { id } user { id } }" });
-  if (!header || header.practice?.id !== practiceId5 || header.client?.practice?.id !== practiceId5 || !header.client?.id || !header.location?.id) throw new Error("Appointment scheduling access is unavailable");
+  if (!header || header.practice?.id !== practiceId4 || header.client && header.client.practice?.id !== practiceId4 || !header.location?.id) throw new Error("Appointment scheduling access is unavailable");
+  const clientKey = appointmentClientKey(header);
   const location = await sudo.query.Location.findOne({ where: { id: header.location.id }, query: "id isActive practice { id }" });
-  if (!location || location.id !== header.location.id || location.practice?.id !== practiceId5 || location.isActive !== true) throw new Error("Appointment scheduling access is unavailable");
-  const owner = header.client.user?.id === actorId;
-  const scheduler = permissions.canSchedule({ session: context.session }) && actor.role?.canSchedule === true && actor.role.practice?.id === practiceId5;
+  if (!location || location.id !== header.location.id || location.practice?.id !== practiceId4 || location.isActive !== true) throw new Error("Appointment scheduling access is unavailable");
+  const owner = Boolean(header.client?.user?.id) && header.client.user.id === actorId;
+  const scheduler = permissions.canSchedule({ session: context.session }) && actor.role?.canSchedule === true && actor.role.practice?.id === practiceId4;
   if (owner && (options.purpose === "customer_cancel" || options.cancellationOnly && options.purpose !== "scheduler" || !scheduler)) {
     if (!options.cancellationOnly) throw new Error("Owned customer access is limited to cancellation and its readback");
-    return { scope: { actorId, practiceId: practiceId5, locationId: location.id, clientId: header.client.id, appointmentId: header.id, purpose: "customer_cancel" }, membershipId: null, delegation: "owned_customer", header };
+    return { scope: { actorId, practiceId: practiceId4, locationId: location.id, clientId: clientKey, appointmentId: header.id, purpose: "customer_cancel" }, membershipId: null, delegation: "owned_customer", header };
   }
   if (!scheduler || options.purpose === "customer_cancel") throw new Error("Appointment scheduling access is unavailable");
-  const member = await currentMember(sudo, practiceId5, actorId);
+  const member = await currentMember(sudo, practiceId4, actorId);
   const assigned = member.locations.some((value) => value.id === location.id);
   if (!assigned && actor.role?.canManagePractice !== true) throw new Error("Current scheduling location authority is unavailable");
-  return { scope: { actorId, practiceId: practiceId5, locationId: location.id, clientId: header.client.id, appointmentId: header.id, purpose: "scheduler" }, membershipId: member.id, delegation: assigned ? "location_member" : "practice_manager", header };
+  return { scope: { actorId, practiceId: practiceId4, locationId: location.id, clientId: clientKey, appointmentId: header.id, purpose: "scheduler" }, membershipId: member.id, delegation: assigned ? "location_member" : "practice_manager", header };
 }
 
 // features/keystone/access.ts
@@ -302,10 +450,10 @@ async function actorScope(args) {
   if (!actor?.practice?.id) return null;
   return { actor, actorId: actor.id, practiceId: actor.practice.id, role: actor.role || {} };
 }
-var scopedPractice = (id) => ({ practice: { id: { equals: id } } });
-var ownedInPractice = (id, owner) => ({ AND: [scopedPractice(id), owner] });
-var ownedAppointmentsInPractice = (practiceId5, actorId) => ({
-  AND: [scopedPractice(practiceId5), { client: { user: { id: { equals: actorId } } } }]
+var scopedPractice = (id2) => ({ practice: { id: { equals: id2 } } });
+var ownedInPractice = (id2, owner) => ({ AND: [scopedPractice(id2), owner] });
+var ownedAppointmentsInPractice = (practiceId4, actorId) => ({
+  AND: [scopedPractice(practiceId4), { client: { user: { id: { equals: actorId } } } }]
 });
 var publishedPractice = { isActive: { equals: true }, storefrontSetting: { isPublished: { equals: true }, primaryLocation: { isActive: { equals: true } } } };
 function publicCatalogInPractice(scope, predicate) {
@@ -488,8 +636,8 @@ async function resolveTenantPractice({ context, session, operation, resolvedData
   if (operation !== "create" || Object.prototype.hasOwnProperty.call(inputData, "practice")) return resolvedData;
   const args = { context, session: session || context.session };
   if (!await activeListPermissions.signedIn(args)) return resolvedData;
-  const id = practiceId(args.session);
-  return id ? { ...resolvedData, practice: { connect: { id } } } : resolvedData;
+  const id2 = practiceId(args.session);
+  return id2 ? { ...resolvedData, practice: { connect: { id: id2 } } } : resolvedData;
 }
 async function validateTenantInput({ context, session, listKey, resolvedData, inputData, item, operation, addValidationError }) {
   const args = { context, session: session || context.session };
@@ -516,23 +664,23 @@ async function validateTenantInput({ context, session, listKey, resolvedData, in
     const connected = [input.connect, input.set].flatMap((entry) => Array.isArray(entry) ? entry : entry ? [entry] : []);
     if (!connected.length) continue;
     const ids = connected.map((entry) => entry && typeof entry === "object" ? entry.id : void 0);
-    if (ids.length > 100 || ids.some((id) => typeof id !== "string" || !id)) {
+    if (ids.length > 100 || ids.some((id2) => typeof id2 !== "string" || !id2)) {
       addValidationError("Related record identities are invalid");
       continue;
     }
-    const uniqueIds = [...new Set(ids)];
+    const uniqueIds2 = [...new Set(ids)];
     if (relatedList === "Practice") {
-      if (uniqueIds.some((id) => id !== actorPracticeId)) addValidationError("Related record is outside the authenticated practice");
+      if (uniqueIds2.some((id2) => id2 !== actorPracticeId)) addValidationError("Related record is outside the authenticated practice");
     } else if (related?.fields.practice) {
-      const count2 = await context.sudo().query[relatedList].count({ where: { id: { in: uniqueIds }, practice: { id: { equals: actorPracticeId } } } });
-      if (count2 !== uniqueIds.length) addValidationError("Related record is outside the authenticated practice");
+      const count2 = await context.sudo().query[relatedList].count({ where: { id: { in: uniqueIds2 }, practice: { id: { equals: actorPracticeId } } } });
+      if (count2 !== uniqueIds2.length) addValidationError("Related record is outside the authenticated practice");
     }
   }
 }
 var tenantFilter = async (args) => {
   if (!await activeListPermissions.signedIn(args)) return false;
-  const id = practiceId(args.session);
-  return id ? { practice: { id: { equals: id } } } : false;
+  const id2 = practiceId(args.session);
+  return id2 ? { practice: { id: { equals: id2 } } } : false;
 };
 
 // features/keystone/models/AdministrationLot.ts
@@ -652,7 +800,7 @@ async function enqueueDomainEvent(context, input) {
     query: "id eventType eventVersion aggregateType aggregateId operation locationId payloadHash practice { id }"
   });
   if (existing) {
-    const replay = assertDomainEventReplaySafe({
+    const replay2 = assertDomainEventReplaySafe({
       eventType: existing.eventType,
       eventVersion: existing.eventVersion,
       aggregateType: existing.aggregateType,
@@ -662,7 +810,7 @@ async function enqueueDomainEvent(context, input) {
       payloadHash: existing.payloadHash,
       practiceId: existing.practice?.id || null
     }, replayIdentity);
-    if (replay.repairPractice) {
+    if (replay2.repairPractice) {
       await context.sudo().query.DomainEvent.updateOne({
         where: { id: existing.id },
         data: { practice: { connect: { id: input.practiceId } } },
@@ -703,15 +851,15 @@ function createLifecycleHooks(aggregateType, fields) {
       const after = operation === "delete" ? null : snapshot(item, fields);
       if (operation === "update" && JSON.stringify(canonicalize(before)) === JSON.stringify(canonicalize(after))) return;
       const payload = { aggregateType, aggregateId, operation, before, after };
-      const practiceId5 = String(item?.practiceId || originalItem?.practiceId || "");
-      if (!practiceId5) throw new Error(`${aggregateType} lifecycle event is missing its practice id`);
+      const practiceId4 = String(item?.practiceId || originalItem?.practiceId || "");
+      if (!practiceId4) throw new Error(`${aggregateType} lifecycle event is missing its practice id`);
       await enqueueDomainEvent(context, {
         eventKey: `${aggregateType}:${aggregateId}:${operation}:${version}:${payloadHash(payload).slice(0, 16)}`,
         eventType: `medspa.${aggregateType}.${operation}.v1`,
         aggregateType,
         aggregateId,
         operation,
-        practiceId: practiceId5,
+        practiceId: practiceId4,
         locationId: String(item?.locationId || originalItem?.locationId || "") || null,
         payload,
         occurredAt: versionSource ? new Date(versionSource) : /* @__PURE__ */ new Date()
@@ -929,10 +1077,10 @@ var Appointment = (0, import_core2.list)({
               });
               if (!appointment?.duration) return "0 min";
               const hours = Math.floor(appointment.duration / 60);
-              const minutes = appointment.duration % 60;
-              if (hours === 0) return `${minutes} min`;
-              if (minutes === 0) return `${hours} hr`;
-              return `${hours} hr ${minutes} min`;
+              const minutes2 = appointment.duration % 60;
+              if (hours === 0) return `${minutes2} min`;
+              if (minutes2 === 0) return `${hours} hr`;
+              return `${hours} hr ${minutes2} min`;
             }
           })
         }),
@@ -1794,6 +1942,8 @@ var ClientPoints = (0, import_core24.list)({
     plural: "ClientPointsRecords"
   },
   ui: {
+    // "Client Points" would map back to the list key and break the dashboard's admin meta.
+    plural: "Client Points Records",
     listView: {
       initialColumns: ["client", "points", "tier"]
     }
@@ -2858,6 +3008,15 @@ var formatCurrency4 = (amount) => {
     currency: "USD"
   }).format(amount / 100);
 };
+async function recordedSettlementAmount(context, transactionId, field2) {
+  const transaction = await context.sudo().query.MedSpaTransaction.findOne({
+    where: { id: transactionId },
+    query: `id practice { id } appointment { transaction { id } payment { id status currencyCode tax totalAmount practice { id } } }`
+  });
+  const payment = transaction?.appointment?.payment;
+  if (!transaction || transaction.appointment?.transaction?.id !== transaction.id || !payment || !transaction.practice?.id || payment.practice?.id !== transaction.practice.id || !["completed", "partially_refunded", "refunded"].includes(payment.status) || !Number.isSafeInteger(payment[field2]) || payment[field2] < 0 || !/^[A-Z]{3}$/.test(payment.currencyCode || "")) return "Recorded amount unavailable";
+  return payment.currencyCode === "USD" ? formatCurrency4(payment[field2]) : `${payment[field2]} ${payment.currencyCode} minor units`;
+}
 var MedSpaTransaction = (0, import_core46.list)({
   access: {
     operation: {
@@ -3008,26 +3167,8 @@ var MedSpaTransaction = (0, import_core46.list)({
         tax: (0, import_fields47.virtual)({
           field: import_core46.graphql.field({
             type: import_core46.graphql.String,
-            async resolve(item, args, context) {
-              const transactionId = item.id;
-              const transaction = await context.sudo().query.MedSpaTransaction.findOne({
-                where: { id: transactionId },
-                query: `
-                  lineItems {
-                    quantity
-                    unitPrice
-                    discount
-                  }
-                `
-              });
-              if (!transaction?.lineItems?.length) return "$0.00";
-              let subtotal = 0;
-              for (const lineItem of transaction.lineItems) {
-                const lineTotal = lineItem.unitPrice * lineItem.quantity - (lineItem.discount || 0);
-                subtotal += lineTotal;
-              }
-              const tax = subtotal * 0.08;
-              return formatCurrency4(tax);
+            resolve(item, _args, context) {
+              return recordedSettlementAmount(context, String(item.id), "tax");
             }
           })
         }),
@@ -3057,28 +3198,8 @@ var MedSpaTransaction = (0, import_core46.list)({
         total: (0, import_fields47.virtual)({
           field: import_core46.graphql.field({
             type: import_core46.graphql.String,
-            async resolve(item, args, context) {
-              const transactionId = item.id;
-              const transaction = await context.sudo().query.MedSpaTransaction.findOne({
-                where: { id: transactionId },
-                query: `
-                  lineItems {
-                    quantity
-                    unitPrice
-                    discount
-                  }
-                  tip
-                `
-              });
-              if (!transaction?.lineItems?.length) return "$0.00";
-              let subtotal = 0;
-              for (const lineItem of transaction.lineItems) {
-                const lineTotal = lineItem.unitPrice * lineItem.quantity - (lineItem.discount || 0);
-                subtotal += lineTotal;
-              }
-              const tax = subtotal * 0.08;
-              const total = subtotal + tax + (transaction.tip || 0);
-              return formatCurrency4(total);
+            resolve(item, _args, context) {
+              return recordedSettlementAmount(context, String(item.id), "totalAmount");
             }
           })
         })
@@ -3091,6 +3212,14 @@ var MedSpaTransaction = (0, import_core46.list)({
 // features/keystone/models/MedSpaTransactionLineItem.ts
 var import_core47 = require("@keystone-6/core");
 var import_fields48 = require("@keystone-6/core/fields");
+
+// features/keystone/commissionAmount.ts
+function commissionMinor(saleAmount, rate) {
+  if (!Number.isSafeInteger(saleAmount) || saleAmount < 0 || !Number.isFinite(rate) || rate < 0 || rate > 1) throw new Error("Commission amount or fractional rate is invalid");
+  return Math.round(saleAmount * rate);
+}
+
+// features/keystone/models/MedSpaTransactionLineItem.ts
 var formatCurrency5 = (amount) => {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -3176,7 +3305,7 @@ var MedSpaTransactionLineItem = (0, import_core47.list)({
     }),
     commissionRate: (0, import_fields48.float)({
       ui: {
-        description: "Commission rate for staff (percentage)"
+        description: "Commission rate for staff (fraction from 0 to 1)"
       }
     }),
     metadata: (0, import_fields48.json)({
@@ -3226,7 +3355,7 @@ var MedSpaTransactionLineItem = (0, import_core47.list)({
             return "$0.00";
           }
           const total = lineItem.unitPrice * lineItem.quantity - (lineItem.discount || 0);
-          const commission = total * (lineItem.commissionRate / 100);
+          const commission = commissionMinor(total, lineItem.commissionRate);
           return formatCurrency5(commission);
         }
       })
@@ -3400,8 +3529,60 @@ var MessageLog = (0, import_core51.list)({
 // features/keystone/models/MessageTemplate.ts
 var import_core52 = require("@keystone-6/core");
 var import_fields53 = require("@keystone-6/core/fields");
+
+// features/keystone/deleteHistoryGuard.ts
+var ref = (model, relation, one, many = `${one}s`, list99 = false) => ({ model, relation, one, many, list: list99 });
+var DELETE_HISTORY = {
+  Service: {
+    instead: "Set the service to Inactive instead of deleting it.",
+    references: [
+      ref("appointment", "services", "appointment", "appointments", true),
+      ref("appointmentLineItem", "service", "appointment line", "appointment lines"),
+      ref("medSpaTransactionLineItem", "service", "sale line", "sale lines"),
+      ref("treatmentSession", "service", "treatment record"),
+      ref("treatmentAdministration", "service", "administration record"),
+      ref("consentRecord", "service", "signed consent"),
+      ref("clinicalOrder", "service", "clinical order"),
+      ref("commission", "service", "commission"),
+      ref("clientPackageUsage", "service", "package redemption"),
+      ref("servicePackage", "services", "package", "packages", true),
+      ref("membership", "includedServices", "membership plan", "membership plans", true)
+    ]
+  },
+  ServiceCategory: {
+    instead: "Move those services to another category first.",
+    references: [ref("service", "category", "service"), ref("serviceCategory", "parent", "subcategory", "subcategories")]
+  },
+  Vendor: {
+    instead: "Turn off Active instead of deleting the vendor.",
+    references: [ref("purchaseOrder", "vendor", "purchase order"), ref("inventoryLot", "vendor", "inventory lot")]
+  },
+  MessageTemplate: {
+    instead: "Turn off Active instead of deleting the template.",
+    references: [ref("messageLog", "template", "sent message")]
+  },
+  PaymentProvider: {
+    instead: "Turn off Installed instead of deleting the provider.",
+    references: [ref("paymentSession", "provider", "payment"), ref("paymentWebhookEvent", "provider", "processor event")]
+  }
+};
+async function deleteHistoryProblem(prisma, listKey, id2) {
+  const rule = DELETE_HISTORY[listKey];
+  if (!rule) return null;
+  const counts = await Promise.all(rule.references.map((r) => prisma[r.model].count({ where: { [r.relation]: r.list ? { some: { id: id2 } } : { id: id2 } } })));
+  const found = rule.references.map((r, i) => counts[i] ? `${counts[i]} ${counts[i] === 1 ? r.one : r.many}` : "").filter(Boolean);
+  return found.length ? `This is used by ${found.join(", ")}. ${rule.instead}` : null;
+}
+function historyDeleteGuard(listKey) {
+  return async ({ item, context, addValidationError }) => {
+    const problem = await deleteHistoryProblem(context.prisma, listKey, String(item.id));
+    if (problem) addValidationError(problem);
+  };
+}
+
+// features/keystone/models/MessageTemplate.ts
 var MessageTemplate = (0, import_core52.list)({
-  hooks: { validateInput: validateTenantInput },
+  hooks: { validateInput: validateTenantInput, validateDelete: historyDeleteGuard("MessageTemplate") },
   access: {
     operation: {
       query: permissions.canManageCommunications,
@@ -3458,37 +3639,10 @@ var MessageTemplate = (0, import_core52.list)({
   }
 });
 
-// features/keystone/models/OutboxEvent.ts
+// features/keystone/models/Payment.ts
 var import_core53 = require("@keystone-6/core");
 var import_fields54 = require("@keystone-6/core/fields");
-var OutboxEvent = (0, import_core53.list)({
-  access: { operation: { query: permissions.canManageIntegrations, create: () => false, update: () => false, delete: () => false }, filter: { query: tenantFilter } },
-  fields: {
-    practice: (0, import_fields54.relationship)({ ref: "Practice" }),
-    eventKey: (0, import_fields54.text)({ validation: { isRequired: true }, isIndexed: "unique" }),
-    topic: (0, import_fields54.text)({ validation: { isRequired: true } }),
-    version: (0, import_fields54.integer)({ defaultValue: 1, validation: { min: 1 } }),
-    aggregateType: (0, import_fields54.text)({ validation: { isRequired: true } }),
-    aggregateId: (0, import_fields54.text)({ validation: { isRequired: true } }),
-    payload: (0, import_fields54.json)(),
-    status: (0, import_fields54.select)({ type: "enum", options: [
-      { label: "Pending", value: "pending" },
-      { label: "Processing", value: "processing" },
-      { label: "Delivered", value: "delivered" },
-      { label: "Dead Letter", value: "dead_letter" }
-    ], defaultValue: "pending", validation: { isRequired: true } }),
-    attempts: (0, import_fields54.integer)({ defaultValue: 0, validation: { min: 0 } }),
-    availableAt: (0, import_fields54.timestamp)({ defaultValue: { kind: "now" } }),
-    deliveredAt: (0, import_fields54.timestamp)(),
-    lastError: (0, import_fields54.text)(),
-    ...trackingFields
-  }
-});
-
-// features/keystone/models/Payment.ts
-var import_core54 = require("@keystone-6/core");
-var import_fields55 = require("@keystone-6/core/fields");
-var Payment = (0, import_core54.list)({
+var Payment = (0, import_core53.list)({
   access: {
     operation: {
       query: () => true,
@@ -3507,43 +3661,43 @@ var Payment = (0, import_core54.list)({
     }
   },
   fields: {
-    practice: (0, import_fields55.relationship)({ ref: "Practice" }),
-    currencyCode: (0, import_fields55.text)({ defaultValue: "USD", validation: { isRequired: true } }),
-    idempotencyKey: (0, import_fields55.text)({ validation: { isRequired: true }, isIndexed: "unique" }),
-    refunds: (0, import_fields55.relationship)({ ref: "Refund.payment", many: true }),
+    practice: (0, import_fields54.relationship)({ ref: "Practice" }),
+    currencyCode: (0, import_fields54.text)({ defaultValue: "USD", validation: { isRequired: true } }),
+    idempotencyKey: (0, import_fields54.text)({ validation: { isRequired: true }, isIndexed: "unique" }),
+    refunds: (0, import_fields54.relationship)({ ref: "Refund.payment", many: true }),
     // Core amount fields
-    subtotal: (0, import_fields55.integer)({
+    subtotal: (0, import_fields54.integer)({
       validation: { isRequired: true },
       ui: {
         description: "Service charges before tax and tip"
       }
     }),
-    tax: (0, import_fields55.integer)({
+    tax: (0, import_fields54.integer)({
       defaultValue: 0,
       ui: {
         description: "Tax amount"
       }
     }),
-    tip: (0, import_fields55.integer)({
+    tip: (0, import_fields54.integer)({
       defaultValue: 0,
       ui: {
         description: "Tip amount"
       }
     }),
-    discount: (0, import_fields55.integer)({
+    discount: (0, import_fields54.integer)({
       defaultValue: 0,
       ui: {
         description: "Any discount applied"
       }
     }),
-    totalAmount: (0, import_fields55.integer)({
+    totalAmount: (0, import_fields54.integer)({
       validation: { isRequired: true },
       ui: {
         description: "Total amount charged (subtotal + tax + tip - discount)"
       }
     }),
     // Payment method and processing
-    paymentMethod: (0, import_fields55.select)({
+    paymentMethod: (0, import_fields54.select)({
       type: "string",
       options: [
         { label: "Credit Card", value: "credit_card" },
@@ -3556,7 +3710,7 @@ var Payment = (0, import_core54.list)({
       defaultValue: "credit_card",
       validation: { isRequired: true }
     }),
-    status: (0, import_fields55.select)({
+    status: (0, import_fields54.select)({
       type: "string",
       options: [
         { label: "Pending", value: "pending" },
@@ -3570,43 +3724,43 @@ var Payment = (0, import_core54.list)({
       validation: { isRequired: true }
     }),
     // Stripe integration fields
-    stripePaymentIntentId: (0, import_fields55.text)({
+    stripePaymentIntentId: (0, import_fields54.text)({
       access: { read: activeListPermissions.canManageFinance, create: () => false, update: () => false },
       ui: {
         description: "Stripe Payment Intent ID for card payments"
       }
     }),
-    stripeChargeId: (0, import_fields55.text)({
+    stripeChargeId: (0, import_fields54.text)({
       access: { read: activeListPermissions.canManageFinance, create: () => false, update: () => false },
       ui: {
         description: "Stripe Charge ID for completed payments"
       }
     }),
-    stripeRefundId: (0, import_fields55.text)({
+    stripeRefundId: (0, import_fields54.text)({
       access: { read: activeListPermissions.canManageFinance, create: () => false, update: () => false },
       ui: {
         description: "Stripe Refund ID if payment was refunded"
       }
     }),
     // Card details (last 4 digits, brand)
-    cardBrand: (0, import_fields55.text)({
+    cardBrand: (0, import_fields54.text)({
       ui: {
         description: "Card brand (Visa, Mastercard, etc.)"
       }
     }),
-    cardLast4: (0, import_fields55.text)({
+    cardLast4: (0, import_fields54.text)({
       ui: {
         description: "Last 4 digits of card"
       }
     }),
     // Refund tracking
-    refundedAmount: (0, import_fields55.integer)({
+    refundedAmount: (0, import_fields54.integer)({
       defaultValue: 0,
       ui: {
         description: "Amount refunded"
       }
     }),
-    refundReason: (0, import_fields55.text)({
+    refundReason: (0, import_fields54.text)({
       access: { read: activeListPermissions.canManageFinance, create: () => false, update: () => false },
       ui: {
         displayMode: "textarea",
@@ -3614,7 +3768,7 @@ var Payment = (0, import_core54.list)({
       }
     }),
     // Tip distribution
-    tipDistributed: (0, import_fields55.checkbox)({
+    tipDistributed: (0, import_fields54.checkbox)({
       access: { read: activeListPermissions.canManageFinance, create: () => false, update: () => false },
       defaultValue: false,
       ui: {
@@ -3622,18 +3776,18 @@ var Payment = (0, import_core54.list)({
       }
     }),
     // Timestamps
-    processedAt: (0, import_fields55.timestamp)({
+    processedAt: (0, import_fields54.timestamp)({
       ui: {
         description: "When the payment was successfully processed"
       }
     }),
-    refundedAt: (0, import_fields55.timestamp)({
+    refundedAt: (0, import_fields54.timestamp)({
       ui: {
         description: "When the refund was processed"
       }
     }),
     // Notes
-    notes: (0, import_fields55.text)({
+    notes: (0, import_fields54.text)({
       access: { read: activeListPermissions.canManageFinance, create: () => false, update: () => false },
       ui: {
         displayMode: "textarea",
@@ -3641,13 +3795,13 @@ var Payment = (0, import_core54.list)({
       }
     }),
     // Relationships
-    appointment: (0, import_fields55.relationship)({
+    appointment: (0, import_fields54.relationship)({
       ref: "Appointment.payment",
       ui: {
         displayMode: "select"
       }
     }),
-    session: (0, import_fields55.relationship)({
+    session: (0, import_fields54.relationship)({
       ref: "PaymentSession.payment",
       ui: {
         displayMode: "select",
@@ -3655,7 +3809,7 @@ var Payment = (0, import_core54.list)({
       }
     }),
     // Processed by (staff member who processed the payment)
-    processedBy: (0, import_fields55.relationship)({
+    processedBy: (0, import_fields54.relationship)({
       access: { read: activeListPermissions.canManageFinance, create: () => false, update: () => false },
       ref: "User",
       ui: {
@@ -3664,13 +3818,13 @@ var Payment = (0, import_core54.list)({
       }
     }),
     // Receipt tracking
-    receiptSent: (0, import_fields55.checkbox)({
+    receiptSent: (0, import_fields54.checkbox)({
       defaultValue: false,
       ui: {
         description: "Whether receipt email was sent to client"
       }
     }),
-    receiptEmail: (0, import_fields55.text)({
+    receiptEmail: (0, import_fields54.text)({
       ui: {
         description: "Email address receipt was sent to"
       }
@@ -3680,14 +3834,387 @@ var Payment = (0, import_core54.list)({
 });
 
 // features/keystone/models/PaymentProvider.ts
-var import_core55 = require("@keystone-6/core");
-var import_fields56 = require("@keystone-6/core/fields");
-var PaymentProvider = (0, import_core55.list)({
-  hooks: { validateInput: async (args) => {
+var import_core54 = require("@keystone-6/core");
+var import_fields55 = require("@keystone-6/core/fields");
+
+// features/integrations/payment/index.ts
+init_types();
+var adapters = {
+  manual: async () => (await Promise.resolve().then(() => (init_manual(), manual_exports))).manualPaymentAdapter,
+  stripe: async () => (await Promise.resolve().then(() => (init_stripe(), stripe_exports))).stripePaymentAdapter
+};
+async function getPaymentAdapter(provider) {
+  const loader = adapters[provider.adapter];
+  if (!loader) throw new Error(`Unsupported payment adapter: ${provider.adapter}`);
+  return loader();
+}
+
+// features/keystone/utils/paymentProviderAdapter.ts
+async function createProviderPaymentSession(input) {
+  return (await getPaymentAdapter(input.provider)).createSession(input);
+}
+async function confirmProviderPayment(input) {
+  return (await getPaymentAdapter(input.provider)).confirm(input);
+}
+async function refundProviderPayment(input) {
+  return (await getPaymentAdapter(input.provider)).refund(input);
+}
+async function createProviderCheckout(input) {
+  const adapter = await getPaymentAdapter(input.provider);
+  if (!adapter.createCheckout) throw new Error("Payment provider does not support hosted checkout");
+  return adapter.createCheckout(input);
+}
+async function getProviderCheckoutStatus(input) {
+  const adapter = await getPaymentAdapter(input.provider);
+  if (!adapter.getCheckoutStatus) throw new Error("Payment provider does not support hosted checkout");
+  return adapter.getCheckoutStatus(input);
+}
+function paymentProviderFromRecord(record) {
+  if (record.adapter !== "manual" && record.adapter !== "stripe") {
+    throw new Error(`Unsupported payment adapter: ${record.adapter}`);
+  }
+  return {
+    code: record.code,
+    adapter: record.adapter,
+    config: record.config && typeof record.config === "object" ? record.config : {}
+  };
+}
+
+// features/keystone/payment-lifecycle.ts
+var transitions = {
+  pending: ["requires_action", "authorized", "completed", "failed", "cancelled"],
+  requires_action: ["authorized", "completed", "failed", "cancelled"],
+  authorized: ["completed", "failed", "cancelled"],
+  completed: ["partially_refunded", "refunded"],
+  partially_refunded: ["partially_refunded", "refunded"],
+  failed: [],
+  cancelled: [],
+  refunded: []
+};
+function canTransitionPayment(from, to) {
+  return from === to || transitions[from].includes(to);
+}
+function assertPaymentTransition(from, to) {
+  if (!canTransitionPayment(from, to)) {
+    throw new Error(`Invalid payment transition: ${from} -> ${to}`);
+  }
+}
+function paymentRecordStatus(status) {
+  if (status === "requires_action" || status === "authorized") return "processing";
+  if (status === "partially_refunded") return "partially_refunded";
+  if (status === "refunded") return "refunded";
+  if (status === "completed") return "completed";
+  if (status === "failed" || status === "cancelled") return "failed";
+  return "pending";
+}
+
+// features/keystone/refundOutboxCore.ts
+init_types();
+var MAX_REFUND_ATTEMPTS = 8;
+var SUBMITTED_RECHECK_MS = 5 * 6e4;
+function refundIdempotencyKey(refundId) {
+  return `refund:${refundId}`;
+}
+function refundBackoffMs(attemptCount) {
+  return Math.min(60 * 6e4, 3e4 * 2 ** Math.max(0, attemptCount));
+}
+var terminal = (status) => status === "succeeded" || status === "failed";
+async function park(deps, attempt, reason) {
+  await deps.store.patch(attempt.id, { status: "unknown", needsReview: true, lastError: reason.slice(0, 500), nextAttemptAt: null });
+  return "needs_review";
+}
+async function applyProviderRefund(deps, attempt, found) {
+  const now2 = (deps.now ?? (() => /* @__PURE__ */ new Date()))();
+  if (found.amount !== attempt.amountMinor || found.currency.toLowerCase() !== attempt.currencyCode.toLowerCase()) {
+    return park(deps, attempt, `Provider refund ${found.providerRefundId} is ${found.amount} ${found.currency}; expected ${attempt.amountMinor} ${attempt.currencyCode}`);
+  }
+  if (attempt.providerRefundId && attempt.providerRefundId !== found.providerRefundId) {
+    return park(deps, attempt, `Provider returned refund ${found.providerRefundId}, attempt already holds ${attempt.providerRefundId}`);
+  }
+  if (attempt.status === "succeeded") {
+    if (found.status === "failed" || found.status === "canceled") return park(deps, attempt, `Provider reports refund ${found.providerRefundId} ${found.status} after it was recorded as succeeded`);
+    return "skipped";
+  }
+  if (attempt.status === "failed") {
+    if (found.status === "succeeded" || found.status === "pending") return park(deps, attempt, `Provider reports refund ${found.providerRefundId} ${found.status} after it was recorded as failed`);
+    return "skipped";
+  }
+  if (found.status === "succeeded") {
+    await deps.store.settleSucceeded(attempt, found.providerRefundId);
+    return "succeeded";
+  }
+  if (found.status === "failed" || found.status === "canceled") {
+    await deps.store.settleFailed(attempt, found.failureReason || `Provider ${found.status}`);
+    return "failed";
+  }
+  await deps.store.patch(attempt.id, {
+    status: "submitted",
+    providerRefundId: found.providerRefundId,
+    lastError: "",
+    nextAttemptAt: new Date(now2.getTime() + SUBMITTED_RECHECK_MS)
+  });
+  return "submitted";
+}
+async function advanceRefundAttempt(deps, attempt) {
+  const now2 = (deps.now ?? (() => /* @__PURE__ */ new Date()))();
+  if (terminal(attempt.status) || attempt.needsReview) return "skipped";
+  if (attempt.attemptCount >= MAX_REFUND_ATTEMPTS) {
+    return park(deps, attempt, "Too many attempts without a confirmed provider outcome");
+  }
+  const backoff = (count2) => new Date(now2.getTime() + refundBackoffMs(count2));
+  const mustRequery = attempt.submitStartedAt !== null || attempt.status !== "pending" || Boolean(attempt.providerRefundId);
+  if (mustRequery) {
+    if (!deps.adapter.getRefundStatus) return park(deps, attempt, "Provider cannot report refund status, so a resubmit could double-refund");
+    let found;
+    try {
+      found = await deps.adapter.getRefundStatus({
+        provider: deps.provider,
+        providerReference: attempt.providerReference,
+        providerRefundId: attempt.providerRefundId || null,
+        attemptId: attempt.id
+      });
+    } catch (error) {
+      await deps.store.patch(attempt.id, { status: "unknown", lastError: describe(error), nextAttemptAt: backoff(attempt.attemptCount) });
+      return "unknown";
+    }
+    if (found) return applyProviderRefund(deps, attempt, found);
+  }
+  const attemptCount = attempt.attemptCount + 1;
+  await deps.store.patch(attempt.id, { submitStartedAt: now2, attemptCount });
+  attempt = { ...attempt, submitStartedAt: now2, attemptCount };
+  let result2;
+  try {
+    result2 = await deps.adapter.refund({
+      provider: deps.provider,
+      providerReference: attempt.providerReference,
+      amount: attempt.amountMinor,
+      currency: attempt.currencyCode,
+      idempotencyKey: refundIdempotencyKey(attempt.refundId),
+      metadata: { refundAttemptId: attempt.id, refundId: attempt.refundId }
+    });
+  } catch (error) {
+    if (error instanceof ProviderRejectedError || error?.definitive === true) {
+      await deps.store.settleFailed(attempt, describe(error));
+      return "failed";
+    }
+    await deps.store.patch(attempt.id, { status: "unknown", lastError: describe(error), nextAttemptAt: backoff(attemptCount) });
+    return "unknown";
+  }
+  const data = result2.data || {};
+  const providerRefundId = typeof data.refundId === "string" ? data.refundId : "";
+  if (!providerRefundId) return park(deps, attempt, "Provider accepted the refund without returning a refund id");
+  return applyProviderRefund(deps, attempt, {
+    providerRefundId,
+    status: typeof data.status === "string" ? normalizeStatus(data.status) : "pending",
+    amount: Number(result2.amount),
+    currency: String(result2.currency ?? attempt.currencyCode),
+    failureReason: typeof data.failureReason === "string" ? data.failureReason : null
+  });
+}
+function normalizeStatus(value) {
+  return value === "succeeded" || value === "failed" || value === "canceled" || value === "requires_action" ? value : "pending";
+}
+function describe(error) {
+  return (error instanceof Error ? error.message : String(error)).slice(0, 500);
+}
+
+// features/keystone/refundOutbox.ts
+var REFUND_OUTBOX_PROCESSOR = Object.freeze({
+  registered: true,
+  processor: "processRefundOutbox",
+  reconcilesWebhooks: ["refund.created", "refund.updated", "refund.failed", "charge.refunded"]
+});
+var LEASE_SECONDS = 120;
+var DEFAULT_BATCH = 10;
+var ATTEMPT_QUERY = "id idempotencyKey amountMinor currencyCode status providerReference providerRefundId attemptCount submitStartedAt needsReview refund { id } paymentSession { id } practice { id }";
+function toRecord(row2) {
+  return {
+    id: row2.id,
+    refundId: row2.refund?.id ?? "",
+    amountMinor: Number(row2.amountMinor),
+    currencyCode: String(row2.currencyCode || ""),
+    status: row2.status,
+    providerReference: row2.providerReference || "",
+    providerRefundId: row2.providerRefundId || "",
+    attemptCount: Number(row2.attemptCount || 0),
+    submitStartedAt: row2.submitStartedAt ? new Date(row2.submitStartedAt) : null,
+    needsReview: row2.needsReview === true
+  };
+}
+function refundableMinor(totalMinor, refunds) {
+  const reserved = refunds.filter((r) => r.status === "pending" || r.status === "completed").reduce((sum, r) => sum + Number(r.amountMinor || 0), 0);
+  return Math.max(0, totalMinor - reserved);
+}
+async function enqueueRefund(sudo, input) {
+  const existing = (await sudo.query.Refund.findMany({
+    where: { practice: { id: { equals: input.practiceId } }, idempotencyKey: { equals: input.idempotencyKey } },
+    take: 1,
+    query: "id status payment { id } attempt { id }"
+  }))[0];
+  if (existing) {
+    if (existing.payment?.id !== input.paymentId) throw new Error("Idempotency key was already used for another operation");
+    return { refundId: existing.id, attemptId: existing.attempt?.id ?? null, replayed: true };
+  }
+  const refund = await sudo.query.Refund.createOne({
+    data: {
+      practice: { connect: { id: input.practiceId } },
+      payment: { connect: { id: input.paymentId } },
+      amountMinor: input.amountMinor,
+      currencyCode: input.currencyCode.toUpperCase(),
+      reason: input.reason,
+      idempotencyKey: input.idempotencyKey,
+      providerReference: input.providerReference,
+      status: "pending",
+      data: { method: "processor", actorId: input.actorId }
+    },
+    query: "id"
+  });
+  const attempt = await sudo.query.RefundAttempt.createOne({
+    data: {
+      practice: { connect: { id: input.practiceId } },
+      paymentSession: { connect: { id: input.sessionId } },
+      idempotencyKey: refundIdempotencyKey(refund.id),
+      amountMinor: input.amountMinor,
+      currencyCode: input.currencyCode.toLowerCase(),
+      status: "pending",
+      providerReference: input.providerReference
+    },
+    query: "id"
+  });
+  await sudo.query.Refund.updateOne({ where: { id: refund.id }, data: { attempt: { connect: { id: attempt.id } } }, query: "id" });
+  return { refundId: refund.id, attemptId: attempt.id, replayed: false };
+}
+async function paymentLifecycleTransaction(context, lockKey, work) {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      return await context.transaction(async (tx) => {
+        await tx.prisma.$executeRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))", "medspa-payment-lifecycle", lockKey);
+        return work(tx.sudo());
+      }, { maxWait: 5e3, timeout: 3e4, isolationLevel: "Serializable" });
+    } catch (error) {
+      const message2 = error instanceof Error ? error.message : String(error);
+      const retryable = error?.code === "P2034" || error?.extensions?.prisma?.code === "P2034" || /write conflict|deadlock|please retry your transaction/i.test(message2);
+      if (!retryable || attempt === 3) throw error;
+    }
+  }
+  throw new Error("Refund transaction retry exhausted");
+}
+function createStore(context) {
+  const sudoRoot = context.sudo();
+  return {
+    async patch(attemptId, patch) {
+      await sudoRoot.query.RefundAttempt.updateOne({ where: { id: attemptId }, data: patch, query: "id" });
+    },
+    async settleSucceeded(attempt, providerRefundId) {
+      const row2 = await sudoRoot.query.RefundAttempt.findOne({ where: { id: attempt.id }, query: "paymentSession { id }" });
+      const sessionId = row2?.paymentSession?.id;
+      if (!sessionId) throw new Error("Refund attempt has no payment session");
+      await paymentLifecycleTransaction(context, `session:${sessionId}`, async (sudo) => {
+        const current = await sudo.query.RefundAttempt.findOne({ where: { id: attempt.id }, query: "status" });
+        if (current?.status === "succeeded") return;
+        const session = await sudo.query.PaymentSession.findOne({
+          where: { id: sessionId },
+          query: "id status amount data payment { id refundedAmount totalAmount } appointment { id }"
+        });
+        if (!session?.payment) throw new Error("Payment session not found");
+        const now2 = (/* @__PURE__ */ new Date()).toISOString();
+        const cumulative = Number(session.payment.refundedAmount || 0) + attempt.amountMinor;
+        if (cumulative > Number(session.amount)) throw new Error("Refund exceeds the captured payment");
+        const target = cumulative < Number(session.amount) ? "partially_refunded" : "refunded";
+        assertPaymentTransition(session.status, target);
+        await sudo.query.RefundAttempt.updateOne({ where: { id: attempt.id }, data: { status: "succeeded", providerRefundId, completedAt: now2, lastError: "", nextAttemptAt: null, needsReview: false }, query: "id" });
+        await sudo.query.Refund.updateOne({ where: { id: attempt.refundId }, data: { status: "completed", processedAt: now2, providerReference: providerRefundId }, query: "id" });
+        const data = session.data && typeof session.data === "object" ? session.data : {};
+        await sudo.query.PaymentSession.updateOne({ where: { id: session.id }, data: { status: target, refundedAt: now2, data: { ...data, lastRefundId: providerRefundId } }, query: "id" });
+        const refund = await sudo.query.Refund.findOne({ where: { id: attempt.refundId }, query: "reason" });
+        await sudo.query.Payment.updateOne({ where: { id: session.payment.id }, data: { status: paymentRecordStatus(target), refundedAmount: cumulative, refundReason: refund?.reason || "", refundedAt: now2 }, query: "id" });
+        if (data.purpose === "appointment_deposit" && target === "refunded" && session.appointment?.id) {
+          await sudo.query.Appointment.updateOne({ where: { id: session.appointment.id }, data: { depositPaid: false }, query: "id" });
+        }
+      });
+    },
+    async settleFailed(attempt, reason) {
+      await paymentLifecycleTransaction(context, `refund:${attempt.refundId}`, async (sudo) => {
+        const current = await sudo.query.RefundAttempt.findOne({ where: { id: attempt.id }, query: "status" });
+        if (current?.status === "failed" || current?.status === "succeeded") return;
+        const now2 = (/* @__PURE__ */ new Date()).toISOString();
+        await sudo.query.RefundAttempt.updateOne({ where: { id: attempt.id }, data: { status: "failed", completedAt: now2, lastError: reason.slice(0, 500), nextAttemptAt: null }, query: "id" });
+        await sudo.query.Refund.updateOne({ where: { id: attempt.refundId }, data: { status: "failed", processedAt: now2 }, query: "id" });
+      });
+    }
+  };
+}
+async function loadProvider(sudo, sessionId) {
+  const session = await sudo.query.PaymentSession.findOne({ where: { id: sessionId }, query: "provider { id code adapter config isInstalled }" });
+  const provider = session?.provider;
+  if (!provider) throw new Error("Payment provider is unavailable");
+  return paymentProviderFromRecord(provider);
+}
+async function claimAttempts(context, limit, attemptIds) {
+  const rows = await context.sudo().prisma.$queryRawUnsafe(
+    `UPDATE "RefundAttempt" SET "leaseUntil" = now() + ($1 || ' seconds')::interval
+     WHERE id IN (
+       SELECT id FROM "RefundAttempt"
+       WHERE status IN ('pending','submitted','unknown') AND "needsReview" = false
+         AND "nextAttemptAt" IS NOT NULL AND "nextAttemptAt" <= now()
+         AND ("leaseUntil" IS NULL OR "leaseUntil" < now())
+         AND ($3::text[] IS NULL OR id = ANY($3::text[]))
+       ORDER BY "nextAttemptAt" ASC
+       LIMIT $2
+       FOR UPDATE SKIP LOCKED
+     ) RETURNING id`,
+    String(LEASE_SECONDS),
+    limit,
+    attemptIds ?? null
+  );
+  return rows.map((row2) => row2.id);
+}
+async function processRefundOutbox(context, options = {}) {
+  const ids = await claimAttempts(context, options.limit ?? DEFAULT_BATCH, options.attemptIds);
+  const results = {};
+  const sudo = context.sudo();
+  const store = createStore(context);
+  for (const id2 of ids) {
+    try {
+      const row2 = await sudo.query.RefundAttempt.findOne({ where: { id: id2 }, query: ATTEMPT_QUERY });
+      if (!row2?.paymentSession?.id || !row2.refund?.id) {
+        results[id2] = "skipped";
+        continue;
+      }
+      const provider = await loadProvider(sudo, row2.paymentSession.id);
+      const adapter = await getPaymentAdapter(provider);
+      results[id2] = await advanceRefundAttempt({ adapter, provider, store }, toRecord(row2));
+    } catch (error) {
+      console.error("Refund outbox attempt failed", id2, error instanceof Error ? error.message : error);
+      results[id2] = "error";
+      await sudo.query.RefundAttempt.updateOne({ where: { id: id2 }, data: { lastError: (error instanceof Error ? error.message : String(error)).slice(0, 500), nextAttemptAt: new Date(Date.now() + 6e4).toISOString() }, query: "id" }).catch(() => void 0);
+    } finally {
+      await sudo.query.RefundAttempt.updateOne({ where: { id: id2 }, data: { leaseUntil: null }, query: "id" }).catch(() => void 0);
+    }
+  }
+  return { claimed: ids.length, results };
+}
+async function retryPracticeRefunds(context, practiceId4) {
+  await context.sudo().prisma.$executeRawUnsafe(
+    `UPDATE "RefundAttempt" SET "nextAttemptAt" = now()
+     WHERE "practice" = $1 AND status IN ('pending','submitted','unknown') AND "needsReview" = false AND ("leaseUntil" IS NULL OR "leaseUntil" < now())`,
+    practiceId4
+  );
+  const open = await context.sudo().query.RefundAttempt.findMany({
+    where: { practice: { id: { equals: practiceId4 } }, status: { in: ["pending", "submitted", "unknown"] }, needsReview: { equals: false } },
+    take: 50,
+    query: "id"
+  });
+  return processRefundOutbox(context, { limit: 50, attemptIds: open.map((row2) => row2.id) });
+}
+
+// features/keystone/models/PaymentProvider.ts
+var PaymentProvider = (0, import_core54.list)({
+  hooks: { validateDelete: historyDeleteGuard("PaymentProvider"), validateInput: async (args) => {
     await validateTenantInput(args);
     const adapter = args.resolvedData.adapter ?? args.item?.adapter;
     const installed = args.resolvedData.isInstalled ?? args.item?.isInstalled;
-    if (adapter === "stripe" && installed === true) args.addValidationError("Stripe is not launch-enabled until durable refund outbox reconciliation is implemented");
+    if (adapter === "stripe" && installed === true && REFUND_OUTBOX_PROCESSOR.registered !== true) args.addValidationError("Stripe cannot be installed until the durable refund outbox processor is registered");
   } },
   access: {
     operation: {
@@ -3704,9 +4231,9 @@ var PaymentProvider = (0, import_core55.list)({
     }
   },
   fields: {
-    practice: (0, import_fields56.relationship)({ ref: "Practice" }),
-    name: (0, import_fields56.text)({ validation: { isRequired: true } }),
-    code: (0, import_fields56.text)({
+    practice: (0, import_fields55.relationship)({ ref: "Practice" }),
+    name: (0, import_fields55.text)({ validation: { isRequired: true } }),
+    code: (0, import_fields55.text)({
       isIndexed: "unique",
       validation: {
         isRequired: true,
@@ -3716,7 +4243,7 @@ var PaymentProvider = (0, import_core55.list)({
         }
       }
     }),
-    adapter: (0, import_fields56.select)({
+    adapter: (0, import_fields55.select)({
       type: "enum",
       validation: { isRequired: true },
       options: [
@@ -3724,24 +4251,24 @@ var PaymentProvider = (0, import_core55.list)({
         { label: "Stripe", value: "stripe" }
       ]
     }),
-    isInstalled: (0, import_fields56.checkbox)({ defaultValue: false }),
-    isDefault: (0, import_fields56.checkbox)({ defaultValue: false }),
-    config: (0, import_fields56.json)({
+    isInstalled: (0, import_fields55.checkbox)({ defaultValue: false }),
+    isDefault: (0, import_fields55.checkbox)({ defaultValue: false }),
+    config: (0, import_fields55.json)({
       defaultValue: {},
       ui: {
         description: "Non-secret provider configuration only. API keys and webhook secrets are read from environment variables by the adapter."
       }
     }),
-    sessions: (0, import_fields56.relationship)({ ref: "PaymentSession.provider", many: true }),
-    webhookEvents: (0, import_fields56.relationship)({ ref: "PaymentWebhookEvent.provider", many: true }),
+    sessions: (0, import_fields55.relationship)({ ref: "PaymentSession.provider", many: true }),
+    webhookEvents: (0, import_fields55.relationship)({ ref: "PaymentWebhookEvent.provider", many: true }),
     ...trackingFields
   }
 });
 
 // features/keystone/models/PaymentSession.ts
-var import_core56 = require("@keystone-6/core");
-var import_fields57 = require("@keystone-6/core/fields");
-var PaymentSession = (0, import_core56.list)({
+var import_core55 = require("@keystone-6/core");
+var import_fields56 = require("@keystone-6/core/fields");
+var PaymentSession = (0, import_core55.list)({
   access: {
     operation: {
       query: permissions.canManageFinance,
@@ -3757,14 +4284,15 @@ var PaymentSession = (0, import_core56.list)({
     }
   },
   fields: {
-    practice: (0, import_fields57.relationship)({ ref: "Practice" }),
-    appointment: (0, import_fields57.relationship)({ ref: "Appointment.paymentSessions" }),
-    provider: (0, import_fields57.relationship)({ ref: "PaymentProvider.sessions" }),
-    payment: (0, import_fields57.relationship)({ ref: "Payment.session" }),
-    idempotencyKey: (0, import_fields57.text)({ isIndexed: "unique", validation: { isRequired: true } }),
-    amount: (0, import_fields57.integer)({ validation: { isRequired: true, min: 0 } }),
-    currency: (0, import_fields57.text)({ defaultValue: "usd", validation: { isRequired: true } }),
-    status: (0, import_fields57.select)({
+    practice: (0, import_fields56.relationship)({ ref: "Practice" }),
+    appointment: (0, import_fields56.relationship)({ ref: "Appointment.paymentSessions" }),
+    provider: (0, import_fields56.relationship)({ ref: "PaymentProvider.sessions" }),
+    payment: (0, import_fields56.relationship)({ ref: "Payment.session" }),
+    refundAttempts: (0, import_fields56.relationship)({ ref: "RefundAttempt.paymentSession", many: true }),
+    idempotencyKey: (0, import_fields56.text)({ isIndexed: "unique", validation: { isRequired: true } }),
+    amount: (0, import_fields56.integer)({ validation: { isRequired: true, min: 0 } }),
+    currency: (0, import_fields56.text)({ defaultValue: "usd", validation: { isRequired: true } }),
+    status: (0, import_fields56.select)({
       type: "enum",
       defaultValue: "pending",
       validation: { isRequired: true },
@@ -3779,20 +4307,20 @@ var PaymentSession = (0, import_core56.list)({
         { label: "Refunded", value: "refunded" }
       ]
     }),
-    providerReference: (0, import_fields57.text)({ isIndexed: true }),
-    data: (0, import_fields57.json)({ defaultValue: {} }),
-    authorizedAt: (0, import_fields57.timestamp)(),
-    completedAt: (0, import_fields57.timestamp)(),
-    failedAt: (0, import_fields57.timestamp)(),
-    refundedAt: (0, import_fields57.timestamp)(),
+    providerReference: (0, import_fields56.text)({ isIndexed: true }),
+    data: (0, import_fields56.json)({ defaultValue: {} }),
+    authorizedAt: (0, import_fields56.timestamp)(),
+    completedAt: (0, import_fields56.timestamp)(),
+    failedAt: (0, import_fields56.timestamp)(),
+    refundedAt: (0, import_fields56.timestamp)(),
     ...trackingFields
   }
 });
 
 // features/keystone/models/PaymentWebhookEvent.ts
-var import_core57 = require("@keystone-6/core");
-var import_fields58 = require("@keystone-6/core/fields");
-var PaymentWebhookEvent = (0, import_core57.list)({
+var import_core56 = require("@keystone-6/core");
+var import_fields57 = require("@keystone-6/core/fields");
+var PaymentWebhookEvent = (0, import_core56.list)({
   access: {
     operation: {
       query: permissions.canManageIntegrations,
@@ -3806,14 +4334,14 @@ var PaymentWebhookEvent = (0, import_core57.list)({
     listView: { initialColumns: ["provider", "eventId", "type", "status", "processedAt"] }
   },
   fields: {
-    practice: (0, import_fields58.relationship)({ ref: "Practice" }),
-    provider: (0, import_fields58.relationship)({ ref: "PaymentProvider.webhookEvents" }),
-    replayKey: (0, import_fields58.text)({ isIndexed: "unique", validation: { isRequired: true } }),
-    eventId: (0, import_fields58.text)({ validation: { isRequired: true } }),
-    type: (0, import_fields58.text)({ validation: { isRequired: true } }),
-    providerReference: (0, import_fields58.text)({ isIndexed: true }),
-    payloadHash: (0, import_fields58.text)({ validation: { isRequired: true } }),
-    status: (0, import_fields58.select)({
+    practice: (0, import_fields57.relationship)({ ref: "Practice" }),
+    provider: (0, import_fields57.relationship)({ ref: "PaymentProvider.webhookEvents" }),
+    replayKey: (0, import_fields57.text)({ isIndexed: "unique", validation: { isRequired: true } }),
+    eventId: (0, import_fields57.text)({ validation: { isRequired: true } }),
+    type: (0, import_fields57.text)({ validation: { isRequired: true } }),
+    providerReference: (0, import_fields57.text)({ isIndexed: true }),
+    payloadHash: (0, import_fields57.text)({ validation: { isRequired: true } }),
+    status: (0, import_fields57.select)({
       type: "enum",
       defaultValue: "processed",
       validation: { isRequired: true },
@@ -3822,67 +4350,67 @@ var PaymentWebhookEvent = (0, import_core57.list)({
         { label: "Ignored", value: "ignored" }
       ]
     }),
-    data: (0, import_fields58.json)({ defaultValue: {} }),
-    processedAt: (0, import_fields58.timestamp)({ defaultValue: { kind: "now" } }),
+    data: (0, import_fields57.json)({ defaultValue: {} }),
+    processedAt: (0, import_fields57.timestamp)({ defaultValue: { kind: "now" } }),
     ...trackingFields
   }
 });
 
 // features/keystone/models/PatientRightsAction.ts
-var import_core58 = require("@keystone-6/core");
-var import_fields59 = require("@keystone-6/core/fields");
-var PatientRightsAction = (0, import_core58.list)({
+var import_core57 = require("@keystone-6/core");
+var import_fields58 = require("@keystone-6/core/fields");
+var PatientRightsAction = (0, import_core57.list)({
   access: { operation: { query: permissions.canManageSensitiveRecords, create: () => false, update: () => false, delete: () => false }, filter: { query: tenantFilter } },
-  fields: { practice: (0, import_fields59.relationship)({ ref: "Practice" }), request: (0, import_fields59.relationship)({ ref: "PatientRightsRequest.actionEntries" }), actor: (0, import_fields59.relationship)({ ref: "User" }), action: (0, import_fields59.select)({ type: "enum", options: ["receive", "verify_identity", "assign", "collect_records", "approve", "partial", "deny_with_basis", "deliver", "close"].map((value) => ({ label: value, value })), validation: { isRequired: true } }), reason: (0, import_fields59.text)({ validation: { isRequired: true } }), evidence: (0, import_fields59.json)(), evidenceHash: (0, import_fields59.text)({ validation: { isRequired: true } }), occurredAt: (0, import_fields59.timestamp)({ validation: { isRequired: true } }), idempotencyKey: (0, import_fields59.text)({ validation: { isRequired: true }, isIndexed: "unique" }), ...trackingFields }
+  fields: { practice: (0, import_fields58.relationship)({ ref: "Practice" }), request: (0, import_fields58.relationship)({ ref: "PatientRightsRequest.actionEntries" }), actor: (0, import_fields58.relationship)({ ref: "User" }), action: (0, import_fields58.select)({ type: "enum", options: ["receive", "verify_identity", "assign", "collect_records", "approve", "partial", "deny_with_basis", "deliver", "close"].map((value) => ({ label: value, value })), validation: { isRequired: true } }), reason: (0, import_fields58.text)({ validation: { isRequired: true } }), evidence: (0, import_fields58.json)(), evidenceHash: (0, import_fields58.text)({ validation: { isRequired: true } }), occurredAt: (0, import_fields58.timestamp)({ validation: { isRequired: true } }), idempotencyKey: (0, import_fields58.text)({ validation: { isRequired: true }, isIndexed: "unique" }), ...trackingFields }
 });
 
 // features/keystone/models/PatientRightsRequest.ts
-var import_core59 = require("@keystone-6/core");
-var import_fields60 = require("@keystone-6/core/fields");
-var PatientRightsRequest = (0, import_core59.list)({
+var import_core58 = require("@keystone-6/core");
+var import_fields59 = require("@keystone-6/core/fields");
+var PatientRightsRequest = (0, import_core58.list)({
   access: { operation: { query: permissions.canManageSensitiveRecords, create: () => false, update: () => false, delete: () => false }, filter: { query: tenantFilter } },
-  fields: { practice: (0, import_fields60.relationship)({ ref: "Practice" }), client: (0, import_fields60.relationship)({ ref: "Client" }), requestedBy: (0, import_fields60.relationship)({ ref: "User" }), assignedTo: (0, import_fields60.relationship)({ ref: "User" }), type: (0, import_fields60.select)({ type: "enum", options: ["access", "export", "amendment", "restriction", "disclosure_accounting", "representative_update", "deletion_review"].map((value) => ({ label: value, value })), validation: { isRequired: true } }), status: (0, import_fields60.select)({ type: "enum", options: ["received", "identity_review", "in_progress", "fulfilled", "partially_fulfilled", "denied_with_basis", "closed"].map((value) => ({ label: value, value })), defaultValue: "received", validation: { isRequired: true } }), scope: (0, import_fields60.json)(), requestedAt: (0, import_fields60.timestamp)({ validation: { isRequired: true } }), dueAt: (0, import_fields60.timestamp)({ validation: { isRequired: true } }), completedAt: (0, import_fields60.timestamp)(), legalBasis: (0, import_fields60.text)(), responseEvidenceHash: (0, import_fields60.text)(), idempotencyKey: (0, import_fields60.text)({ validation: { isRequired: true }, isIndexed: "unique" }), actionEntries: (0, import_fields60.relationship)({ ref: "PatientRightsAction.request", many: true }), ...trackingFields }
+  fields: { practice: (0, import_fields59.relationship)({ ref: "Practice" }), client: (0, import_fields59.relationship)({ ref: "Client" }), requestedBy: (0, import_fields59.relationship)({ ref: "User" }), assignedTo: (0, import_fields59.relationship)({ ref: "User" }), type: (0, import_fields59.select)({ type: "enum", options: ["access", "export", "amendment", "restriction", "disclosure_accounting", "representative_update", "deletion_review"].map((value) => ({ label: value, value })), validation: { isRequired: true } }), status: (0, import_fields59.select)({ type: "enum", options: ["received", "identity_review", "in_progress", "fulfilled", "partially_fulfilled", "denied_with_basis", "closed"].map((value) => ({ label: value, value })), defaultValue: "received", validation: { isRequired: true } }), scope: (0, import_fields59.json)(), requestedAt: (0, import_fields59.timestamp)({ validation: { isRequired: true } }), dueAt: (0, import_fields59.timestamp)({ validation: { isRequired: true } }), completedAt: (0, import_fields59.timestamp)(), legalBasis: (0, import_fields59.text)(), responseEvidenceHash: (0, import_fields59.text)(), idempotencyKey: (0, import_fields59.text)({ validation: { isRequired: true }, isIndexed: "unique" }), actionEntries: (0, import_fields59.relationship)({ ref: "PatientRightsAction.request", many: true }), ...trackingFields }
 });
 
 // features/keystone/models/PhotoConsent.ts
-var import_core60 = require("@keystone-6/core");
-var import_fields61 = require("@keystone-6/core/fields");
-var PhotoConsent = (0, import_core60.list)({
+var import_core59 = require("@keystone-6/core");
+var import_fields60 = require("@keystone-6/core/fields");
+var PhotoConsent = (0, import_core59.list)({
   access: { operation: { query: permissions.canManageSensitiveRecords, create: () => false, update: () => false, delete: () => false }, filter: { query: tenantFilter } },
   fields: {
-    practice: (0, import_fields61.relationship)({ ref: "Practice" }),
-    client: (0, import_fields61.relationship)({ ref: "Client" }),
-    appointment: (0, import_fields61.relationship)({ ref: "Appointment" }),
-    purpose: (0, import_fields61.select)({ type: "enum", options: ["clinical_care", "measurement", "education", "marketing"].map((value) => ({ label: value, value })), validation: { isRequired: true } }),
-    status: (0, import_fields61.select)({ type: "enum", options: ["granted", "partially_withdrawn", "withdrawn", "expired", "superseded"].map((value) => ({ label: value, value })), defaultValue: "granted", validation: { isRequired: true } }),
-    mediaScope: (0, import_fields61.json)(),
-    audienceScope: (0, import_fields61.json)(),
-    compensationDisclosure: (0, import_fields61.text)(),
-    signerName: (0, import_fields61.text)({ validation: { isRequired: true } }),
-    signerRole: (0, import_fields61.text)({ validation: { isRequired: true } }),
-    signatureEvidenceHash: (0, import_fields61.text)({ validation: { isRequired: true } }),
-    effectiveFrom: (0, import_fields61.timestamp)({ validation: { isRequired: true } }),
-    effectiveUntil: (0, import_fields61.timestamp)(),
-    evidenceHash: (0, import_fields61.text)({ validation: { isRequired: true } }),
-    idempotencyKey: (0, import_fields61.text)({ validation: { isRequired: true }, isIndexed: "unique" }),
-    actions: (0, import_fields61.relationship)({ ref: "PhotoConsentAction.consent", many: true }),
-    assets: (0, import_fields61.relationship)({ ref: "ClientAsset.photoConsent", many: true }),
+    practice: (0, import_fields60.relationship)({ ref: "Practice" }),
+    client: (0, import_fields60.relationship)({ ref: "Client" }),
+    appointment: (0, import_fields60.relationship)({ ref: "Appointment" }),
+    purpose: (0, import_fields60.select)({ type: "enum", options: ["clinical_care", "measurement", "education", "marketing"].map((value) => ({ label: value, value })), validation: { isRequired: true } }),
+    status: (0, import_fields60.select)({ type: "enum", options: ["granted", "partially_withdrawn", "withdrawn", "expired", "superseded"].map((value) => ({ label: value, value })), defaultValue: "granted", validation: { isRequired: true } }),
+    mediaScope: (0, import_fields60.json)(),
+    audienceScope: (0, import_fields60.json)(),
+    compensationDisclosure: (0, import_fields60.text)(),
+    signerName: (0, import_fields60.text)({ validation: { isRequired: true } }),
+    signerRole: (0, import_fields60.text)({ validation: { isRequired: true } }),
+    signatureEvidenceHash: (0, import_fields60.text)({ validation: { isRequired: true } }),
+    effectiveFrom: (0, import_fields60.timestamp)({ validation: { isRequired: true } }),
+    effectiveUntil: (0, import_fields60.timestamp)(),
+    evidenceHash: (0, import_fields60.text)({ validation: { isRequired: true } }),
+    idempotencyKey: (0, import_fields60.text)({ validation: { isRequired: true }, isIndexed: "unique" }),
+    actions: (0, import_fields60.relationship)({ ref: "PhotoConsentAction.consent", many: true }),
+    assets: (0, import_fields60.relationship)({ ref: "ClientAsset.photoConsent", many: true }),
     ...trackingFields
   }
 });
 
 // features/keystone/models/PhotoConsentAction.ts
-var import_core61 = require("@keystone-6/core");
-var import_fields62 = require("@keystone-6/core/fields");
-var PhotoConsentAction = (0, import_core61.list)({
+var import_core60 = require("@keystone-6/core");
+var import_fields61 = require("@keystone-6/core/fields");
+var PhotoConsentAction = (0, import_core60.list)({
   access: { operation: { query: permissions.canManageSensitiveRecords, create: () => false, update: () => false, delete: () => false }, filter: { query: tenantFilter } },
-  fields: { practice: (0, import_fields62.relationship)({ ref: "Practice" }), consent: (0, import_fields62.relationship)({ ref: "PhotoConsent.actions" }), actor: (0, import_fields62.relationship)({ ref: "User" }), action: (0, import_fields62.select)({ type: "enum", options: ["grant", "partial_withdrawal", "withdrawal", "expire", "supersede", "publication_record", "takedown_attempt"].map((value) => ({ label: value, value })), validation: { isRequired: true } }), reason: (0, import_fields62.text)({ validation: { isRequired: true } }), scope: (0, import_fields62.json)(), occurredAt: (0, import_fields62.timestamp)({ validation: { isRequired: true } }), evidenceHash: (0, import_fields62.text)({ validation: { isRequired: true } }), idempotencyKey: (0, import_fields62.text)({ validation: { isRequired: true }, isIndexed: "unique" }), ...trackingFields }
+  fields: { practice: (0, import_fields61.relationship)({ ref: "Practice" }), consent: (0, import_fields61.relationship)({ ref: "PhotoConsent.actions" }), actor: (0, import_fields61.relationship)({ ref: "User" }), action: (0, import_fields61.select)({ type: "enum", options: ["grant", "partial_withdrawal", "withdrawal", "expire", "supersede", "publication_record", "takedown_attempt"].map((value) => ({ label: value, value })), validation: { isRequired: true } }), reason: (0, import_fields61.text)({ validation: { isRequired: true } }), scope: (0, import_fields61.json)(), occurredAt: (0, import_fields61.timestamp)({ validation: { isRequired: true } }), evidenceHash: (0, import_fields61.text)({ validation: { isRequired: true } }), idempotencyKey: (0, import_fields61.text)({ validation: { isRequired: true }, isIndexed: "unique" }), ...trackingFields }
 });
 
 // features/keystone/models/Practice.ts
-var import_core62 = require("@keystone-6/core");
-var import_fields63 = require("@keystone-6/core/fields");
-var Practice = (0, import_core62.list)({
+var import_core61 = require("@keystone-6/core");
+var import_fields62 = require("@keystone-6/core/fields");
+var Practice = (0, import_core61.list)({
   access: {
     operation: {
       query: activeListPermissions.signedIn,
@@ -3896,32 +4424,34 @@ var Practice = (0, import_core62.list)({
     }
   },
   fields: {
-    name: (0, import_fields63.text)({ validation: { isRequired: true } }),
-    slug: (0, import_fields63.text)({ validation: { isRequired: true }, isIndexed: "unique" }),
-    currencyCode: (0, import_fields63.text)({ defaultValue: "USD", validation: { isRequired: true } }),
-    isActive: (0, import_fields63.checkbox)({ defaultValue: true }),
-    isDemo: (0, import_fields63.checkbox)({ defaultValue: false, access: { create: () => false, update: () => false } }),
-    users: (0, import_fields63.relationship)({ ref: "User.practice", many: true, access: { create: () => false, update: () => false } }),
-    locations: (0, import_fields63.relationship)({ ref: "Location.practice", many: true, access: { create: () => false, update: () => false } }),
-    storefrontSetting: (0, import_fields63.relationship)({ ref: "StorefrontSetting.practice", access: { create: () => false, update: () => false } }),
-    memberships: (0, import_fields63.relationship)({ ref: "PracticeMembership.practice", many: true, access: { create: () => false, update: () => false } }),
+    name: (0, import_fields62.text)({ validation: { isRequired: true } }),
+    slug: (0, import_fields62.text)({ validation: { isRequired: true }, isIndexed: "unique" }),
+    currencyCode: (0, import_fields62.text)({ defaultValue: "USD", validation: { isRequired: true } }),
+    // Sales tax applied at checkout, as a fraction (0.0875 = 8.75%). TAX_RATE overrides it when set.
+    taxRate: (0, import_fields62.float)({ defaultValue: 0, validation: { isRequired: true, min: 0, max: 1 } }),
+    isActive: (0, import_fields62.checkbox)({ defaultValue: true }),
+    isDemo: (0, import_fields62.checkbox)({ defaultValue: false, access: { create: () => false, update: () => false } }),
+    users: (0, import_fields62.relationship)({ ref: "User.practice", many: true, access: { create: () => false, update: () => false } }),
+    locations: (0, import_fields62.relationship)({ ref: "Location.practice", many: true, access: { create: () => false, update: () => false } }),
+    storefrontSetting: (0, import_fields62.relationship)({ ref: "StorefrontSetting.practice", access: { create: () => false, update: () => false } }),
+    memberships: (0, import_fields62.relationship)({ ref: "PracticeMembership.practice", many: true, access: { create: () => false, update: () => false } }),
     ...trackingFields
   }
 });
 
 // features/keystone/models/PracticeMembership.ts
-var import_core63 = require("@keystone-6/core");
-var import_fields64 = require("@keystone-6/core/fields");
-var PracticeMembership = (0, import_core63.list)({
+var import_core62 = require("@keystone-6/core");
+var import_fields63 = require("@keystone-6/core/fields");
+var PracticeMembership = (0, import_core62.list)({
   access: {
     operation: { query: activeListPermissions.signedIn, create: () => false, update: () => false, delete: () => false },
     filter: { query: tenantFilter }
   },
   fields: {
-    practice: (0, import_fields64.relationship)({ ref: "Practice.memberships" }),
-    user: (0, import_fields64.relationship)({ ref: "User.memberships" }),
-    locations: (0, import_fields64.relationship)({ ref: "Location", many: true }),
-    status: (0, import_fields64.select)({
+    practice: (0, import_fields63.relationship)({ ref: "Practice.memberships" }),
+    user: (0, import_fields63.relationship)({ ref: "User.memberships" }),
+    locations: (0, import_fields63.relationship)({ ref: "Location", many: true }),
+    status: (0, import_fields63.select)({
       type: "enum",
       options: [
         { label: "Active", value: "active" },
@@ -3936,9 +4466,9 @@ var PracticeMembership = (0, import_core63.list)({
 });
 
 // features/keystone/models/Product.ts
-var import_core64 = require("@keystone-6/core");
-var import_fields65 = require("@keystone-6/core/fields");
-var Product = (0, import_core64.list)({
+var import_core63 = require("@keystone-6/core");
+var import_fields64 = require("@keystone-6/core/fields");
+var Product = (0, import_core63.list)({
   access: {
     operation: {
       query: () => true,
@@ -3957,63 +4487,63 @@ var Product = (0, import_core64.list)({
     }
   },
   fields: {
-    practice: (0, import_fields65.relationship)({ ref: "Practice" }),
-    kind: (0, import_fields65.select)({ type: "enum", options: [
+    practice: (0, import_fields64.relationship)({ ref: "Practice" }),
+    kind: (0, import_fields64.select)({ type: "enum", options: [
       { label: "Retail", value: "retail" },
       { label: "Treatment Consumable", value: "consumable" },
       { label: "Both", value: "both" }
     ], defaultValue: "retail", validation: { isRequired: true } }),
-    trackLots: (0, import_fields65.checkbox)({ defaultValue: true }),
-    name: (0, import_fields65.text)({
+    trackLots: (0, import_fields64.checkbox)({ defaultValue: true }),
+    name: (0, import_fields64.text)({
       validation: { isRequired: true },
       ui: {
         description: "Product name"
       }
     }),
-    sku: (0, import_fields65.text)({
+    sku: (0, import_fields64.text)({
       isIndexed: "unique",
       ui: {
         description: "Stock Keeping Unit - unique product identifier"
       }
     }),
-    price: (0, import_fields65.integer)({
+    price: (0, import_fields64.integer)({
       validation: { isRequired: true },
       ui: {
         description: "Retail price"
       }
     }),
-    cost: (0, import_fields65.integer)({
+    cost: (0, import_fields64.integer)({
       access: { read: activeListPermissions.canManageInventory, create: () => false, update: () => false },
       ui: {
         description: "Wholesale/cost price for profit tracking"
       }
     }),
-    quantity: (0, import_fields65.integer)({
+    quantity: (0, import_fields64.integer)({
       access: { read: activeListPermissions.canManageInventory, create: () => false, update: () => false },
       defaultValue: 0,
       ui: {
         description: "Current stock quantity"
       }
     }),
-    reorderPoint: (0, import_fields65.integer)({
+    reorderPoint: (0, import_fields64.integer)({
       access: { read: activeListPermissions.canManageInventory, create: () => false, update: () => false },
       defaultValue: 5,
       ui: {
         description: "Minimum quantity before reorder alert"
       }
     }),
-    category: (0, import_fields65.text)({
+    category: (0, import_fields64.text)({
       ui: {
         description: "Product category (e.g., Shampoo, Conditioner, Styling, Color)"
       }
     }),
-    description: (0, import_fields65.text)({
+    description: (0, import_fields64.text)({
       ui: {
         displayMode: "textarea",
         description: "Product description"
       }
     }),
-    image: (0, import_fields65.relationship)({
+    image: (0, import_fields64.relationship)({
       ref: "MedSpaImage",
       ui: {
         displayMode: "cards",
@@ -4022,22 +4552,22 @@ var Product = (0, import_core64.list)({
         inlineEdit: { fields: ["image", "altText"] }
       }
     }),
-    isActive: (0, import_fields65.checkbox)({
+    isActive: (0, import_fields64.checkbox)({
       defaultValue: true,
       ui: {
         description: "Whether this product is available for sale"
       }
     }),
-    inventoryMovements: (0, import_fields65.relationship)({ ref: "InventoryMovement.product", many: true }),
-    inventoryLots: (0, import_fields65.relationship)({ ref: "InventoryLot.product", many: true }),
+    inventoryMovements: (0, import_fields64.relationship)({ ref: "InventoryMovement.product", many: true }),
+    inventoryLots: (0, import_fields64.relationship)({ ref: "InventoryLot.product", many: true }),
     ...trackingFields
   }
 });
 
 // features/keystone/models/ProductSale.ts
-var import_core65 = require("@keystone-6/core");
-var import_fields66 = require("@keystone-6/core/fields");
-var ProductSale = (0, import_core65.list)({
+var import_core64 = require("@keystone-6/core");
+var import_fields65 = require("@keystone-6/core/fields");
+var ProductSale = (0, import_core64.list)({
   access: {
     operation: {
       query: () => true,
@@ -4056,9 +4586,9 @@ var ProductSale = (0, import_core65.list)({
     }
   },
   fields: {
-    practice: (0, import_fields66.relationship)({ ref: "Practice" }),
+    practice: (0, import_fields65.relationship)({ ref: "Practice" }),
     // Optional link to appointment (for retail sales during service)
-    appointment: (0, import_fields66.relationship)({
+    appointment: (0, import_fields65.relationship)({
       ref: "Appointment",
       ui: {
         displayMode: "select",
@@ -4066,27 +4596,27 @@ var ProductSale = (0, import_core65.list)({
       }
     }),
     // Products sold in this transaction
-    products: (0, import_fields66.json)({
+    products: (0, import_fields65.json)({
       defaultValue: [],
       ui: {
         description: "Array of products sold: [{ productId, name, quantity, price, subtotal }]"
       }
     }),
-    total: (0, import_fields66.integer)({
+    total: (0, import_fields65.integer)({
       validation: { isRequired: true },
       ui: {
         description: "Total sale amount"
       }
     }),
     // Staff member who made the sale
-    soldBy: (0, import_fields66.relationship)({
+    soldBy: (0, import_fields65.relationship)({
       ref: "User",
       ui: {
         displayMode: "select",
         description: "Staff member who processed the sale"
       }
     }),
-    soldAt: (0, import_fields66.timestamp)({
+    soldAt: (0, import_fields65.timestamp)({
       defaultValue: { kind: "now" },
       ui: {
         description: "When the sale occurred"
@@ -4097,9 +4627,9 @@ var ProductSale = (0, import_core65.list)({
 });
 
 // features/keystone/models/Provider.ts
-var import_core66 = require("@keystone-6/core");
-var import_fields67 = require("@keystone-6/core/fields");
-var Provider = (0, import_core66.list)({
+var import_core65 = require("@keystone-6/core");
+var import_fields66 = require("@keystone-6/core/fields");
+var Provider = (0, import_core65.list)({
   access: {
     operation: { query: () => true, create: () => false, update: () => false, delete: () => false },
     filter: {
@@ -4109,120 +4639,120 @@ var Provider = (0, import_core66.list)({
   hooks: createLifecycleHooks("provider", ["status", "userId", "practiceId"]),
   ui: { listView: { initialColumns: ["user", "status", "locations", "isPublic"] } },
   fields: {
-    practice: (0, import_fields67.relationship)({ ref: "Practice" }),
-    user: (0, import_fields67.relationship)({ ref: "User.providerProfile" }),
-    title: (0, import_fields67.text)({ ui: { description: "Configured staff title; not a licensure verification claim." } }),
-    tier: (0, import_fields67.select)({ type: "enum", options: [
+    practice: (0, import_fields66.relationship)({ ref: "Practice" }),
+    user: (0, import_fields66.relationship)({ ref: "User.providerProfile" }),
+    title: (0, import_fields66.text)({ ui: { description: "Configured staff title; not a licensure verification claim." } }),
+    tier: (0, import_fields66.select)({ type: "enum", options: [
       { label: "Associate", value: "junior" },
       { label: "Senior", value: "senior" },
       { label: "Lead", value: "master" },
       { label: "Specialist", value: "celebrity" }
     ], defaultValue: "junior" }),
-    role: (0, import_fields67.select)({ type: "enum", options: [
+    role: (0, import_fields66.select)({ type: "enum", options: [
       { label: "Provider", value: "provider" },
       { label: "Esthetician", value: "esthetician" },
       { label: "Nurse", value: "nurse" },
       { label: "Physician", value: "physician" },
       { label: "Assistant", value: "assistant" }
     ], defaultValue: "provider" }),
-    baseCommissionRate: (0, import_fields67.float)({ access: { read: activeListPermissions.canManageFinance, create: () => false, update: () => false }, defaultValue: 0, validation: { min: 0, max: 1 } }),
-    commissionRate: (0, import_fields67.float)({ access: { read: activeListPermissions.canManageFinance, create: () => false, update: () => false }, defaultValue: 0, validation: { min: 0, max: 1 } }),
-    bio: (0, import_fields67.text)({ ui: { displayMode: "textarea" } }),
-    isActive: (0, import_fields67.checkbox)({ defaultValue: false }),
-    status: (0, import_fields67.select)({ type: "enum", options: [
+    baseCommissionRate: (0, import_fields66.float)({ access: { read: activeListPermissions.canManageFinance, create: () => false, update: () => false }, defaultValue: 0, validation: { min: 0, max: 1 } }),
+    commissionRate: (0, import_fields66.float)({ access: { read: activeListPermissions.canManageFinance, create: () => false, update: () => false }, defaultValue: 0, validation: { min: 0, max: 1 } }),
+    bio: (0, import_fields66.text)({ ui: { displayMode: "textarea" } }),
+    isActive: (0, import_fields66.checkbox)({ defaultValue: false }),
+    status: (0, import_fields66.select)({ type: "enum", options: [
       { label: "Active", value: "active" },
       { label: "On Leave", value: "on_leave" },
       { label: "Inactive", value: "inactive" }
     ], defaultValue: "inactive", validation: { isRequired: true } }),
-    isPublic: (0, import_fields67.checkbox)({ defaultValue: false }),
-    hireDate: (0, import_fields67.timestamp)({ access: { read: activeListPermissions.canAccessDashboard, create: () => false, update: () => false } }),
-    employmentType: (0, import_fields67.select)({ access: { read: activeListPermissions.canAccessDashboard, create: () => false, update: () => false }, type: "enum", options: [
+    isPublic: (0, import_fields66.checkbox)({ defaultValue: false }),
+    hireDate: (0, import_fields66.timestamp)({ access: { read: activeListPermissions.canAccessDashboard, create: () => false, update: () => false } }),
+    employmentType: (0, import_fields66.select)({ access: { read: activeListPermissions.canAccessDashboard, create: () => false, update: () => false }, type: "enum", options: [
       { label: "Full-time", value: "full_time" },
       { label: "Part-time", value: "part_time" },
       { label: "Contractor", value: "contractor" }
     ] }),
-    photo: (0, import_fields67.relationship)({ ref: "MedSpaImage" }),
-    specializations: (0, import_fields67.relationship)({ ref: "Service.specialists", many: true }),
-    locations: (0, import_fields67.relationship)({ ref: "Location.providers", many: true }),
-    schedules: (0, import_fields67.relationship)({ ref: "ProviderSchedule.provider", many: true }),
-    appointments: (0, import_fields67.relationship)({ ref: "Appointment.provider", many: true }),
-    preferredByClients: (0, import_fields67.relationship)({ ref: "Client.preferredProvider", many: true }),
-    credentials: (0, import_fields67.relationship)({ ref: "ProviderCredential.provider", many: true }),
-    authorizations: (0, import_fields67.relationship)({ ref: "ProviderAuthorization.provider", many: true }),
-    consultations: (0, import_fields67.relationship)({ ref: "Consultation.provider", many: true }),
-    treatmentSessions: (0, import_fields67.relationship)({ ref: "TreatmentSession.provider", many: true }),
-    waitlistEntries: (0, import_fields67.relationship)({ ref: "WaitlistEntry.preferredProviders", many: true }),
-    reviews: (0, import_fields67.relationship)({ ref: "Review.provider", many: true }),
+    photo: (0, import_fields66.relationship)({ ref: "MedSpaImage" }),
+    specializations: (0, import_fields66.relationship)({ ref: "Service.specialists", many: true }),
+    locations: (0, import_fields66.relationship)({ ref: "Location.providers", many: true }),
+    schedules: (0, import_fields66.relationship)({ ref: "ProviderSchedule.provider", many: true }),
+    appointments: (0, import_fields66.relationship)({ ref: "Appointment.provider", many: true }),
+    preferredByClients: (0, import_fields66.relationship)({ ref: "Client.preferredProvider", many: true }),
+    credentials: (0, import_fields66.relationship)({ ref: "ProviderCredential.provider", many: true }),
+    authorizations: (0, import_fields66.relationship)({ ref: "ProviderAuthorization.provider", many: true }),
+    consultations: (0, import_fields66.relationship)({ ref: "Consultation.provider", many: true }),
+    treatmentSessions: (0, import_fields66.relationship)({ ref: "TreatmentSession.provider", many: true }),
+    waitlistEntries: (0, import_fields66.relationship)({ ref: "WaitlistEntry.preferredProviders", many: true }),
+    reviews: (0, import_fields66.relationship)({ ref: "Review.provider", many: true }),
     ...trackingFields
   }
 });
 
 // features/keystone/models/ProviderAuthorization.ts
-var import_core67 = require("@keystone-6/core");
-var import_fields68 = require("@keystone-6/core/fields");
-var ProviderAuthorization = (0, import_core67.list)({
+var import_core66 = require("@keystone-6/core");
+var import_fields67 = require("@keystone-6/core/fields");
+var ProviderAuthorization = (0, import_core66.list)({
   access: {
     operation: { query: permissions.canManageClinical, create: () => false, update: () => false, delete: () => false },
     filter: { query: tenantFilter }
   },
   fields: {
-    practice: (0, import_fields68.relationship)({ ref: "Practice" }),
-    location: (0, import_fields68.relationship)({ ref: "Location" }),
-    provider: (0, import_fields68.relationship)({ ref: "Provider.authorizations" }),
-    service: (0, import_fields68.relationship)({ ref: "Service" }),
-    credential: (0, import_fields68.relationship)({ ref: "ProviderCredential.authorizations" }),
-    requiredSupervisor: (0, import_fields68.relationship)({ ref: "Provider" }),
-    status: (0, import_fields68.select)({ type: "enum", options: [
+    practice: (0, import_fields67.relationship)({ ref: "Practice" }),
+    location: (0, import_fields67.relationship)({ ref: "Location" }),
+    provider: (0, import_fields67.relationship)({ ref: "Provider.authorizations" }),
+    service: (0, import_fields67.relationship)({ ref: "Service" }),
+    credential: (0, import_fields67.relationship)({ ref: "ProviderCredential.authorizations" }),
+    requiredSupervisor: (0, import_fields67.relationship)({ ref: "Provider" }),
+    status: (0, import_fields67.select)({ type: "enum", options: [
       { label: "Active", value: "active" },
       { label: "Suspended", value: "suspended" },
       { label: "Expired", value: "expired" }
     ], defaultValue: "active", validation: { isRequired: true } }),
-    effectiveFrom: (0, import_fields68.timestamp)({ validation: { isRequired: true } }),
-    effectiveTo: (0, import_fields68.timestamp)(),
-    supervisionRequired: (0, import_fields68.checkbox)({ defaultValue: false }),
-    supervisionMode: (0, import_fields68.text)(),
-    policyVersion: (0, import_fields68.text)({ validation: { isRequired: true } }),
-    authorityEvidenceHash: (0, import_fields68.text)({ validation: { isRequired: true } }),
-    idempotencyKey: (0, import_fields68.text)({ validation: { isRequired: true }, isIndexed: "unique" }),
-    evidenceLabel: (0, import_fields68.text)({ ui: { description: "Configured authorization evidence; not a licensure verification claim." } }),
-    evidenceReference: (0, import_fields68.text)(),
+    effectiveFrom: (0, import_fields67.timestamp)({ validation: { isRequired: true } }),
+    effectiveTo: (0, import_fields67.timestamp)(),
+    supervisionRequired: (0, import_fields67.checkbox)({ defaultValue: false }),
+    supervisionMode: (0, import_fields67.text)(),
+    policyVersion: (0, import_fields67.text)({ validation: { isRequired: true } }),
+    authorityEvidenceHash: (0, import_fields67.text)({ validation: { isRequired: true } }),
+    idempotencyKey: (0, import_fields67.text)({ validation: { isRequired: true }, isIndexed: "unique" }),
+    evidenceLabel: (0, import_fields67.text)({ ui: { description: "Configured authorization evidence; not a licensure verification claim." } }),
+    evidenceReference: (0, import_fields67.text)(),
     ...trackingFields
   }
 });
 
 // features/keystone/models/ProviderCredential.ts
-var import_core68 = require("@keystone-6/core");
-var import_fields69 = require("@keystone-6/core/fields");
-var ProviderCredential = (0, import_core68.list)({
+var import_core67 = require("@keystone-6/core");
+var import_fields68 = require("@keystone-6/core/fields");
+var ProviderCredential = (0, import_core67.list)({
   access: { operation: { query: permissions.canManageClinical, create: () => false, update: () => false, delete: () => false }, filter: { query: tenantFilter } },
   fields: {
-    practice: (0, import_fields69.relationship)({ ref: "Practice" }),
-    provider: (0, import_fields69.relationship)({ ref: "Provider.credentials" }),
-    location: (0, import_fields69.relationship)({ ref: "Location" }),
-    licenseType: (0, import_fields69.text)({ validation: { isRequired: true } }),
-    licenseNumber: (0, import_fields69.text)({ validation: { isRequired: true } }),
-    jurisdiction: (0, import_fields69.text)({ validation: { isRequired: true } }),
-    status: (0, import_fields69.select)({ type: "enum", options: ["pending", "verified", "restricted", "suspended", "expired", "revoked"].map((value) => ({ label: value, value })), defaultValue: "pending", validation: { isRequired: true } }),
-    effectiveFrom: (0, import_fields69.timestamp)({ validation: { isRequired: true } }),
-    expiresAt: (0, import_fields69.timestamp)({ validation: { isRequired: true } }),
-    verifiedAt: (0, import_fields69.timestamp)(),
-    verificationSource: (0, import_fields69.text)(),
-    primarySourceVerified: (0, import_fields69.checkbox)({ defaultValue: false }),
-    authorizations: (0, import_fields69.relationship)({ ref: "ProviderAuthorization.credential", many: true }),
-    supervisionRequired: (0, import_fields69.checkbox)({ defaultValue: false }),
-    supervisor: (0, import_fields69.relationship)({ ref: "Provider" }),
-    scopeEvidenceHash: (0, import_fields69.text)({ validation: { isRequired: true } }),
-    evidenceReference: (0, import_fields69.text)(),
-    protocolVersion: (0, import_fields69.text)(),
-    idempotencyKey: (0, import_fields69.text)({ validation: { isRequired: true }, isIndexed: "unique" }),
+    practice: (0, import_fields68.relationship)({ ref: "Practice" }),
+    provider: (0, import_fields68.relationship)({ ref: "Provider.credentials" }),
+    location: (0, import_fields68.relationship)({ ref: "Location" }),
+    licenseType: (0, import_fields68.text)({ validation: { isRequired: true } }),
+    licenseNumber: (0, import_fields68.text)({ validation: { isRequired: true } }),
+    jurisdiction: (0, import_fields68.text)({ validation: { isRequired: true } }),
+    status: (0, import_fields68.select)({ type: "enum", options: ["pending", "verified", "restricted", "suspended", "expired", "revoked"].map((value) => ({ label: value, value })), defaultValue: "pending", validation: { isRequired: true } }),
+    effectiveFrom: (0, import_fields68.timestamp)({ validation: { isRequired: true } }),
+    expiresAt: (0, import_fields68.timestamp)({ validation: { isRequired: true } }),
+    verifiedAt: (0, import_fields68.timestamp)(),
+    verificationSource: (0, import_fields68.text)(),
+    primarySourceVerified: (0, import_fields68.checkbox)({ defaultValue: false }),
+    authorizations: (0, import_fields68.relationship)({ ref: "ProviderAuthorization.credential", many: true }),
+    supervisionRequired: (0, import_fields68.checkbox)({ defaultValue: false }),
+    supervisor: (0, import_fields68.relationship)({ ref: "Provider" }),
+    scopeEvidenceHash: (0, import_fields68.text)({ validation: { isRequired: true } }),
+    evidenceReference: (0, import_fields68.text)(),
+    protocolVersion: (0, import_fields68.text)(),
+    idempotencyKey: (0, import_fields68.text)({ validation: { isRequired: true }, isIndexed: "unique" }),
     ...trackingFields
   }
 });
 
 // features/keystone/models/ProviderSchedule.ts
-var import_core69 = require("@keystone-6/core");
-var import_fields70 = require("@keystone-6/core/fields");
-var ProviderSchedule = (0, import_core69.list)({
+var import_core68 = require("@keystone-6/core");
+var import_fields69 = require("@keystone-6/core/fields");
+var ProviderSchedule = (0, import_core68.list)({
   access: {
     operation: {
       query: () => true,
@@ -4241,8 +4771,8 @@ var ProviderSchedule = (0, import_core69.list)({
     }
   },
   fields: {
-    practice: (0, import_fields70.relationship)({ ref: "Practice" }),
-    type: (0, import_fields70.select)({
+    practice: (0, import_fields69.relationship)({ ref: "Practice" }),
+    type: (0, import_fields69.select)({
       type: "enum",
       options: [
         { label: "Recurring", value: "recurring" },
@@ -4254,14 +4784,14 @@ var ProviderSchedule = (0, import_core69.list)({
         isRequired: true
       }
     }),
-    idempotencyKey: (0, import_fields70.text)({
+    idempotencyKey: (0, import_fields69.text)({
       validation: { isRequired: true },
       isIndexed: "unique",
       ui: {
         description: "Stable workflow key for idempotent schedule creation"
       }
     }),
-    revision: (0, import_fields70.integer)({
+    revision: (0, import_fields69.integer)({
       defaultValue: 1,
       validation: { isRequired: true, min: 1 },
       ui: {
@@ -4269,7 +4799,7 @@ var ProviderSchedule = (0, import_core69.list)({
       }
     }),
     // Day of week for recurring schedules (0-6, Sunday = 0)
-    dayOfWeek: (0, import_fields70.integer)({
+    dayOfWeek: (0, import_fields69.integer)({
       validation: {
         min: 0,
         max: 6
@@ -4279,7 +4809,7 @@ var ProviderSchedule = (0, import_core69.list)({
       }
     }),
     // Legacy string-based day of week
-    dayOfWeekLegacy: (0, import_fields70.select)({
+    dayOfWeekLegacy: (0, import_fields69.select)({
       type: "enum",
       options: [
         { label: "Monday", value: "monday" },
@@ -4291,83 +4821,83 @@ var ProviderSchedule = (0, import_core69.list)({
         { label: "Sunday", value: "sunday" }
       ]
     }),
-    localDate: (0, import_fields70.text)({
+    localDate: (0, import_fields69.text)({
       ui: {
         description: "MedSpa-local YYYY-MM-DD date for one-time and time-off entries"
       }
     }),
     // Legacy timestamp mirror for one-time or time-off entries
-    date: (0, import_fields70.timestamp)({
+    date: (0, import_fields69.timestamp)({
       ui: {
         description: "Specific date for one-time schedule or time-off"
       }
     }),
-    startTime: (0, import_fields70.text)({
+    startTime: (0, import_fields69.text)({
       validation: { isRequired: true },
       ui: {
         description: "Start time in HH:MM format (e.g., 09:00)"
       }
     }),
-    endTime: (0, import_fields70.text)({
+    endTime: (0, import_fields69.text)({
       validation: { isRequired: true },
       ui: {
         description: "End time in HH:MM format (e.g., 17:00)"
       }
     }),
-    isAvailable: (0, import_fields70.checkbox)({
+    isAvailable: (0, import_fields69.checkbox)({
       defaultValue: true,
       ui: {
         description: "Whether provider is available on this day (false for time off)"
       }
     }),
-    isPublic: (0, import_fields70.checkbox)({
+    isPublic: (0, import_fields69.checkbox)({
       defaultValue: false,
       ui: {
         description: "Explicit storefront scheduling flag. Returned times remain request options, not confirmed availability."
       }
     }),
     // Break times
-    breakStart: (0, import_fields70.text)({
+    breakStart: (0, import_fields69.text)({
       ui: {
         description: "Lunch/break start time in HH:MM format"
       }
     }),
-    breakEnd: (0, import_fields70.text)({
+    breakEnd: (0, import_fields69.text)({
       ui: {
         description: "Lunch/break end time in HH:MM format"
       }
     }),
-    reason: (0, import_fields70.text)({
+    reason: (0, import_fields69.text)({
       ui: {
         displayMode: "textarea",
         description: "Reason for time-off or special schedule"
       }
     }),
     // Schedule validity period
-    effectiveFrom: (0, import_fields70.timestamp)({
+    effectiveFrom: (0, import_fields69.timestamp)({
       ui: {
         description: "When this schedule starts being effective"
       }
     }),
-    effectiveTo: (0, import_fields70.timestamp)({
+    effectiveTo: (0, import_fields69.timestamp)({
       ui: {
         description: "When this schedule ends (null for ongoing recurring schedules)"
       }
     }),
     // Legacy fields
-    effectiveDate: (0, import_fields70.timestamp)({
+    effectiveDate: (0, import_fields69.timestamp)({
       ui: {
         description: "When this schedule starts being effective (legacy - use effectiveFrom)"
       }
     }),
-    endDate: (0, import_fields70.timestamp)({
+    endDate: (0, import_fields69.timestamp)({
       ui: {
         description: "When this schedule ends (legacy - use effectiveTo)"
       }
     }),
-    location: (0, import_fields70.relationship)({ ref: "Location.schedules" }),
+    location: (0, import_fields69.relationship)({ ref: "Location.schedules" }),
     // Relationship to provider
-    provider: (0, import_fields70.relationship)({
+    provider: (0, import_fields69.relationship)({
       ref: "Provider.schedules",
       ui: {
         displayMode: "select"
@@ -4378,77 +4908,77 @@ var ProviderSchedule = (0, import_core69.list)({
 });
 
 // features/keystone/models/PurchaseOrder.ts
-var import_core70 = require("@keystone-6/core");
-var import_fields71 = require("@keystone-6/core/fields");
-var PurchaseOrder = (0, import_core70.list)({
+var import_core69 = require("@keystone-6/core");
+var import_fields70 = require("@keystone-6/core/fields");
+var PurchaseOrder = (0, import_core69.list)({
   access: { operation: { query: permissions.canManageInventory, create: () => false, update: () => false, delete: () => false }, filter: { query: tenantFilter } },
   fields: {
-    practice: (0, import_fields71.relationship)({ ref: "Practice" }),
-    location: (0, import_fields71.relationship)({ ref: "Location.purchaseOrders" }),
-    vendor: (0, import_fields71.relationship)({ ref: "Vendor.purchaseOrders" }),
-    number: (0, import_fields71.text)({ validation: { isRequired: true } }),
-    status: (0, import_fields71.select)({ type: "enum", options: [
+    practice: (0, import_fields70.relationship)({ ref: "Practice" }),
+    location: (0, import_fields70.relationship)({ ref: "Location.purchaseOrders" }),
+    vendor: (0, import_fields70.relationship)({ ref: "Vendor.purchaseOrders" }),
+    number: (0, import_fields70.text)({ validation: { isRequired: true } }),
+    status: (0, import_fields70.select)({ type: "enum", options: [
       { label: "Draft", value: "draft" },
       { label: "Submitted", value: "submitted" },
       { label: "Partially Received", value: "partially_received" },
       { label: "Received", value: "received" },
       { label: "Cancelled", value: "cancelled" }
     ], defaultValue: "draft", validation: { isRequired: true } }),
-    currencyCode: (0, import_fields71.text)({ defaultValue: "USD", validation: { isRequired: true } }),
-    totalMinor: (0, import_fields71.integer)({ defaultValue: 0, validation: { min: 0 } }),
-    orderedAt: (0, import_fields71.timestamp)(),
-    expectedAt: (0, import_fields71.timestamp)(),
-    revision: (0, import_fields71.integer)({ defaultValue: 1, validation: { min: 1 } }),
-    lines: (0, import_fields71.relationship)({ ref: "PurchaseOrderLine.purchaseOrder", many: true }),
-    receipts: (0, import_fields71.relationship)({ ref: "GoodsReceipt.purchaseOrder", many: true }),
+    currencyCode: (0, import_fields70.text)({ defaultValue: "USD", validation: { isRequired: true } }),
+    totalMinor: (0, import_fields70.integer)({ defaultValue: 0, validation: { min: 0 } }),
+    orderedAt: (0, import_fields70.timestamp)(),
+    expectedAt: (0, import_fields70.timestamp)(),
+    revision: (0, import_fields70.integer)({ defaultValue: 1, validation: { min: 1 } }),
+    lines: (0, import_fields70.relationship)({ ref: "PurchaseOrderLine.purchaseOrder", many: true }),
+    receipts: (0, import_fields70.relationship)({ ref: "GoodsReceipt.purchaseOrder", many: true }),
     ...trackingFields
   }
 });
 
 // features/keystone/models/PurchaseOrderLine.ts
-var import_core71 = require("@keystone-6/core");
-var import_fields72 = require("@keystone-6/core/fields");
-var PurchaseOrderLine = (0, import_core71.list)({
+var import_core70 = require("@keystone-6/core");
+var import_fields71 = require("@keystone-6/core/fields");
+var PurchaseOrderLine = (0, import_core70.list)({
   access: { operation: { query: permissions.canManageInventory, create: () => false, update: () => false, delete: () => false }, filter: { query: async (args) => await activeListPermissions.signedIn(args) && practiceId(args.session) ? { purchaseOrder: { practice: { id: { equals: practiceId(args.session) } } } } : false } },
   fields: {
-    purchaseOrder: (0, import_fields72.relationship)({ ref: "PurchaseOrder.lines" }),
-    product: (0, import_fields72.relationship)({ ref: "Product" }),
-    productTitle: (0, import_fields72.text)({ validation: { isRequired: true } }),
-    orderedQuantity: (0, import_fields72.integer)({ validation: { isRequired: true, min: 1 } }),
-    receivedQuantity: (0, import_fields72.integer)({ defaultValue: 0, validation: { min: 0 } }),
-    unitCostMinor: (0, import_fields72.integer)({ validation: { isRequired: true, min: 0 } }),
+    purchaseOrder: (0, import_fields71.relationship)({ ref: "PurchaseOrder.lines" }),
+    product: (0, import_fields71.relationship)({ ref: "Product" }),
+    productTitle: (0, import_fields71.text)({ validation: { isRequired: true } }),
+    orderedQuantity: (0, import_fields71.integer)({ validation: { isRequired: true, min: 1 } }),
+    receivedQuantity: (0, import_fields71.integer)({ defaultValue: 0, validation: { min: 0 } }),
+    unitCostMinor: (0, import_fields71.integer)({ validation: { isRequired: true, min: 0 } }),
     ...trackingFields
   }
 });
 
 // features/keystone/models/RecallAction.ts
-var import_core72 = require("@keystone-6/core");
-var import_fields73 = require("@keystone-6/core/fields");
-var RecallAction = (0, import_core72.list)({
+var import_core71 = require("@keystone-6/core");
+var import_fields72 = require("@keystone-6/core/fields");
+var RecallAction = (0, import_core71.list)({
   access: { operation: { query: permissions.canManageSensitiveRecords, create: () => false, update: () => false, delete: () => false }, filter: { query: tenantFilter } },
-  fields: { practice: (0, import_fields73.relationship)({ ref: "Practice" }), recall: (0, import_fields73.relationship)({ ref: "RecallCase.actions" }), exposure: (0, import_fields73.relationship)({ ref: "RecallExposure" }), actor: (0, import_fields73.relationship)({ ref: "User" }), action: (0, import_fields73.select)({ type: "enum", options: ["open", "assess", "quarantine", "identify_exposure", "notify", "clinical_assessment", "dispose", "close"].map((value) => ({ label: value, value })), validation: { isRequired: true } }), reason: (0, import_fields73.text)({ validation: { isRequired: true } }), evidence: (0, import_fields73.json)(), evidenceHash: (0, import_fields73.text)({ validation: { isRequired: true } }), occurredAt: (0, import_fields73.timestamp)({ validation: { isRequired: true } }), idempotencyKey: (0, import_fields73.text)({ validation: { isRequired: true }, isIndexed: "unique" }), ...trackingFields }
+  fields: { practice: (0, import_fields72.relationship)({ ref: "Practice" }), recall: (0, import_fields72.relationship)({ ref: "RecallCase.actions" }), exposure: (0, import_fields72.relationship)({ ref: "RecallExposure" }), actor: (0, import_fields72.relationship)({ ref: "User" }), action: (0, import_fields72.select)({ type: "enum", options: ["open", "assess", "quarantine", "identify_exposure", "notify", "clinical_assessment", "dispose", "close"].map((value) => ({ label: value, value })), validation: { isRequired: true } }), reason: (0, import_fields72.text)({ validation: { isRequired: true } }), evidence: (0, import_fields72.json)(), evidenceHash: (0, import_fields72.text)({ validation: { isRequired: true } }), occurredAt: (0, import_fields72.timestamp)({ validation: { isRequired: true } }), idempotencyKey: (0, import_fields72.text)({ validation: { isRequired: true }, isIndexed: "unique" }), ...trackingFields }
 });
 
 // features/keystone/models/RecallCase.ts
-var import_core73 = require("@keystone-6/core");
-var import_fields74 = require("@keystone-6/core/fields");
-var RecallCase = (0, import_core73.list)({
+var import_core72 = require("@keystone-6/core");
+var import_fields73 = require("@keystone-6/core/fields");
+var RecallCase = (0, import_core72.list)({
   access: { operation: { query: permissions.canManageSensitiveRecords, create: () => false, update: () => false, delete: () => false }, filter: { query: tenantFilter } },
-  fields: { practice: (0, import_fields74.relationship)({ ref: "Practice" }), location: (0, import_fields74.relationship)({ ref: "Location" }), lot: (0, import_fields74.relationship)({ ref: "InventoryLot.recallCases" }), device: (0, import_fields74.relationship)({ ref: "Resource.recallCases" }), openedBy: (0, import_fields74.relationship)({ ref: "User" }), sourceReference: (0, import_fields74.text)({ validation: { isRequired: true } }), scopeReason: (0, import_fields74.text)({ validation: { isRequired: true } }), status: (0, import_fields74.select)({ type: "enum", options: ["open", "applicability_review", "quarantined", "patients_identified", "notifications_in_progress", "disposition_complete", "closed"].map((value) => ({ label: value, value })), defaultValue: "open", validation: { isRequired: true } }), openedAt: (0, import_fields74.timestamp)({ validation: { isRequired: true } }), closedAt: (0, import_fields74.timestamp)(), evidenceHash: (0, import_fields74.text)({ validation: { isRequired: true } }), idempotencyKey: (0, import_fields74.text)({ validation: { isRequired: true }, isIndexed: "unique" }), exposures: (0, import_fields74.relationship)({ ref: "RecallExposure.recall", many: true }), actions: (0, import_fields74.relationship)({ ref: "RecallAction.recall", many: true }), ...trackingFields }
+  fields: { practice: (0, import_fields73.relationship)({ ref: "Practice" }), location: (0, import_fields73.relationship)({ ref: "Location" }), lot: (0, import_fields73.relationship)({ ref: "InventoryLot.recallCases" }), device: (0, import_fields73.relationship)({ ref: "Resource.recallCases" }), openedBy: (0, import_fields73.relationship)({ ref: "User" }), sourceReference: (0, import_fields73.text)({ validation: { isRequired: true } }), scopeReason: (0, import_fields73.text)({ validation: { isRequired: true } }), status: (0, import_fields73.select)({ type: "enum", options: ["open", "applicability_review", "quarantined", "patients_identified", "notifications_in_progress", "disposition_complete", "closed"].map((value) => ({ label: value, value })), defaultValue: "open", validation: { isRequired: true } }), openedAt: (0, import_fields73.timestamp)({ validation: { isRequired: true } }), closedAt: (0, import_fields73.timestamp)(), evidenceHash: (0, import_fields73.text)({ validation: { isRequired: true } }), idempotencyKey: (0, import_fields73.text)({ validation: { isRequired: true }, isIndexed: "unique" }), exposures: (0, import_fields73.relationship)({ ref: "RecallExposure.recall", many: true }), actions: (0, import_fields73.relationship)({ ref: "RecallAction.recall", many: true }), ...trackingFields }
 });
 
 // features/keystone/models/RecallExposure.ts
-var import_core74 = require("@keystone-6/core");
-var import_fields75 = require("@keystone-6/core/fields");
-var RecallExposure = (0, import_core74.list)({
+var import_core73 = require("@keystone-6/core");
+var import_fields74 = require("@keystone-6/core/fields");
+var RecallExposure = (0, import_core73.list)({
   access: { operation: { query: permissions.canManageSensitiveRecords, create: () => false, update: () => false, delete: () => false }, filter: { query: tenantFilter } },
-  fields: { practice: (0, import_fields75.relationship)({ ref: "Practice" }), recall: (0, import_fields75.relationship)({ ref: "RecallCase.exposures" }), client: (0, import_fields75.relationship)({ ref: "Client" }), administration: (0, import_fields75.relationship)({ ref: "TreatmentAdministration" }), administrationLot: (0, import_fields75.relationship)({ ref: "AdministrationLot" }), status: (0, import_fields75.select)({ type: "enum", options: ["identified", "reviewed", "notified", "assessed", "closed"].map((value) => ({ label: value, value })), defaultValue: "identified", validation: { isRequired: true } }), identifiedAt: (0, import_fields75.timestamp)({ validation: { isRequired: true } }), notificationDueAt: (0, import_fields75.timestamp)(), evidenceHash: (0, import_fields75.text)({ validation: { isRequired: true } }), ...trackingFields }
+  fields: { practice: (0, import_fields74.relationship)({ ref: "Practice" }), recall: (0, import_fields74.relationship)({ ref: "RecallCase.exposures" }), client: (0, import_fields74.relationship)({ ref: "Client" }), administration: (0, import_fields74.relationship)({ ref: "TreatmentAdministration" }), administrationLot: (0, import_fields74.relationship)({ ref: "AdministrationLot" }), status: (0, import_fields74.select)({ type: "enum", options: ["identified", "reviewed", "notified", "assessed", "closed"].map((value) => ({ label: value, value })), defaultValue: "identified", validation: { isRequired: true } }), identifiedAt: (0, import_fields74.timestamp)({ validation: { isRequired: true } }), notificationDueAt: (0, import_fields74.timestamp)(), evidenceHash: (0, import_fields74.text)({ validation: { isRequired: true } }), ...trackingFields }
 });
 
 // features/keystone/models/Referral.ts
-var import_core75 = require("@keystone-6/core");
-var import_fields76 = require("@keystone-6/core/fields");
-var Referral = (0, import_core75.list)({
+var import_core74 = require("@keystone-6/core");
+var import_fields75 = require("@keystone-6/core/fields");
+var Referral = (0, import_core74.list)({
   access: {
     operation: {
       query: () => true,
@@ -4466,9 +4996,9 @@ var Referral = (0, import_core75.list)({
     }
   },
   fields: {
-    practice: (0, import_fields76.relationship)({ ref: "Practice" }),
+    practice: (0, import_fields75.relationship)({ ref: "Practice" }),
     // The user who made the referral
-    referrer: (0, import_fields76.relationship)({
+    referrer: (0, import_fields75.relationship)({
       ref: "User.referralsMade",
       ui: {
         displayMode: "select",
@@ -4476,7 +5006,7 @@ var Referral = (0, import_core75.list)({
       }
     }),
     // The new user who was referred
-    referred: (0, import_fields76.relationship)({
+    referred: (0, import_fields75.relationship)({
       ref: "User.referralsReceived",
       ui: {
         displayMode: "select",
@@ -4484,14 +5014,14 @@ var Referral = (0, import_core75.list)({
       }
     }),
     // Reward details
-    rewardAmount: (0, import_fields76.integer)({
+    rewardAmount: (0, import_fields75.integer)({
       defaultValue: 0,
       validation: { isRequired: true },
       ui: {
         description: "Amount of reward (points or credit value)"
       }
     }),
-    rewardType: (0, import_fields76.select)({
+    rewardType: (0, import_fields75.select)({
       type: "string",
       options: [
         { label: "Points", value: "points" },
@@ -4504,7 +5034,7 @@ var Referral = (0, import_core75.list)({
       }
     }),
     // Referral status
-    status: (0, import_fields76.select)({
+    status: (0, import_fields75.select)({
       type: "string",
       options: [
         { label: "Pending", value: "pending" },
@@ -4517,7 +5047,7 @@ var Referral = (0, import_core75.list)({
         description: "Current status of the referral"
       }
     }),
-    completedAt: (0, import_fields76.timestamp)({
+    completedAt: (0, import_fields75.timestamp)({
       ui: {
         description: "When the referral was completed (referred client made first purchase)"
       }
@@ -4527,25 +5057,68 @@ var Referral = (0, import_core75.list)({
 });
 
 // features/keystone/models/Refund.ts
-var import_core76 = require("@keystone-6/core");
-var import_fields77 = require("@keystone-6/core/fields");
-var Refund = (0, import_core76.list)({
+var import_core75 = require("@keystone-6/core");
+var import_fields76 = require("@keystone-6/core/fields");
+var Refund = (0, import_core75.list)({
   access: { operation: { query: permissions.canManageFinance, create: () => false, update: () => false, delete: () => false }, filter: { query: tenantFilter } },
   fields: {
-    practice: (0, import_fields77.relationship)({ ref: "Practice" }),
-    payment: (0, import_fields77.relationship)({ ref: "Payment.refunds" }),
-    amountMinor: (0, import_fields77.integer)({ validation: { isRequired: true, min: 1 } }),
-    currencyCode: (0, import_fields77.text)({ validation: { isRequired: true } }),
-    reason: (0, import_fields77.text)({ validation: { isRequired: true } }),
-    idempotencyKey: (0, import_fields77.text)({ validation: { isRequired: true }, isIndexed: "unique" }),
-    providerReference: (0, import_fields77.text)(),
-    status: (0, import_fields77.select)({ type: "enum", options: [
+    practice: (0, import_fields76.relationship)({ ref: "Practice" }),
+    payment: (0, import_fields76.relationship)({ ref: "Payment.refunds" }),
+    amountMinor: (0, import_fields76.integer)({ validation: { isRequired: true, min: 1 } }),
+    currencyCode: (0, import_fields76.text)({ validation: { isRequired: true } }),
+    reason: (0, import_fields76.text)({ validation: { isRequired: true } }),
+    idempotencyKey: (0, import_fields76.text)({ validation: { isRequired: true }, isIndexed: "unique" }),
+    providerReference: (0, import_fields76.text)(),
+    status: (0, import_fields76.select)({ type: "enum", options: [
       { label: "Pending", value: "pending" },
       { label: "Completed", value: "completed" },
       { label: "Failed", value: "failed" }
     ], defaultValue: "pending", validation: { isRequired: true } }),
-    processedAt: (0, import_fields77.timestamp)(),
-    data: (0, import_fields77.json)(),
+    processedAt: (0, import_fields76.timestamp)(),
+    attempt: (0, import_fields76.relationship)({ ref: "RefundAttempt.refund" }),
+    data: (0, import_fields76.json)(),
+    ...trackingFields
+  }
+});
+
+// features/keystone/models/RefundAttempt.ts
+var import_core76 = require("@keystone-6/core");
+var import_fields77 = require("@keystone-6/core/fields");
+var RefundAttempt = (0, import_core76.list)({
+  access: {
+    operation: { query: permissions.canManageFinance, create: () => false, update: () => false, delete: () => false },
+    filter: { query: tenantFilter }
+  },
+  ui: { listView: { initialColumns: ["refund", "status", "amountMinor", "providerRefundId", "attemptCount", "nextAttemptAt"] } },
+  fields: {
+    practice: (0, import_fields77.relationship)({ ref: "Practice" }),
+    refund: (0, import_fields77.relationship)({ ref: "Refund.attempt" }),
+    paymentSession: (0, import_fields77.relationship)({ ref: "PaymentSession.refundAttempts" }),
+    idempotencyKey: (0, import_fields77.text)({ validation: { isRequired: true }, isIndexed: "unique" }),
+    amountMinor: (0, import_fields77.integer)({ validation: { isRequired: true, min: 1 } }),
+    currencyCode: (0, import_fields77.text)({ validation: { isRequired: true } }),
+    status: (0, import_fields77.select)({
+      type: "enum",
+      defaultValue: "pending",
+      validation: { isRequired: true },
+      options: [
+        { label: "Pending", value: "pending" },
+        { label: "Submitted", value: "submitted" },
+        { label: "Succeeded", value: "succeeded" },
+        { label: "Failed", value: "failed" },
+        { label: "Unknown", value: "unknown" }
+      ]
+    }),
+    providerReference: (0, import_fields77.text)({ ui: { description: "The captured payment the provider refunds against (Stripe pi_\u2026)" } }),
+    providerRefundId: (0, import_fields77.text)({ isIndexed: true, ui: { description: "The provider's refund id (Stripe re_\u2026)" } }),
+    attemptCount: (0, import_fields77.integer)({ defaultValue: 0 }),
+    submitStartedAt: (0, import_fields77.timestamp)({ ui: { description: "Set before the provider call; once set the provider is re-queried before any resend" } }),
+    leaseUntil: (0, import_fields77.timestamp)(),
+    nextAttemptAt: (0, import_fields77.timestamp)({ defaultValue: { kind: "now" }, isIndexed: true }),
+    needsReview: (0, import_fields77.checkbox)({ defaultValue: false, ui: { description: "The provider's refund disagrees with ours; staff must reconcile it" } }),
+    lastError: (0, import_fields77.text)(),
+    completedAt: (0, import_fields77.timestamp)(),
+    data: (0, import_fields77.json)({ defaultValue: {} }),
     ...trackingFields
   }
 });
@@ -4561,16 +5134,42 @@ var RetentionPolicy = (0, import_core77.list)({
 // features/keystone/models/Resource.ts
 var import_core78 = require("@keystone-6/core");
 var import_fields79 = require("@keystone-6/core/fields");
+function photographyOnlyFields(fields) {
+  return Object.fromEntries(Object.entries(fields).map(([key, field2]) => [
+    key,
+    key === "image" || key === "photoUrl" ? field2 : (...args) => {
+      const initialized = field2(...args);
+      return { ...initialized, access: { ...initialized.access, update: () => false } };
+    }
+  ]));
+}
 var Resource = (0, import_core78.list)({
   access: {
-    operation: { query: permissions.canSchedule, create: () => false, update: () => false, delete: () => false },
-    filter: { query: tenantFilter }
+    operation: {
+      query: permissions.canSchedule,
+      create: () => false,
+      delete: () => false,
+      // Native admin uploads may change photography only. Scheduling/readiness
+      // still require the revision-checked workflow mutations.
+      update: activeListPermissions.canManagePractice
+    },
+    filter: { query: tenantFilter, update: tenantFilter }
   },
   hooks: createLifecycleHooks("resource", ["name", "type", "capacity", "isActive", "revision", "locationId"]),
   ui: { listView: { initialColumns: ["name", "type", "location", "capacity", "isActive", "isPublic"] }, labelField: "name" },
-  fields: {
+  fields: photographyOnlyFields({
     practice: (0, import_fields79.relationship)({ ref: "Practice" }),
     name: (0, import_fields79.text)({ validation: { isRequired: true } }),
+    image: (0, import_fields79.image)({ storage: "my_images", label: "Room photo" }),
+    photoUrl: (0, import_fields79.virtual)({
+      field: import_core78.graphql.field({
+        type: import_core78.graphql.String,
+        resolve(item, _args, context) {
+          return item.image_id && item.image_extension ? context.images("my_images").getUrl(item.image_id, item.image_extension) : null;
+        }
+      }),
+      ui: { itemView: { fieldMode: "hidden" }, listView: { fieldMode: "hidden" } }
+    }),
     type: (0, import_fields79.select)({ type: "enum", options: [
       { label: "Treatment Room", value: "room" },
       { label: "Device", value: "device" },
@@ -4604,7 +5203,7 @@ var Resource = (0, import_core78.list)({
     readinessEvents: (0, import_fields79.relationship)({ ref: "DeviceReadinessEvent.resource", many: true }),
     recallCases: (0, import_fields79.relationship)({ ref: "RecallCase.device", many: true }),
     ...trackingFields
-  }
+  })
 });
 
 // features/keystone/models/ResourceScheduleBlock.ts
@@ -4763,7 +5362,18 @@ var formatCurrency6 = (amount) => {
   }).format(amount);
 };
 var Service = (0, import_core83.list)({
-  hooks: { validateInput: validateTenantInput },
+  hooks: {
+    validateInput: async (args) => {
+      await validateTenantInput(args);
+      const value = (key) => args.resolvedData[key] !== void 0 ? args.resolvedData[key] : args.item?.[key];
+      const price = value("price"), duration = value("baseDuration"), deposit = value("depositAmount");
+      if (price != null && price < 0) args.addValidationError("Price can\u2019t be negative.");
+      if (duration != null && duration <= 0) args.addValidationError("Duration must be at least 1 minute.");
+      if (deposit != null && deposit < 0) args.addValidationError("Deposit can\u2019t be negative.");
+      else if (deposit != null && price != null && deposit > price) args.addValidationError("The deposit can\u2019t be more than the service price.");
+    },
+    validateDelete: historyDeleteGuard("Service")
+  },
   access: {
     operation: {
       query: () => true,
@@ -4957,7 +5567,7 @@ async function categoryChildrenRemainInPractice(context, item) {
 
 // features/keystone/models/ServiceCategory.ts
 var ServiceCategory = (0, import_core84.list)({
-  hooks: { validateInput: validateTenantInput },
+  hooks: { validateInput: validateTenantInput, validateDelete: historyDeleteGuard("ServiceCategory") },
   access: {
     operation: {
       query: () => true,
@@ -5116,7 +5726,7 @@ var import_fields87 = require("@keystone-6/core/fields");
 // features/keystone/serviceVariantTenantScope.ts
 var hasOwn = (value, key) => Boolean(value && Object.prototype.hasOwnProperty.call(value, key));
 async function validateServiceVariantTenantLinks({
-  practiceId: practiceId5,
+  practiceId: practiceId4,
   operation,
   resolvedData,
   item,
@@ -5127,7 +5737,7 @@ async function validateServiceVariantTenantLinks({
   if (practiceChange !== void 0) {
     const relationKeys = practiceChange && typeof practiceChange === "object" ? Object.keys(practiceChange) : [];
     const connectedPracticeId = practiceChange?.connect?.id;
-    if (typeof practiceId5 !== "string" || !practiceId5 || connectedPracticeId !== practiceId5 || relationKeys.length !== 1 || relationKeys[0] !== "connect") {
+    if (typeof practiceId4 !== "string" || !practiceId4 || connectedPracticeId !== practiceId4 || relationKeys.length !== 1 || relationKeys[0] !== "connect") {
       addValidationError("Service variant practice must remain connected to the authenticated practice");
       return;
     }
@@ -5160,7 +5770,7 @@ async function validateServiceVariantTenantLinks({
     serviceId = item?.serviceId ?? item?.service?.id ?? null;
   }
   if (serviceId == null) return;
-  if (typeof serviceId !== "string" || !serviceId || typeof practiceId5 !== "string" || !practiceId5) {
+  if (typeof serviceId !== "string" || !serviceId || typeof practiceId4 !== "string" || !practiceId4) {
     addValidationError("Service variant and linked service must belong to the authenticated practice");
     return;
   }
@@ -5168,7 +5778,7 @@ async function validateServiceVariantTenantLinks({
     where: {
       AND: [
         { id: { equals: serviceId } },
-        { practice: { id: { equals: practiceId5 } } }
+        { practice: { id: { equals: practiceId4 } } }
       ]
     },
     take: 2,
@@ -5179,7 +5789,7 @@ async function validateServiceVariantTenantLinks({
     return;
   }
   const service = rows[0];
-  if (service?.id !== serviceId || service.practice?.id !== practiceId5) {
+  if (service?.id !== serviceId || service.practice?.id !== practiceId4) {
     addValidationError("Service variant and linked service must belong to the authenticated practice");
   }
 }
@@ -5203,6 +5813,8 @@ var ServiceVariant = (0, import_core86.list)({
         findServices: (query) => args.context.sudo().query.Service.findMany(query),
         addValidationError: args.addValidationError
       });
+      const duration = args.resolvedData.duration;
+      if (duration != null && duration <= 0) args.addValidationError("Duration must be at least 1 minute.");
     }
   },
   access: {
@@ -5337,11 +5949,11 @@ var import_fields90 = require("@keystone-6/core/fields");
 
 // features/keystone/workflowAuth.ts
 var import_node_crypto2 = require("node:crypto");
-function requireActorPractice(context, capability = isSignedIn, message = "Authorized practice access is required") {
-  if (!context.session?.itemId || !capability({ session: context.session })) throw new Error(message);
-  const id = practiceId(context.session);
-  if (!id) throw new Error("The authenticated actor is not assigned to a practice");
-  return { actorId: context.session.itemId, practiceId: id };
+function requireActorPractice(context, capability = isSignedIn, message2 = "Authorized practice access is required") {
+  if (!context.session?.itemId || !capability({ session: context.session })) throw new Error(message2);
+  const id2 = practiceId(context.session);
+  if (!id2) throw new Error("The authenticated actor is not assigned to a practice");
+  return { actorId: context.session.itemId, practiceId: id2 };
 }
 async function assertActiveActor(context) {
   const expectedPracticeId = practiceId(context.session);
@@ -5407,7 +6019,7 @@ function validIdempotencyKey(value) {
   return typeof value === "string" && value.trim().length >= 12 && value.length <= 200;
 }
 
-// features/lib/sanitize-store-logo.ts
+// features/keystone/utils/storeLogo.ts
 var ALLOWED_ELEMENTS = /* @__PURE__ */ new Set([
   "svg",
   "g",
@@ -5469,8 +6081,12 @@ var ATTRIBUTE_PATTERN = /\s+([A-Za-z_:][\w:.-]*)\s*=\s*("[^"]*"|'[^']*')/g;
 var TAG_PATTERN = /<\/?\s*([A-Za-z][\w:-]*)([^<>]*)>/g;
 function sanitizeStoreLogoSvg(svg) {
   const source = svg.trim();
-  if (!source.startsWith("<svg") || !source.endsWith("</svg>") || source.length > 1e5) return "";
-  if (/<!|<\?|\b(?:javascript|data|vbscript):|\bon[a-z]+\s*=|\b(?:href|src|style)\s*=/i.test(source)) return "";
+  if (!source.startsWith("<svg") || !source.endsWith("</svg>") || source.length > 1e5) {
+    return "";
+  }
+  if (/<!|<\?|\b(?:javascript|data|vbscript):|\bon[a-z]+\s*=|\b(?:href|src|style)\s*=/i.test(source)) {
+    return "";
+  }
   let tagCount = 0;
   let match;
   TAG_PATTERN.lastIndex = 0;
@@ -5756,7 +6372,7 @@ var LOGO_ICONS = [
 ];
 
 // features/lib/store-logo.ts
-var DEFAULT_LOGO_SVG = LOGO_ICONS[0].lightSvg;
+var DEFAULT_LOGO_SVG = LOGO_ICONS.find((icon) => icon.id === "flora-fauna").lightSvg;
 function publicLogoSvg(value) {
   return typeof value === "string" && sanitizeStoreLogoSvg(value) || DEFAULT_LOGO_SVG;
 }
@@ -5789,8 +6405,8 @@ var StorefrontSetting = (0, import_core89.list)({
         addValidationError("Current practice-management authorization is required");
         return;
       }
-      const practiceId5 = resolvedData.practice?.connect?.id || item?.practiceId;
-      if (!practiceId5 || practiceId5 !== actor.practiceId) {
+      const practiceId4 = resolvedData.practice?.connect?.id || item?.practiceId;
+      if (!practiceId4 || practiceId4 !== actor.practiceId) {
         addValidationError("Storefront settings must remain in the authenticated practice");
       }
       const displayName = resolvedData.displayName ?? item?.displayName;
@@ -6080,8 +6696,8 @@ var User = (0, import_core94.list)({
     const actor = context.session?.itemId ? await context.sudo().query.User.findOne({ where: { id: context.session.itemId }, query: "id status practice { id } role { id canManagePeople canManageRoles canAccessDashboard canManageOnboarding canManagePractice canSchedule canReadClients canManageClinical canManageSensitiveRecords canManageInventory canManageFinance canManageCommunications canViewReports canManageIntegrations }" }) : null;
     if (!actor || actor.status !== "active" || actor.role?.canManagePeople !== true || !actor.practice?.id) return addValidationError("Active people-management authority is required");
     if (Object.prototype.hasOwnProperty.call(resolvedData, "practice")) {
-      const practiceId5 = resolvedData.practice?.connect?.id;
-      if (resolvedData.practice?.disconnect || practiceId5 !== actor.practice.id) addValidationError("User practice cannot be removed or moved by this workflow");
+      const practiceId4 = resolvedData.practice?.connect?.id;
+      if (resolvedData.practice?.disconnect || practiceId4 !== actor.practice.id) addValidationError("User practice cannot be removed or moved by this workflow");
     }
     if (hasRoleAssignmentChange(resolvedData)) {
       if (item?.id === actor.id) return addValidationError("You cannot change your own access role");
@@ -6168,7 +6784,7 @@ var User = (0, import_core94.list)({
 var import_core95 = require("@keystone-6/core");
 var import_fields96 = require("@keystone-6/core/fields");
 var Vendor = (0, import_core95.list)({
-  hooks: { validateInput: validateTenantInput },
+  hooks: { validateInput: validateTenantInput, validateDelete: historyDeleteGuard("Vendor") },
   access: { operation: { query: permissions.canManageInventory, create: activeListPermissions.canManageInventory, update: activeListPermissions.canManageInventory, delete: activeListPermissions.canManageInventory }, filter: { query: tenantFilter, update: tenantFilter, delete: tenantFilter } },
   fields: {
     practice: (0, import_fields96.relationship)({ ref: "Practice" }),
@@ -6499,7 +7115,6 @@ var models = {
   MembershipLedgerEntry,
   MessageLog,
   MessageTemplate,
-  OutboxEvent,
   Payment,
   PaymentProvider,
   PaymentSession,
@@ -6523,6 +7138,7 @@ var models = {
   RecallExposure,
   Referral,
   Refund,
+  RefundAttempt,
   RetentionPolicy,
   Resource,
   ResourceScheduleBlock,
@@ -6589,7 +7205,7 @@ for (const [listKey, model] of Object.entries(models)) {
 }
 
 // features/keystone/mutations/index.ts
-var import_core132 = require("@keystone-6/core");
+var import_core143 = require("@keystone-6/core");
 
 // features/keystone/mutations/redirectToInit.ts
 async function redirectToInit(root, args, context) {
@@ -6604,68 +7220,15 @@ var redirectToInit_default = redirectToInit;
 // features/keystone/mutations/processPayment.ts
 var import_core99 = require("@keystone-6/core");
 
-// features/keystone/payment-lifecycle.ts
-var transitions = {
-  pending: ["requires_action", "authorized", "completed", "failed", "cancelled"],
-  requires_action: ["authorized", "completed", "failed", "cancelled"],
-  authorized: ["completed", "failed", "cancelled"],
-  completed: ["partially_refunded", "refunded"],
-  partially_refunded: ["partially_refunded", "refunded"],
-  failed: [],
-  cancelled: [],
-  refunded: []
-};
-function canTransitionPayment(from, to) {
-  return from === to || transitions[from].includes(to);
-}
-function assertPaymentTransition(from, to) {
-  if (!canTransitionPayment(from, to)) {
-    throw new Error(`Invalid payment transition: ${from} -> ${to}`);
+// features/keystone/aggregateIdempotencyKey.ts
+function aggregateIdempotencyKey(scope, key) {
+  if (typeof scope !== "string" || !scope.trim() || typeof key !== "string" || !key.trim()) {
+    throw new Error("A nonempty scoped idempotency key is required");
   }
-}
-function paymentRecordStatus(status) {
-  if (status === "requires_action" || status === "authorized") return "processing";
-  if (status === "partially_refunded") return "partially_refunded";
-  if (status === "refunded") return "refunded";
-  if (status === "completed") return "completed";
-  if (status === "failed" || status === "cancelled") return "failed";
-  return "pending";
-}
-
-// features/integrations/payment/index.ts
-var adapters = {
-  manual: async () => (await Promise.resolve().then(() => (init_manual(), manual_exports))).manualPaymentAdapter,
-  stripe: async () => (await Promise.resolve().then(() => (init_stripe(), stripe_exports))).stripePaymentAdapter
-};
-async function getPaymentAdapter(provider) {
-  const loader = adapters[provider.adapter];
-  if (!loader) throw new Error(`Unsupported payment adapter: ${provider.adapter}`);
-  return loader();
-}
-
-// features/keystone/utils/paymentProviderAdapter.ts
-async function createProviderPaymentSession(input) {
-  return (await getPaymentAdapter(input.provider)).createSession(input);
-}
-async function confirmProviderPayment(input) {
-  return (await getPaymentAdapter(input.provider)).confirm(input);
-}
-async function refundProviderPayment(input) {
-  return (await getPaymentAdapter(input.provider)).refund(input);
-}
-function paymentProviderFromRecord(record) {
-  if (record.adapter !== "manual" && record.adapter !== "stripe") {
-    throw new Error(`Unsupported payment adapter: ${record.adapter}`);
-  }
-  return {
-    code: record.code,
-    adapter: record.adapter,
-    config: record.config && typeof record.config === "object" ? record.config : {}
-  };
+  return `${scope}:${key}`;
 }
 
 // features/keystone/mutations/processPayment.ts
-var TAX_RATE = Number.parseFloat(process.env.TAX_RATE || "0.08");
 function operator(context) {
   return permissions.canManageFinance({ session: context.session });
 }
@@ -6690,8 +7253,8 @@ async function paymentTransaction(context, lockKeys, work) {
         isolationLevel: "Serializable"
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const retryable = error?.code === "P2034" || error?.extensions?.prisma?.code === "P2034" || /write conflict|deadlock|please retry your transaction/i.test(message);
+      const message2 = error instanceof Error ? error.message : String(error);
+      const retryable = error?.code === "P2034" || error?.extensions?.prisma?.code === "P2034" || /write conflict|deadlock|please retry your transaction/i.test(message2);
       if (!retryable || attempt === 3) throw error;
     }
   }
@@ -6699,6 +7262,7 @@ async function paymentTransaction(context, lockKeys, work) {
 }
 var SAFE_PAYMENT_ERRORS = /* @__PURE__ */ new Set([
   "Appointment not found",
+  "Payment can be refunded only in full while the gift card is unspent",
   "Appointment is not eligible for payment",
   "Appointment already has a payment",
   "Appointment has no payable line items",
@@ -6709,7 +7273,10 @@ var SAFE_PAYMENT_ERRORS = /* @__PURE__ */ new Set([
   "Completed payment not found",
   "No tip to distribute",
   "Idempotency key is invalid",
-  "Idempotency key was already used for another operation"
+  "Idempotency key was already used for another operation",
+  "Refund exceeds what is still refundable",
+  "This deposit was applied to the visit's checkout. Refund the checkout instead",
+  "Payment provider is unavailable"
 ]);
 function safeError(error) {
   console.error("Payment workflow failed:", error);
@@ -6780,13 +7347,13 @@ var confirmPayment = import_core99.graphql.field({
         assertPaymentTransition(session.status, result2.status);
         if (result2.status !== "completed") throw new Error("Provider has not completed the payment");
         const now2 = (/* @__PURE__ */ new Date()).toISOString();
-        const sessionData = session.data && typeof session.data === "object" ? session.data : {};
-        await sudo.query.PaymentSession.updateOne({ where: { id: session.id }, data: { status: "completed", completedAt: now2, data: { ...sessionData, ...result2.data || {} } }, query: "id" });
+        const sessionData2 = session.data && typeof session.data === "object" ? session.data : {};
+        await sudo.query.PaymentSession.updateOne({ where: { id: session.id }, data: { status: "completed", completedAt: now2, data: { ...sessionData2, ...result2.data || {} } }, query: "id" });
         await sudo.query.Payment.updateOne({ where: { id: session.payment.id }, data: { status: "completed", processedAt: now2 }, query: "id" });
         if (session.appointment?.id) {
           await sudo.query.Appointment.updateOne({
             where: { id: session.appointment.id },
-            data: sessionData.purpose === "appointment_deposit" ? { depositPaid: true, ...session.appointment.status === "pending" ? { status: "confirmed", confirmedAt: now2 } : {} } : { status: "completed" },
+            data: sessionData2.purpose === "appointment_deposit" ? { depositPaid: true, ...session.appointment.status === "pending" ? { status: "confirmed", confirmedAt: now2 } : {} } : { status: "completed" },
             query: "id"
           });
         }
@@ -6802,21 +7369,65 @@ var refundPayment = import_core99.graphql.field({
     name: "RefundPaymentResult",
     fields: { success: import_core99.graphql.field({ type: import_core99.graphql.nonNull(import_core99.graphql.Boolean) }), refundId: import_core99.graphql.field({ type: import_core99.graphql.String }), error: import_core99.graphql.field({ type: import_core99.graphql.String }), status: import_core99.graphql.field({ type: import_core99.graphql.String }) }
   }),
-  args: { paymentSessionId: import_core99.graphql.arg({ type: import_core99.graphql.nonNull(import_core99.graphql.ID) }), amount: import_core99.graphql.arg({ type: import_core99.graphql.Int }), reason: import_core99.graphql.arg({ type: import_core99.graphql.String }) },
-  async resolve(source, { paymentSessionId, amount, reason }, context) {
+  args: { paymentSessionId: import_core99.graphql.arg({ type: import_core99.graphql.nonNull(import_core99.graphql.ID) }), amount: import_core99.graphql.arg({ type: import_core99.graphql.Int }), reason: import_core99.graphql.arg({ type: import_core99.graphql.String }), idempotencyKey: import_core99.graphql.arg({ type: import_core99.graphql.String }) },
+  async resolve(source, { paymentSessionId, amount, reason, idempotencyKey }, context) {
+    let actor;
     try {
-      requireActorPractice(context, permissions.canManageFinance);
+      actor = requireActorPractice(context, permissions.canManageFinance);
       await assertPracticeRecord(context, "PaymentSession", paymentSessionId);
     } catch (error) {
       return { success: false, refundId: null, error: error instanceof Error ? error.message : "Payment session not found", status: null };
     }
     try {
+      const processorSession = await context.sudo().query.PaymentSession.findOne({ where: { id: paymentSessionId }, query: "provider { adapter }" });
+      if (processorSession?.provider?.adapter && processorSession.provider.adapter !== "manual") {
+        const key = (idempotencyKey || "").trim();
+        if (key.length < 12 || key.length > 200) throw new Error("Idempotency key is invalid");
+        const queued = await paymentTransaction(context, [`session:${paymentSessionId}`], async (sudo) => {
+          const session = await loadSession(sudo, paymentSessionId);
+          if (!session?.provider || !session.providerReference || !session.payment) throw new Error("Payment session not found");
+          const sessionData2 = session.data && typeof session.data === "object" ? session.data : {};
+          const purpose = sessionData2.purpose;
+          if (purpose !== "appointment_deposit" && purpose !== "checkout_card" && !(purpose === "gift_card" && sessionData2.channel === "online")) throw new Error("Use the controlled settlement reversal workflow");
+          const scopedKey = aggregateIdempotencyKey(actor.practiceId, `refund:${key}`);
+          const replay2 = (await sudo.query.Refund.findMany({ where: { practice: { id: { equals: actor.practiceId } }, idempotencyKey: { equals: scopedKey } }, take: 1, query: "id payment { id } attempt { id }" }))[0];
+          if (replay2) {
+            if (replay2.payment?.id !== session.payment.id) throw new Error("Idempotency key was already used for another operation");
+            return { refundId: replay2.id, attemptId: replay2.attempt?.id ?? null, replayed: true };
+          }
+          if (!["completed", "partially_refunded"].includes(session.status)) throw new Error("Completed payment not found");
+          if (sessionData2.appliedToCheckout) throw new Error("This deposit was applied to the visit's checkout. Refund the checkout instead");
+          const refunds = await sudo.query.Refund.findMany({ where: { payment: { id: { equals: session.payment.id } } }, take: 200, query: "amountMinor status" });
+          const refundable = refundableMinor(session.amount, refunds);
+          const refundCents = amount ?? refundable;
+          if (!Number.isInteger(refundCents) || refundCents <= 0) throw new Error("Invalid refund amount");
+          if (refundCents > refundable) throw new Error("Refund exceeds what is still refundable");
+          if (purpose === "gift_card") {
+            const giftCard = await sudo.query.GiftCard.findOne({ where: { id: sessionData2.giftCardId }, query: "id initialValue currentBalance" });
+            if (!giftCard || giftCard.currentBalance !== giftCard.initialValue || refundCents !== session.amount) throw new Error("Payment can be refunded only in full while the gift card is unspent");
+            await sudo.query.GiftCard.updateOne({ where: { id: giftCard.id }, data: { isActive: false, currentBalance: 0 }, query: "id" });
+          }
+          return enqueueRefund(sudo, {
+            practiceId: actor.practiceId,
+            paymentId: session.payment.id,
+            sessionId: session.id,
+            amountMinor: refundCents,
+            currencyCode: session.currency,
+            reason: (reason || "").trim() || "Refund requested",
+            idempotencyKey: scopedKey,
+            providerReference: session.providerReference,
+            actorId: actor.actorId
+          });
+        });
+        if (queued.attemptId) await processRefundOutbox(context, { attemptIds: [queued.attemptId], limit: 1 }).catch((error) => console.error("Refund outbox kick failed", error));
+        const refund = await context.sudo().query.Refund.findOne({ where: { id: queued.refundId }, query: "status" });
+        return { success: true, refundId: queued.refundId, error: null, status: refund?.status === "completed" ? "refunded" : refund?.status === "failed" ? "failed" : "processing" };
+      }
       return await paymentTransaction(context, [`session:${paymentSessionId}`], async (sudo) => {
         const session = await loadSession(sudo, paymentSessionId);
         if (!session?.provider || !session.providerReference || !session.payment) throw new Error("Payment session not found");
         const initialData = session.data && typeof session.data === "object" ? session.data : {};
         if (initialData.purpose !== "appointment_deposit") throw new Error("Use the controlled settlement reversal workflow");
-        if (session.provider.adapter !== "manual") throw new Error("Processor refunds require a durable outbox and webhook reconciliation workflow");
         const alreadyRefunded = Number(session.payment.refundedAmount || 0);
         const refundCents = amount ?? session.amount - alreadyRefunded;
         const cumulativeRefund = alreadyRefunded + refundCents;
@@ -6825,10 +7436,10 @@ var refundPayment = import_core99.graphql.field({
         assertPaymentTransition(session.status, target);
         const result2 = await refundProviderPayment({ provider: paymentProviderFromRecord(session.provider), providerReference: session.providerReference, amount: refundCents, idempotencyKey: `${session.idempotencyKey}:refund:${refundCents}` });
         const now2 = (/* @__PURE__ */ new Date()).toISOString();
-        const sessionData = session.data && typeof session.data === "object" ? session.data : {};
-        await sudo.query.PaymentSession.updateOne({ where: { id: session.id }, data: { status: target, refundedAt: now2, data: { ...sessionData, ...result2.data || {} } }, query: "id" });
+        const sessionData2 = session.data && typeof session.data === "object" ? session.data : {};
+        await sudo.query.PaymentSession.updateOne({ where: { id: session.id }, data: { status: target, refundedAt: now2, data: { ...sessionData2, ...result2.data || {} } }, query: "id" });
         await sudo.query.Payment.updateOne({ where: { id: session.payment.id }, data: { status: paymentRecordStatus(target), refundedAmount: cumulativeRefund, refundReason: reason || "", refundedAt: now2 }, query: "id" });
-        if (sessionData.purpose === "appointment_deposit" && target === "refunded" && session.appointment?.id) {
+        if (sessionData2.purpose === "appointment_deposit" && target === "refunded" && session.appointment?.id) {
           await sudo.query.Appointment.updateOne({ where: { id: session.appointment.id }, data: { depositPaid: false }, query: "id" });
         }
         return { success: true, refundId: typeof result2.data?.refundId === "string" ? result2.data.refundId : null, error: null, status: target };
@@ -6890,22 +7501,61 @@ var distributeTip = import_core99.graphql.field({
     return { success: false, error: "Tip distribution requires an append-only payroll allocation workflow" };
   }
 });
-var paymentMutations = { processPayment, confirmPayment, refundPayment, reverseAppointmentSettlement, distributeTip };
+var retryRefunds = import_core99.graphql.field({
+  type: import_core99.graphql.object()({
+    name: "RetryRefundsResult",
+    fields: {
+      success: import_core99.graphql.field({ type: import_core99.graphql.nonNull(import_core99.graphql.Boolean) }),
+      claimed: import_core99.graphql.field({ type: import_core99.graphql.nonNull(import_core99.graphql.Int) }),
+      succeeded: import_core99.graphql.field({ type: import_core99.graphql.nonNull(import_core99.graphql.Int) }),
+      needsReview: import_core99.graphql.field({ type: import_core99.graphql.nonNull(import_core99.graphql.Int) }),
+      error: import_core99.graphql.field({ type: import_core99.graphql.String })
+    }
+  }),
+  async resolve(_source, _args, context) {
+    let actor;
+    try {
+      actor = requireActorPractice(context, permissions.canManageFinance);
+    } catch (error) {
+      return { success: false, claimed: 0, succeeded: 0, needsReview: 0, error: error instanceof Error ? error.message : "Authorized finance access is required" };
+    }
+    try {
+      const summary = await retryPracticeRefunds(context, actor.practiceId);
+      const values = Object.values(summary.results);
+      return { success: true, claimed: summary.claimed, succeeded: values.filter((value) => value === "succeeded").length, needsReview: values.filter((value) => value === "needs_review").length, error: null };
+    } catch (error) {
+      return { success: false, claimed: 0, succeeded: 0, needsReview: 0, error: safeError(error) };
+    }
+  }
+});
+var paymentMutations = { processPayment, confirmPayment, refundPayment, reverseAppointmentSettlement, distributeTip, retryRefunds };
 
 // features/keystone/mutations/purchaseGiftCard.ts
 var import_node_crypto3 = require("node:crypto");
 var import_core100 = require("@keystone-6/core");
 
-// features/keystone/aggregateIdempotencyKey.ts
-function aggregateIdempotencyKey(scope, key) {
-  if (typeof scope !== "string" || !scope.trim() || typeof key !== "string" || !key.trim()) {
-    throw new Error("A nonempty scoped idempotency key is required");
+// features/keystone/lib/mail.ts
+var import_nodemailer = require("nodemailer");
+
+// features/keystone/lib/mailRendering.ts
+function escapeMailText(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+}
+function receiptBookingLink(value) {
+  if (!value?.trim()) return null;
+  try {
+    const url = new URL(value.trim());
+    if (url.username || url.password || url.search || url.hash) return null;
+    const local = process.env.NODE_ENV !== "production" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+    if (url.protocol !== "https:" && !(url.protocol === "http:" && local)) return null;
+    url.pathname = `${url.pathname.replace(/\/$/, "")}/book`;
+    return escapeMailText(url.toString());
+  } catch {
+    return null;
   }
-  return `${scope}:${key}`;
 }
 
 // features/keystone/lib/mail.ts
-var import_nodemailer = require("nodemailer");
 function getBaseUrlForEmails() {
   if (process.env.SMTP_STORE_LINK) {
     return process.env.SMTP_STORE_LINK;
@@ -6996,7 +7646,7 @@ function appointmentRequestReceiptEmail(params) {
               <tr>
                 <td style="padding: 30px 40px 20px 40px;">
                   <p style="margin: 0; font-size: 16px; color: ${textColor}; line-height: 1.6;">
-                    Hi ${params.clientName},
+                    Hi ${escapeMailText(params.clientName)},
                   </p>
                   <p style="margin: 15px 0 0 0; font-size: 16px; color: ${textColor}; line-height: 1.6;">
                     We received your pending request. This receipt does not confirm availability, candidacy, credentials, clinical authorization, safety, outcomes, or payment readiness.
@@ -7015,23 +7665,23 @@ function appointmentRequestReceiptEmail(params) {
                         <table width="100%" border="0" cellspacing="0" cellpadding="8">
                           <tr>
                             <td style="font-size: 14px; color: #6b7280; width: 120px;">Service:</td>
-                            <td style="font-size: 14px; color: ${textColor}; font-weight: 500;">${params.serviceName}</td>
+                            <td style="font-size: 14px; color: ${textColor}; font-weight: 500;">${escapeMailText(params.serviceName)}</td>
                           </tr>
                           <tr>
                             <td style="font-size: 14px; color: #6b7280;">Provider:</td>
-                            <td style="font-size: 14px; color: ${textColor}; font-weight: 500;">${params.providerName}</td>
+                            <td style="font-size: 14px; color: ${textColor}; font-weight: 500;">${escapeMailText(params.providerName)}</td>
                           </tr>
                           <tr>
                             <td style="font-size: 14px; color: #6b7280;">Date:</td>
-                            <td style="font-size: 14px; color: ${textColor}; font-weight: 500;">${params.appointmentDate}</td>
+                            <td style="font-size: 14px; color: ${textColor}; font-weight: 500;">${escapeMailText(params.appointmentDate)}</td>
                           </tr>
                           <tr>
                             <td style="font-size: 14px; color: #6b7280;">Time:</td>
-                            <td style="font-size: 14px; color: ${textColor}; font-weight: 500;">${params.appointmentTime}</td>
+                            <td style="font-size: 14px; color: ${textColor}; font-weight: 500;">${escapeMailText(params.appointmentTime)}</td>
                           </tr>
                           <tr>
                             <td style="font-size: 14px; color: #6b7280;">Duration:</td>
-                            <td style="font-size: 14px; color: ${textColor}; font-weight: 500;">${params.duration} minutes</td>
+                            <td style="font-size: 14px; color: ${textColor}; font-weight: 500;">${escapeMailText(params.duration)} minutes</td>
                           </tr>
 
                         </table>
@@ -7059,7 +7709,7 @@ function appointmentRequestReceiptEmail(params) {
                     Keep this email only as a receipt of the submitted request.
                   </p>
                   <p style="margin: 15px 0 0 0; font-size: 12px; color: #9ca3af;">
-                    Demo request workflow | ${process.env.SMTP_STORE_LINK || "No public site URL configured"}
+                    Appointment request receipt
                   </p>
                 </td>
               </tr>
@@ -7078,7 +7728,14 @@ async function sendAppointmentRequestReceipt(params) {
       to: params.to,
       from: process.env.SMTP_FROM,
       subject: `Appointment request received - ${params.appointmentDate} at ${params.appointmentTime}`,
-      html: appointmentRequestReceiptEmail(params)
+      html: appointmentRequestReceiptEmail(params),
+      text: `Hi ${params.clientName},
+Your appointment request is pending and has not been confirmed.
+Service: ${params.serviceName}
+Provider preference: ${params.providerName}
+Requested date/time: ${params.appointmentDate} at ${params.appointmentTime}
+Duration: ${params.duration} minutes.
+The practice must review your request before any appointment, treatment or payment is confirmed.`
     });
     if (process.env.SMTP_USER?.includes("ethereal.email")) {
       console.log(`\u{1F4E7} Appointment request receipt sent. Preview: ${(0, import_nodemailer.getTestMessageUrl)(info)}`);
@@ -7104,7 +7761,7 @@ function giftCardEmail(params) {
               <tr>
                 <td style="padding: 40px; text-align: center; background: linear-gradient(135deg, ${primaryColor}, #a78bfa); border-radius: 12px 12px 0 0;">
                   <h1 style="margin: 0; font-size: 32px; color: #ffffff; font-weight: bold;">You've Received a Gift Card!</h1>
-                  <p style="margin: 10px 0 0 0; font-size: 18px; color: #f3e8ff;">From ${params.senderName}</p>
+                  <p style="margin: 10px 0 0 0; font-size: 18px; color: #f3e8ff;">From ${escapeMailText(params.senderName)}</p>
                 </td>
               </tr>
 
@@ -7112,12 +7769,12 @@ function giftCardEmail(params) {
               <tr>
                 <td style="padding: 30px 40px 20px 40px;">
                   <p style="margin: 0; font-size: 16px; color: ${textColor}; line-height: 1.6;">
-                    Hi ${params.recipientName},
+                    Hi ${escapeMailText(params.recipientName)},
                   </p>
                   ${params.message ? `
                     <div style="margin: 20px 0; padding: 20px; background: #f8f9fa; border-left: 4px solid ${primaryColor}; border-radius: 4px;">
                       <p style="margin: 0; font-size: 15px; color: ${textColor}; font-style: italic; line-height: 1.6;">
-                        "${params.message}"
+                        "${escapeMailText(params.message)}"
                       </p>
                     </div>
                   ` : ""}
@@ -7134,7 +7791,7 @@ function giftCardEmail(params) {
                         <p style="margin: 10px 0 20px 0; font-size: 48px; color: ${primaryColor}; font-weight: bold;">$${params.amount.toFixed(2)}</p>
                         <p style="margin: 0; font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px;">Gift Card Code</p>
                         <p style="margin: 10px 0 0 0; font-size: 24px; color: ${textColor}; font-weight: bold; letter-spacing: 2px; font-family: 'Courier New', monospace;">
-                          ${params.code}
+                          ${escapeMailText(params.code)}
                         </p>
                       </td>
                     </tr>
@@ -7147,15 +7804,15 @@ function giftCardEmail(params) {
                 <td style="padding: 20px 40px 40px 40px;">
                   <h3 style="margin: 0 0 15px 0; font-size: 18px; color: ${textColor};">How to Use Your Gift Card</h3>
                   <ol style="margin: 0; padding-left: 20px; font-size: 14px; color: ${textColor}; line-height: 1.8;">
-                    <li>Book an appointment online or call us</li>
-                    <li>Provide your gift card code during checkout</li>
-                    <li>Enjoy your medspa experience!</li>
+                    <li>Keep this code private</li>
+                    <li>Contact the practice to review the accepted terms and balance</li>
+                    <li>Confirm available redemption options before booking</li>
                   </ol>
-                  <div style="margin-top: 20px; text-align: center;">
-                    <a href="${process.env.SMTP_STORE_LINK}/book" style="display: inline-block; padding: 15px 30px; background: ${primaryColor}; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
+                  ${receiptBookingLink(process.env.SMTP_STORE_LINK) ? `<div style="margin-top: 20px; text-align: center;">
+                    <a href="${receiptBookingLink(process.env.SMTP_STORE_LINK)}" style="display: inline-block; padding: 15px 30px; background: ${primaryColor}; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
                       Book Your Appointment
                     </a>
-                  </div>
+                  </div>` : ""}
                 </td>
               </tr>
 
@@ -7163,8 +7820,7 @@ function giftCardEmail(params) {
               <tr>
                 <td style="padding: 30px 40px; border-top: 1px solid #e5e7eb; text-align: center;">
                   <p style="margin: 0; font-size: 12px; color: #9ca3af; line-height: 1.6;">
-                    This gift card never expires and can be used for any service.<br/>
-                    Questions? Contact us at ${process.env.SMTP_FROM}
+                    Contact the practice to review the accepted gift card terms and available redemption options.
                   </p>
                 </td>
               </tr>
@@ -7182,7 +7838,12 @@ async function sendGiftCardEmail(params) {
       to: params.to,
       from: process.env.SMTP_FROM,
       subject: `You've Received a $${params.amount} Gift Card from ${params.senderName}!`,
-      html: giftCardEmail(params)
+      html: giftCardEmail(params),
+      text: `Hi ${params.recipientName},
+${params.senderName} sent a gift card for $${params.amount.toFixed(2)}.
+Code: ${params.code}
+${params.message || ""}
+Contact the practice to review the accepted terms and redemption options.`
     });
     if (process.env.SMTP_USER?.includes("ethereal.email")) {
       console.log(`\u{1F4E7} Gift card email sent! Preview: ${(0, import_nodemailer.getTestMessageUrl)(info)}`);
@@ -7196,8 +7857,8 @@ async function sendGiftCardEmail(params) {
 // features/keystone/mutations/serializableWorkflow.ts
 function retryableTransactionError(error) {
   const value = error;
-  const message = error instanceof Error ? error.message : String(error);
-  return value?.code === "P2034" || value?.extensions?.prisma?.code === "P2034" || /write conflict|deadlock|please retry your transaction/i.test(message);
+  const message2 = error instanceof Error ? error.message : String(error);
+  return value?.code === "P2034" || value?.extensions?.prisma?.code === "P2034" || /write conflict|deadlock|please retry your transaction/i.test(message2);
 }
 async function serializableWorkflow(context, namespace, lockKeys, work) {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
@@ -7241,14 +7902,14 @@ function giftCardPurchasingEnabled() {
   return false;
 }
 function safeError2(error) {
-  const message = error instanceof Error ? error.message : "Gift-card payment operation failed";
-  if (/^(Gift card|Payment|Provider|Purchaser|Idempotency|Invalid payment transition)/.test(message)) return message;
+  const message2 = error instanceof Error ? error.message : "Gift-card payment operation failed";
+  if (/^(Gift card|Payment|Provider|Purchaser|Idempotency|Invalid payment transition)/.test(message2)) return message2;
   console.error("Gift-card payment workflow failed:", error);
   return "Gift-card payment operation failed";
 }
-async function defaultProvider(sudo, practiceId5, providerCode) {
+async function defaultProvider(sudo, practiceId4, providerCode) {
   const providers = await sudo.query.PaymentProvider.findMany({
-    where: providerCode ? { practice: { id: { equals: practiceId5 } }, code: { equals: providerCode }, isInstalled: { equals: true } } : { practice: { id: { equals: practiceId5 } }, isInstalled: { equals: true }, isDefault: { equals: true } },
+    where: providerCode ? { practice: { id: { equals: practiceId4 } }, code: { equals: providerCode }, isInstalled: { equals: true } } : { practice: { id: { equals: practiceId4 } }, isInstalled: { equals: true }, isDefault: { equals: true } },
     take: 1,
     query: "id code adapter config"
   });
@@ -7256,21 +7917,21 @@ async function defaultProvider(sudo, practiceId5, providerCode) {
   return providers[0];
 }
 async function purchaseGiftCardTransaction(context, args) {
-  const denied18 = { success: false, giftCardId: null, paymentSessionId: null, clientSecret: null };
+  const denied22 = { success: false, giftCardId: null, paymentSessionId: null, clientSecret: null };
   let actor;
   try {
     actor = requireActorPractice(context, permissions.canManageFinance, "Authorized finance access is required");
     await assertActiveActor(context);
   } catch (error) {
-    return { ...denied18, error: error instanceof Error ? error.message : "Authorized finance access is required" };
+    return { ...denied22, error: error instanceof Error ? error.message : "Authorized finance access is required" };
   }
-  if (!Number.isInteger(args.amount) || args.amount < 2500 || args.amount > 5e4) return { ...denied18, error: "Gift card amount must be between $25 and $500" };
-  if (!validKey(args.idempotencyKey)) return { ...denied18, error: "Idempotency key is invalid" };
+  if (!Number.isInteger(args.amount) || args.amount < 2500 || args.amount > 5e4) return { ...denied22, error: "Gift card amount must be between $25 and $500" };
+  if (!validKey(args.idempotencyKey)) return { ...denied22, error: "Idempotency key is invalid" };
   const purchaserEmail = args.purchaserEmail.trim().toLowerCase();
   const recipientEmail = (args.recipientEmail || purchaserEmail).trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(purchaserEmail) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) return { ...denied18, error: "Gift card email is invalid" };
-  if (args.purchaserName.trim().length > 120 || (args.recipientName?.length || 0) > 120 || (args.message?.length || 0) > 2e3) return { ...denied18, error: "Gift card details are too long" };
-  if (!giftCardPurchasingEnabled()) return { ...denied18, error: "Gift-card purchasing is disabled until the settled tender and liability ledger is implemented" };
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(purchaserEmail) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) return { ...denied22, error: "Gift card email is invalid" };
+  if (args.purchaserName.trim().length > 120 || (args.recipientName?.length || 0) > 120 || (args.message?.length || 0) > 2e3) return { ...denied22, error: "Gift card details are too long" };
+  if (!giftCardPurchasingEnabled()) return { ...denied22, error: "Gift-card purchasing is disabled until the settled tender and liability ledger is implemented" };
   const scopedPurchaseKey = aggregateIdempotencyKey(actor.practiceId, `gift-card:${args.idempotencyKey}`);
   try {
     return await serializableWorkflow(context, "medspa-gift-card", [`purchase:${scopedPurchaseKey}`], async (transactionContext) => {
@@ -7354,7 +8015,7 @@ async function purchaseGiftCardTransaction(context, args) {
       return { success: true, giftCardId: giftCard.id, paymentSessionId: session.id, clientSecret: adapter.clientSecret || null, error: null };
     });
   } catch (error) {
-    return { ...denied18, error: safeError2(error) };
+    return { ...denied22, error: safeError2(error) };
   }
 }
 var purchaseGiftCard = import_core100.graphql.field({
@@ -7451,19 +8112,19 @@ var confirmGiftCardPurchase = import_core100.graphql.field({
   }
 });
 async function applyGiftCardBalanceTransaction(context, args) {
-  const denied18 = { success: false, giftCardId: null, transactionId: null, currentBalance: null };
+  const denied22 = { success: false, giftCardId: null, transactionId: null, currentBalance: null };
   let actor;
   try {
     actor = requireActorPractice(context, permissions.canManageFinance);
     await assertPracticeRecord(context, "GiftCard", args.giftCardId);
     if (args.appointmentId) await assertPracticeRecord(context, "Appointment", args.appointmentId);
   } catch (error) {
-    return { ...denied18, error: error instanceof Error ? error.message : "Gift card not found" };
+    return { ...denied22, error: error instanceof Error ? error.message : "Gift card not found" };
   }
-  if (!(/* @__PURE__ */ new Set(["redemption", "refund"])).has(args.action)) return { ...denied18, error: "Gift card action is invalid" };
-  if (!Number.isInteger(args.amount) || args.amount <= 0 || args.amount > 1e7) return { ...denied18, error: "Gift card amount must be positive integer cents" };
-  if (!validKey(args.idempotencyKey)) return { ...denied18, error: "Idempotency key is invalid" };
-  if ((args.reason?.length || 0) > 1e3) return { ...denied18, error: "Gift card reason is too long" };
+  if (!(/* @__PURE__ */ new Set(["redemption", "refund"])).has(args.action)) return { ...denied22, error: "Gift card action is invalid" };
+  if (!Number.isInteger(args.amount) || args.amount <= 0 || args.amount > 1e7) return { ...denied22, error: "Gift card amount must be positive integer cents" };
+  if (!validKey(args.idempotencyKey)) return { ...denied22, error: "Idempotency key is invalid" };
+  if ((args.reason?.length || 0) > 1e3) return { ...denied22, error: "Gift card reason is too long" };
   try {
     return await serializableWorkflow(context, "medspa-gift-card", [`card:${args.giftCardId}`, `balance:${args.idempotencyKey}`], async (transactionContext) => {
       const sudo = transactionContext.sudo();
@@ -7504,7 +8165,7 @@ async function applyGiftCardBalanceTransaction(context, args) {
       return { success: true, giftCardId: giftCard.id, transactionId: transaction.id, currentBalance, error: null };
     });
   } catch (error) {
-    return { ...denied18, error: safeError2(error) };
+    return { ...denied22, error: safeError2(error) };
   }
 }
 var applyGiftCardBalance = import_core100.graphql.field({
@@ -7571,8 +8232,8 @@ async function evaluateProviderAuthority(sudo, input) {
     sudo.query.Service.findOne({ where: { id: input.serviceId }, query: "id status staffAuthorizationRequired practice { id }" })
   ]);
   if (!provider || provider.status !== "active" || provider.isActive !== true || !location || location.isActive !== true || !service || service.status !== "active") throw new Error("Configured provider authority is unavailable");
-  const practiceId5 = provider.practice?.id;
-  if (!practiceId5 || location.practice?.id !== practiceId5 || service.practice?.id !== practiceId5 || !provider.locations?.some((item) => item.id === location.id)) throw new Error("Configured provider authority is unavailable");
+  const practiceId4 = provider.practice?.id;
+  if (!practiceId4 || location.practice?.id !== practiceId4 || service.practice?.id !== practiceId4 || !provider.locations?.some((item) => item.id === location.id)) throw new Error("Configured provider authority is unavailable");
   const authorizations = await sudo.query.ProviderAuthorization.findMany({
     where: { provider: { id: { equals: provider.id } }, service: { id: { equals: service.id } }, location: { id: { equals: location.id } }, status: { equals: "active" }, effectiveFrom: { lte: input.at.toISOString() } },
     take: 20,
@@ -7599,7 +8260,7 @@ async function evaluateProviderAuthority(sudo, input) {
   }
   const evidence = {
     stage: input.stage,
-    practiceId: practiceId5,
+    practiceId: practiceId4,
     providerId: provider.id,
     serviceId: service.id,
     locationId: location.id,
@@ -7704,9 +8365,9 @@ function timeToMinutes(value) {
   if (!match) throw new Error("Schedule time must use HH:MM");
   return Number(match[1]) * 60 + Number(match[2]);
 }
-function timeLabel(minutes) {
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
+function timeLabel(minutes2) {
+  const hours = Math.floor(minutes2 / 60);
+  const mins = minutes2 % 60;
   const period = hours >= 12 ? "PM" : "AM";
   const displayHours = hours % 12 || 12;
   return `${displayHours}:${String(mins).padStart(2, "0")} ${period}`;
@@ -7751,11 +8412,11 @@ function nextDateKey(dateKey2) {
   date.setUTCDate(date.getUTCDate() + 1);
   return date.toISOString().slice(0, 10);
 }
-function zonedDateTimeToUtc(dateKey2, minutes, timezone) {
+function zonedDateTimeToUtc(dateKey2, minutes2, timezone) {
   assertDateKey(dateKey2);
   const [year, month, day] = dateKey2.split("-").map(Number);
-  const desiredHour = Math.floor(minutes / 60);
-  const desiredMinute = minutes % 60;
+  const desiredHour = Math.floor(minutes2 / 60);
+  const desiredMinute = minutes2 % 60;
   const desiredWall = Date.UTC(year, month - 1, day, desiredHour, desiredMinute, 0, 0);
   let guess = desiredWall;
   for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -7795,9 +8456,9 @@ function overlap(startA, endA, startB, endB) {
 function interval(schedule) {
   return { start: timeToMinutes(schedule.startTime), end: timeToMinutes(schedule.endTime) };
 }
-async function getRuntimeLocation(sudo, locationId, practiceId5, publicOnly = false) {
+async function getRuntimeLocation(sudo, locationId, practiceId4, publicOnly = false) {
   const selection = "id timezone isActive practice { id isActive storefrontSetting { isPublished primaryLocation { id } } }";
-  const usable = (location) => location?.isActive === true && (!practiceId5 || location.practice?.id === practiceId5) && (!publicOnly || location.practice?.isActive === true && location.practice?.storefrontSetting?.isPublished === true && location.practice.storefrontSetting.primaryLocation?.id === location.id);
+  const usable = (location) => location?.isActive === true && (!practiceId4 || location.practice?.id === practiceId4) && (!publicOnly || location.practice?.isActive === true && location.practice?.storefrontSetting?.isPublished === true && location.practice.storefrontSetting.primaryLocation?.id === location.id);
   if (locationId) {
     const location = await sudo.query.Location.findOne({ where: { id: locationId }, query: selection });
     if (!usable(location)) throw new Error("Location is unavailable");
@@ -7806,7 +8467,7 @@ async function getRuntimeLocation(sudo, locationId, practiceId5, publicOnly = fa
   const locations = await sudo.query.Location.findMany({
     where: {
       isActive: { equals: true },
-      practice: practiceId5 ? { id: { equals: practiceId5 } } : void 0
+      practice: practiceId4 ? { id: { equals: practiceId4 } } : void 0
     },
     orderBy: { createdAt: "asc" },
     take: 20,
@@ -7936,8 +8597,8 @@ async function computeProviderAvailability({
   for (const schedule of availability) {
     const range = interval(schedule);
     if (range.end <= range.start) continue;
-    for (let minutes = range.start; minutes + serviceDuration <= range.end; minutes += SLOT_INTERVAL_MINUTES) {
-      if (minutes + serviceDuration + cleanupBufferMinutes <= range.end && !candidateMinutes.has(minutes)) candidateMinutes.set(minutes, schedule);
+    for (let minutes2 = range.start; minutes2 + serviceDuration <= range.end; minutes2 += SLOT_INTERVAL_MINUTES) {
+      if (minutes2 + serviceDuration + cleanupBufferMinutes <= range.end && !candidateMinutes.has(minutes2)) candidateMinutes.set(minutes2, schedule);
     }
   }
   const slots = [];
@@ -7999,6 +8660,19 @@ async function computeProviderAvailability({
   };
 }
 
+// features/keystone/lib/guestAccess.ts
+var import_node_crypto4 = require("node:crypto");
+function guestAccessToken(appointmentId) {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret || !appointmentId) return null;
+  return (0, import_node_crypto4.createHmac)("sha256", secret).update(`medspa-guest-appointment:${appointmentId}`).digest("base64url");
+}
+function validGuestAccessToken(appointmentId, token) {
+  const expected = guestAccessToken(appointmentId);
+  if (!expected || typeof token !== "string" || token.length !== expected.length) return false;
+  return (0, import_node_crypto4.timingSafeEqual)(Buffer.from(expected), Buffer.from(token));
+}
+
 // features/keystone/mutations/clinicalExecutionReadiness.ts
 function instant(value) {
   if (!(value instanceof Date) && typeof value !== "string") return NaN;
@@ -8025,12 +8699,12 @@ function supervisorReservationCovers(reservations, scope, start, end) {
   if (!validScope(scope) || !scope.supervisorId?.trim()) return false;
   return reservations.some((reservation) => reservation.status === "reserved" && reservation.practice?.id === scope.practiceId && reservation.location?.id === scope.locationId && reservation.appointment?.id === scope.appointmentId && reservation.service?.id === scope.serviceId && reservation.supervisor?.id === scope.supervisorId && covers(start, end, reservation.startsAt, reservation.endsAt));
 }
-async function loadRequiredIntakeManifest(sudo, practiceId5, service) {
+async function loadRequiredIntakeManifest(sudo, practiceId4, service) {
   if (service.requiresIntakeReview !== true) return [];
   const categoryId = service.category?.id;
   if (!categoryId) throw new Error("A versioned required-intake category is unavailable");
   const templates = await sudo.query.FormTemplate.findMany({
-    where: { practice: { id: { equals: practiceId5 } }, isActive: { equals: true }, requiredForCategories: { some: { id: { equals: categoryId } } } },
+    where: { practice: { id: { equals: practiceId4 } }, isActive: { equals: true }, requiredForCategories: { some: { id: { equals: categoryId } } } },
     take: 101,
     query: "id version isActive requiredForCategories { id }"
   });
@@ -8172,15 +8846,15 @@ function normalizedPlanApproval(args) {
   if (startsAt && endsAt && startsAt >= endsAt) throw new Error("Plan end must follow plan start");
   return { clientId: args.clientId, consultationId: args.consultationId, providerId: args.providerId, title: args.title.trim(), goals: args.goals.trim(), startsAt, endsAt, items, supersedesId: args.supersedesId || null, expectedConsultationHash: args.expectedConsultationHash };
 }
-async function loadPlanApprovalReceipt(sudo, practiceId5, planId) {
+async function loadPlanApprovalReceipt(sudo, practiceId4, planId) {
   const events = await sudo.query.AuditEvent.findMany({
-    where: { practice: { id: { equals: practiceId5 } }, action: { equals: PLAN_APPROVAL_ACTION }, resourceType: { equals: "TreatmentPlan" }, resourceId: { equals: planId } },
+    where: { practice: { id: { equals: practiceId4 } }, action: { equals: PLAN_APPROVAL_ACTION }, resourceType: { equals: "TreatmentPlan" }, resourceId: { equals: planId } },
     take: 2,
     query: "id evidence evidenceHash actor { id }"
   });
   if (events.length !== 1) throw new Error("Plan has no unambiguous versioned approval receipt; review and supersede legacy evidence");
   const receipt = events[0].evidence;
-  if (receipt?.version !== 1 || receipt.practiceId !== practiceId5 || receipt.planId !== planId || evidenceHash(receipt) !== events[0].evidenceHash || receipt.actorId !== events[0].actor?.id) throw new Error("Plan approval receipt is invalid");
+  if (receipt?.version !== 1 || receipt.practiceId !== practiceId4 || receipt.planId !== planId || evidenceHash(receipt) !== events[0].evidenceHash || receipt.actorId !== events[0].actor?.id) throw new Error("Plan approval receipt is invalid");
   return { receipt, evidenceHash: events[0].evidenceHash };
 }
 async function approveTreatmentPlanTransaction(context, args) {
@@ -8214,15 +8888,15 @@ async function approveTreatmentPlanTransaction(context, args) {
       const acceptedItems = [];
       for (const item of input.items) {
         if (item.serviceId !== consultation.service?.id) throw new Error("Each planned service requires its matching consultation");
-        const service = await assertPracticeRecord(tx, "Service", item.serviceId, "id name status baseDuration basePrice depositAmount cleanupBufferMinutes requiresConsultation requiresIntakeReview staffAuthorizationRequired requiresLotTraceability category { id } requiredResources { id } practice { id }");
-        if (service.status !== "active" || !Number.isSafeInteger(service.baseDuration) || service.baseDuration < 1 || !Number.isSafeInteger(service.basePrice) || service.basePrice < 0) throw new Error("Canonical service duration and price are unavailable");
+        const service = await assertPracticeRecord(tx, "Service", item.serviceId, "id name status baseDuration price depositAmount cleanupBufferMinutes requiresConsultation requiresIntakeReview staffAuthorizationRequired requiresLotTraceability category { id } requiredResources { id } practice { id }");
+        if (service.status !== "active" || !Number.isSafeInteger(service.baseDuration) || service.baseDuration < 1 || !Number.isSafeInteger(service.price) || service.price < 0) throw new Error("Canonical service duration and price are unavailable");
         const forms = await loadRequiredIntakeManifest(sudo, actor.practiceId, service);
         if (forms.length) {
           if (!consultation.appointment?.id) throw new Error("Appointment-specific reviewed intake is required");
           await assertCurrentIntakeEvidence(sudo, { practiceId: actor.practiceId, clientUserId: client.user.id, appointmentId: consultation.appointment.id, categoryId: service.category.id, requiredForms: forms });
         }
         const authority2 = service.staffAuthorizationRequired !== false ? await evaluateProviderAuthority(sudo, { providerId: provider.id, serviceId: service.id, locationId: location.id, at: /* @__PURE__ */ new Date(), stage: "scheduling" }) : null;
-        acceptedItems.push({ ...item, serviceTitle: service.name, duration: service.baseDuration, price: service.basePrice, requirementsHash: planServiceRequirementsHash(service), requiredIntakeForms: forms, authorityHash: authority2?.evidenceHash || null });
+        acceptedItems.push({ ...item, serviceTitle: service.name, duration: service.baseDuration, price: service.price, requirementsHash: planServiceRequirementsHash(service), requiredIntakeForms: forms, authorityHash: authority2?.evidenceHash || null });
       }
       const priorPlan = input.supersedesId ? await assertPracticeRecord(tx, "TreatmentPlan", input.supersedesId, "id status revision client { id } supersededBy { id } practice { id }") : null;
       if (priorPlan && (priorPlan.status !== "active" || priorPlan.client?.id !== input.clientId || priorPlan.supersededBy?.id)) throw new Error("Treatment-plan supersession is invalid");
@@ -8246,8 +8920,8 @@ async function approveTreatmentPlanTransaction(context, args) {
     return { success: false, recordId: null, evidenceHash: null, error: error instanceof Error ? error.message : "Treatment plan failed" };
   }
 }
-async function assertPlanStaffMembership(sudo, practiceId5, userId, locationId) {
-  const memberships = await sudo.query.PracticeMembership.findMany({ where: { practice: { id: { equals: practiceId5 } }, user: { id: { equals: userId } } }, take: 2, query: "id status locations { id }" });
+async function assertPlanStaffMembership(sudo, practiceId4, userId, locationId) {
+  const memberships = await sudo.query.PracticeMembership.findMany({ where: { practice: { id: { equals: practiceId4 } }, user: { id: { equals: userId } } }, take: 2, query: "id status locations { id }" });
   if (memberships.length !== 1 || memberships[0].status !== "active" || !memberships[0].locations?.some((value) => value.id === locationId)) throw new Error("An unambiguous active staff membership assigned to this location is required");
 }
 function planServiceRequirementsHash(service) {
@@ -8307,17 +8981,19 @@ var BookAppointmentResult = import_core101.graphql.object()({
   fields: {
     success: import_core101.graphql.field({ type: import_core101.graphql.nonNull(import_core101.graphql.Boolean) }),
     appointmentId: import_core101.graphql.field({ type: import_core101.graphql.ID }),
-    error: import_core101.graphql.field({ type: import_core101.graphql.String })
+    error: import_core101.graphql.field({ type: import_core101.graphql.String }),
+    // Guest requests only: the bearer link token for viewing and cancelling this request.
+    accessToken: import_core101.graphql.field({ type: import_core101.graphql.String })
   }
 });
 function guestPassword() {
   return `guest_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 }
-async function resolveAuthorizedClient(sudo, input, sessionUserId, isOperator = false, practiceId5) {
+async function resolveAuthorizedClient(sudo, input, sessionUserId, isOperator = false, practiceId4) {
   if (!sessionUserId && !isOperator) return null;
-  let user = sessionUserId ? await sudo.query.User.findOne({ where: { id: sessionUserId }, query: "id name email phone status practice { id }" }) : (await sudo.query.User.findMany({ where: { email: { equals: input.email }, practice: practiceId5 ? { id: { equals: practiceId5 } } : void 0 }, take: 1, query: "id name email phone practice { id }" }))[0];
+  let user = sessionUserId ? await sudo.query.User.findOne({ where: { id: sessionUserId }, query: "id name email phone status practice { id }" }) : (await sudo.query.User.findMany({ where: { email: { equals: input.email }, practice: practiceId4 ? { id: { equals: practiceId4 } } : void 0 }, take: 1, query: "id name email phone practice { id }" }))[0];
   if (sessionUserId && user?.status !== "active") throw new Error("The signed-in account is unavailable");
-  if (sessionUserId && (!practiceId5 || user?.practice?.id !== practiceId5)) throw new Error("Signed-in account does not belong to this practice");
+  if (sessionUserId && (!practiceId4 || user?.practice?.id !== practiceId4)) throw new Error("Signed-in account does not belong to this practice");
   if (sessionUserId && user?.email?.toLowerCase() !== input.email) {
     throw new Error("Use the email address on your signed-in account");
   }
@@ -8328,14 +9004,14 @@ async function resolveAuthorizedClient(sudo, input, sessionUserId, isOperator = 
         email: input.email,
         phone: input.phone || "",
         password: guestPassword(),
-        practice: practiceId5 ? { connect: { id: practiceId5 } } : void 0
+        practice: practiceId4 ? { connect: { id: practiceId4 } } : void 0
       },
       query: "id name email phone"
     });
   }
   if (!user) throw new Error("Signed-in client account could not be found");
   const existingClients = await sudo.query.Client.findMany({
-    where: { user: { id: { equals: user.id } }, practice: practiceId5 ? { id: { equals: practiceId5 } } : void 0 },
+    where: { user: { id: { equals: user.id } }, practice: practiceId4 ? { id: { equals: practiceId4 } } : void 0 },
     take: 1,
     query: "id user { id name email phone }"
   });
@@ -8343,7 +9019,7 @@ async function resolveAuthorizedClient(sudo, input, sessionUserId, isOperator = 
   return sudo.query.Client.createOne({
     data: {
       user: { connect: { id: user.id } },
-      practice: practiceId5 ? { connect: { id: practiceId5 } } : void 0,
+      practice: practiceId4 ? { connect: { id: practiceId4 } } : void 0,
       firstVisit: (/* @__PURE__ */ new Date()).toISOString(),
       totalVisits: 0,
       lifetimeValue: 0
@@ -8354,7 +9030,7 @@ async function resolveAuthorizedClient(sudo, input, sessionUserId, isOperator = 
 async function lockBookingCapacity(context, providerId, services, supervisorIds = []) {
   const keys = [
     `provider:${providerId}`,
-    ...supervisorIds.map((id) => `provider:${id}`),
+    ...supervisorIds.map((id2) => `provider:${id2}`),
     ...services.flatMap((service) => service.requiredResources || []).map((resource) => `resource:${resource.id}`)
   ];
   for (const key of [...new Set(keys)].sort()) {
@@ -8504,12 +9180,12 @@ async function bookAppointmentTransaction(context, args) {
       if (correctionReceipts.length) {
         const evidence = correctionReceipts[0].evidence;
         if (correctionReceipts.length !== 1 || correctionReceipts[0].resourceId !== args.rescheduleAppointmentId || evidence?.requestHash !== bookingRequestHash || correctionReceipts[0].evidenceHash !== evidenceHash(evidence)) throw new Error("Reschedule key was already used with different evidence");
-        return { appointmentId: correctionReceipts[0].resourceId, duration, services, providerName: "", created: false };
+        return { appointmentId: correctionReceipts[0].resourceId, duration, services, providerName: "", created: false, timezone: location.timezone };
       }
       const prior = (await sudo.query.Appointment.findMany({ where: { idempotencyKey: { equals: scopedIdempotencyKey }, practice: { id: { equals: bookingPracticeId } } }, take: 1, query: "id metadata duration" }))[0];
       if (prior) {
         if (prior.metadata?.bookingRequestHash !== bookingRequestHash) throw new Error("Booking request key was already used with different details");
-        return { appointmentId: prior.id, duration: prior.duration || 0, services, providerName: "", created: false };
+        return { appointmentId: prior.id, duration: prior.duration || 0, services, providerName: "", created: false, timezone: location.timezone };
       }
       if (start.getTime() < Date.now() || start.getTime() > Date.now() + 366 * 24 * 60 * 6e4) throw new Error("Appointment start time is invalid");
       let moving = null;
@@ -8557,14 +9233,14 @@ async function bookAppointmentTransaction(context, args) {
         const throughEnd = await evaluateProviderAuthority(sudo, { providerId: args.providerId, serviceId: decision.serviceId, locationId: location.locationId, at: end, stage: "scheduling" });
         if (throughEnd.authorizationId !== decision.authorizationId || throughEnd.credentialId !== decision.credentialId || throughEnd.supervisorId !== decision.supervisorId || throughEnd.policyVersion !== decision.policyVersion) throw new Error("Provider authority does not cover the exact appointment interval");
       }
-      const practiceId5 = practiceIds[0];
-      if (!practiceId5 || authorityDecisions.some((decision) => decision.practiceId !== practiceId5)) throw new Error("Booking scope is unavailable");
+      const practiceId4 = practiceIds[0];
+      if (!practiceId4 || authorityDecisions.some((decision) => decision.practiceId !== practiceId4)) throw new Error("Booking scope is unavailable");
       const client = binding?.client || await resolveAuthorizedClient(
         sudo,
         { name: clientName, email: clientEmail, phone: clientPhone },
         operator2 ? void 0 : context.session?.itemId,
         Boolean(operator2),
-        practiceId5
+        practiceId4
       );
       if (moving) {
         for (const row2 of moving.resourceReservations.filter((value) => ["reserved", "in_use"].includes(value.status))) await sudo.query.AppointmentResourceReservation.updateOne({ where: { id: row2.id }, data: { status: "superseded" }, query: "id" });
@@ -8572,7 +9248,7 @@ async function bookAppointmentTransaction(context, args) {
       }
       const appointment = moving ? await sudo.query.Appointment.updateOne({ where: { id: moving.id }, data: { startTime: start.toISOString(), endTime: end.toISOString(), revision: moving.revision + 1, resource: resourceId ? { connect: { id: resourceId } } : { disconnect: true }, room: selectedSlot.roomId ? { connect: { id: selectedSlot.roomId } } : { disconnect: true }, device: selectedSlot.deviceId ? { connect: { id: selectedSlot.deviceId } } : { disconnect: true }, metadata: { ...moving.metadata, capacityBufferMinutes: cleanupBufferMinutes } }, query: "id" }) : await sudo.query.Appointment.createOne({
         data: {
-          practice: { connect: { id: practiceId5 } },
+          practice: { connect: { id: practiceId4 } },
           startTime: start.toISOString(),
           endTime: end.toISOString(),
           duration,
@@ -8585,7 +9261,7 @@ async function bookAppointmentTransaction(context, args) {
           resource: resourceId ? { connect: { id: resourceId } } : void 0,
           room: selectedSlot.roomId ? { connect: { id: selectedSlot.roomId } } : void 0,
           device: selectedSlot.deviceId ? { connect: { id: selectedSlot.deviceId } } : void 0,
-          services: { connect: serviceIds.map((id) => ({ id })) },
+          services: { connect: serviceIds.map((id2) => ({ id: id2 })) },
           clientNotes: args.clientNotes?.trim() || "",
           idempotencyKey: scopedIdempotencyKey,
           metadata: {
@@ -8598,11 +9274,11 @@ async function bookAppointmentTransaction(context, args) {
         },
         query: "id"
       });
-      const requestBoundaryEvidenceHash = authorityDecisions.length ? authorityDecisions.map((decision) => decision.evidenceHash).join(":") : evidenceHash({ appointmentId: appointment.id, practiceId: practiceId5, providerId: args.providerId, serviceIds, stage: "non_clinical_demo_request" });
+      const requestBoundaryEvidenceHash = authorityDecisions.length ? authorityDecisions.map((decision) => decision.evidenceHash).join(":") : evidenceHash({ appointmentId: appointment.id, practiceId: practiceId4, providerId: args.providerId, serviceIds, stage: "non_clinical_demo_request" });
       const selectedResources = services.flatMap((service) => service.requiredResources || []).filter((resource, index, all) => selectedSlot.resourceIds.includes(resource.id) && all.findIndex((candidate) => candidate.id === resource.id) === index);
       for (const resource of selectedResources) {
         await sudo.query.AppointmentResourceReservation.createOne({ data: {
-          practice: { connect: { id: practiceId5 } },
+          practice: { connect: { id: practiceId4 } },
           location: { connect: { id: availability.locationId } },
           appointment: { connect: { id: appointment.id } },
           resource: { connect: { id: resource.id } },
@@ -8620,7 +9296,7 @@ async function bookAppointmentTransaction(context, args) {
       }
       for (const supervisorId of [...new Set(authorityDecisions.map((decision) => decision.supervisorId).filter(Boolean))]) {
         const supervisorEvidenceHash = authorityDecisions.filter((decision) => decision.supervisorId === supervisorId).map((decision) => decision.evidenceHash).join(":");
-        await sudo.query.AppointmentSupervisorReservation.createOne({ data: { practice: { connect: { id: practiceId5 } }, location: { connect: { id: availability.locationId } }, appointment: { connect: { id: appointment.id } }, supervisor: { connect: { id: supervisorId } }, service: serviceIds.length === 1 ? { connect: { id: serviceIds[0] } } : void 0, startsAt: start.toISOString(), endsAt: reservedEnd.toISOString(), status: "reserved", evidenceHash: supervisorEvidenceHash, idempotencyKey: `booking:${appointment.id}:${idempotencyKey}:supervisor:${supervisorId}` }, query: "id" });
+        await sudo.query.AppointmentSupervisorReservation.createOne({ data: { practice: { connect: { id: practiceId4 } }, location: { connect: { id: availability.locationId } }, appointment: { connect: { id: appointment.id } }, supervisor: { connect: { id: supervisorId } }, service: serviceIds.length === 1 ? { connect: { id: serviceIds[0] } } : void 0, startsAt: start.toISOString(), endsAt: reservedEnd.toISOString(), status: "reserved", evidenceHash: supervisorEvidenceHash, idempotencyKey: `booking:${appointment.id}:${idempotencyKey}:supervisor:${supervisorId}` }, query: "id" });
       }
       for (const [index, decision] of authorityDecisions.entries()) await recordAuthorityDecision(transactionContext, decision, { clientId: client?.id, appointmentId: appointment.id }, `booking:${appointment.id}:${idempotencyKey}:authority:${index}`);
       for (const service of moving ? [] : services) {
@@ -8661,18 +9337,21 @@ async function bookAppointmentTransaction(context, args) {
       }
       if (binding) {
         const evidence = { ...moving ? { priorStartTime: moving.startTime, priorEndTime: moving.endTime, fromRevision: moving.revision, toRevision: moving.revision + 1, reason: args.rescheduleReason.trim() } : {}, requestHash: bookingRequestHash, appointmentId: appointment.id, planBooking: planBookingSnapshot(binding), actorId: operator2.actorId, startTime: start.toISOString(), endTime: end.toISOString(), resourceIds: selectedSlot.resourceIds, supervisorIds: selectedSlot.supervisorIds };
-        await sudo.query.AuditEvent.createOne({ data: { practice: { connect: { id: practiceId5 } }, location: { connect: { id: availability.locationId } }, actor: { connect: { id: operator2.actorId } }, action: moving ? "treatment_plan.rescheduled.v1" : "treatment_plan.booked.v1", resourceType: "Appointment", resourceId: appointment.id, correlationId: idempotencyKey, evidence: bounded(evidence), evidenceHash: evidenceHash(evidence), occurredAt: (/* @__PURE__ */ new Date()).toISOString() }, query: "id" });
+        await sudo.query.AuditEvent.createOne({ data: { practice: { connect: { id: practiceId4 } }, location: { connect: { id: availability.locationId } }, actor: { connect: { id: operator2.actorId } }, action: moving ? "treatment_plan.rescheduled.v1" : "treatment_plan.booked.v1", resourceType: "Appointment", resourceId: appointment.id, correlationId: idempotencyKey, evidence: bounded(evidence), evidenceHash: evidenceHash(evidence), occurredAt: (/* @__PURE__ */ new Date()).toISOString() }, query: "id" });
       }
-      return { appointmentId: appointment.id, duration, services, providerName, created: !moving };
+      return { appointmentId: appointment.id, duration, services, providerName, created: !moving, timezone: location.timezone };
     });
     if (booking.created && !args.planId) try {
       const dateStr = start.toLocaleDateString("en-US", {
+        timeZone: booking.timezone,
         weekday: "long",
         year: "numeric",
         month: "long",
         day: "numeric"
       });
       const timeStr = start.toLocaleTimeString("en-US", {
+        timeZone: booking.timezone,
+        timeZoneName: "short",
         hour: "numeric",
         minute: "2-digit",
         hour12: true
@@ -8689,7 +9368,9 @@ async function bookAppointmentTransaction(context, args) {
     } catch (emailError) {
       console.error("Failed to send appointment request receipt:", emailError);
     }
-    return { success: true, appointmentId: booking.appointmentId, error: null };
+    const booked = await context.sudo().query.Appointment.findOne({ where: { id: booking.appointmentId }, query: "id client { id }" });
+    const accessToken = booked && !booked.client?.id ? guestAccessToken(booking.appointmentId) : null;
+    return { success: true, appointmentId: booking.appointmentId, error: null, accessToken };
   } catch (error) {
     return {
       success: false,
@@ -8789,12 +9470,12 @@ var calculateCommission = import_core103.graphql.field({ type: CommissionResult,
   const groups = /* @__PURE__ */ new Map();
   for (const item of rows) {
     const appointment = item.payment?.appointment;
-    const id = appointment?.id || `unlinked:${item.id}`;
-    const current = groups.get(id) || { appointmentId: id, date: appointment?.startTime || item.createdAt, clientName: appointment?.client?.user?.name || "Client omitted", services: [], totalRevenue: 0, totalCommission: 0 };
+    const id2 = appointment?.id || `unlinked:${item.id}`;
+    const current = groups.get(id2) || { appointmentId: id2, date: appointment?.startTime || item.createdAt, clientName: appointment?.client?.user?.name || "Client omitted", services: [], totalRevenue: 0, totalCommission: 0 };
     current.services.push({ serviceName: item.service?.name || "Settled service", revenue: Number(item.saleAmount || 0) / 100, commission: Number(item.commissionAmount || 0) / 100 });
     current.totalRevenue += Number(item.saleAmount || 0) / 100;
     current.totalCommission += Number(item.commissionAmount || 0) / 100;
-    groups.set(id, current);
+    groups.set(id2, current);
   }
   const appointments = [...groups.values()];
   const revenue = rows.reduce((sum, item) => sum + Number(item.saleAmount || 0), 0) / 100;
@@ -8836,9 +9517,15 @@ var StorefrontProvider = import_core104.graphql.object()({
     id: import_core104.graphql.field({ type: import_core104.graphql.nonNull(import_core104.graphql.ID) }),
     user: import_core104.graphql.field({ type: StorefrontProviderUser }),
     isActive: import_core104.graphql.field({ type: import_core104.graphql.nonNull(import_core104.graphql.Boolean) }),
+    title: import_core104.graphql.field({ type: import_core104.graphql.String }),
     photo: import_core104.graphql.field({ type: StorefrontProviderPhoto }),
     specializations: import_core104.graphql.field({
       type: import_core104.graphql.nonNull(import_core104.graphql.list(import_core104.graphql.nonNull(StorefrontSpecialization)))
+    }),
+    // Weekdays (0 = Sunday) with published recurring hours; lets the booking calendar mark days off.
+    workingDays: import_core104.graphql.field({
+      type: import_core104.graphql.nonNull(import_core104.graphql.list(import_core104.graphql.nonNull(import_core104.graphql.Int))),
+      resolve: (provider) => [...new Set((provider.schedules || []).map((schedule) => schedule.dayOfWeek).filter((day) => Number.isInteger(day)))].sort()
     })
   }
 });
@@ -8846,8 +9533,10 @@ var PUBLIC_PROVIDER_SELECTION = `
   id
   user { id name }
   isActive
+  title
   photo { image { url } imagePath altText }
   specializations(where: { status: { equals: active }, isPublic: { equals: true } }, take: 50, orderBy: { name: asc }) { id name }
+  schedules(where: { type: { equals: recurring }, isAvailable: { equals: true }, isPublic: { equals: true } }, take: 50) { dayOfWeek }
 `;
 async function activePractice(context, practiceSlug) {
   if (!/^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$/.test(practiceSlug)) return null;
@@ -8908,8 +9597,86 @@ var storefrontProvider = import_core104.graphql.field({
   }
 });
 
-// features/keystone/extendGraphqlSchema/storefrontSettings.ts
+// features/keystone/extendGraphqlSchema/storefrontServices.ts
 var import_core105 = require("@keystone-6/core");
+
+// features/keystone/lib/storefrontPractice.ts
+async function storefrontPracticeSlug(context) {
+  const pinned = process.env.MEDSPA_PRACTICE_SLUG?.trim();
+  if (pinned) return pinned;
+  const practices = await context.sudo().query.Practice.findMany({
+    where: { isActive: { equals: true }, storefrontSetting: { isPublished: { equals: true } } },
+    take: 2,
+    query: "slug"
+  });
+  return practices.length === 1 && typeof practices[0].slug === "string" ? practices[0].slug : null;
+}
+
+// features/keystone/extendGraphqlSchema/storefrontServices.ts
+async function readStorefrontServices(context, ids) {
+  if (ids.length > 100 || ids.some((id2) => typeof id2 !== "string" || !id2 || id2.length > 200)) throw new Error("Invalid service selection");
+  const slug = await storefrontPracticeSlug(context);
+  if (!slug) throw new Error("Storefront practice is not configured");
+  const practices = await context.sudo().query.Practice.findMany({
+    where: { slug: { equals: slug }, isActive: { equals: true } },
+    take: 2,
+    query: "id storefrontSetting { isPublished primaryLocation { isActive practice { id } } }"
+  });
+  const practice = practices.length === 1 ? practices[0] : null;
+  if (!practice?.storefrontSetting?.isPublished || practice.storefrontSetting.primaryLocation?.isActive !== true || practice.storefrontSetting.primaryLocation.practice?.id !== practice.id) return [];
+  if (!ids.length) return [];
+  const services = await context.sudo().query.Service.findMany({
+    where: { id: { in: [...ids] }, practice: { id: { equals: practice.id } }, status: { equals: "active" }, isPublic: { equals: true } },
+    take: 100,
+    orderBy: { id: "asc" },
+    query: "id name description baseDuration price depositRequired depositAmount category { id name isVisible practice { id } } image { image { url } imagePath altText practice { id } }"
+  });
+  return services.map((service) => ({
+    id: service.id,
+    name: service.name,
+    description: typeof service.description === "string" && service.description.trim() ? service.description.trim() : null,
+    baseDuration: service.baseDuration,
+    basePrice: service.price,
+    depositAmount: service.depositRequired === true && Number(service.depositAmount) > 0 ? Number(service.depositAmount) : null,
+    category: service.category?.practice?.id === practice.id && service.category.isVisible === true ? { id: service.category.id, name: service.category.name } : null,
+    image: service.image?.practice?.id === practice.id ? { image: service.image.image ? { url: service.image.image.url } : null, imagePath: service.image.imagePath || null, altText: service.image.altText || null } : null
+  }));
+}
+var storefrontServices = import_core105.graphql.field({
+  type: import_core105.graphql.JSON,
+  args: { ids: import_core105.graphql.arg({ type: import_core105.graphql.nonNull(import_core105.graphql.list(import_core105.graphql.nonNull(import_core105.graphql.ID))) }) },
+  resolve(_source, args, context) {
+    return readStorefrontServices(context, args.ids);
+  }
+});
+
+// features/keystone/extendGraphqlSchema/storefrontRooms.ts
+var import_core106 = require("@keystone-6/core");
+var storefrontRooms = import_core106.graphql.field({
+  type: import_core106.graphql.JSON,
+  async resolve(_source, _args, context) {
+    const slug = await storefrontPracticeSlug(context);
+    if (!slug) return [];
+    const practices = await context.sudo().query.Practice.findMany({
+      where: { slug: { equals: slug }, isActive: { equals: true } },
+      take: 2,
+      query: "id storefrontSetting { isPublished primaryLocation { id isActive practice { id } } }"
+    });
+    const practice = practices.length === 1 ? practices[0] : null;
+    const location = practice?.storefrontSetting?.primaryLocation;
+    if (!practice?.storefrontSetting?.isPublished || !location?.isActive || location.practice?.id !== practice.id) return [];
+    const rooms = await context.sudo().query.Resource.findMany({
+      where: { practice: { id: { equals: practice.id } }, location: { id: { equals: location.id } }, type: { equals: "room" }, isActive: { equals: true }, isPublic: { equals: true } },
+      take: 12,
+      orderBy: { name: "asc" },
+      query: "id name photoUrl"
+    });
+    return rooms.filter((room) => room.photoUrl).map((room) => ({ id: room.id, name: room.name, photoUrl: room.photoUrl }));
+  }
+});
+
+// features/keystone/extendGraphqlSchema/storefrontSettings.ts
+var import_core107 = require("@keystone-6/core");
 
 // features/keystone/localRuntime.ts
 var import_node_fs = require("node:fs");
@@ -8957,23 +9724,16 @@ var DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", 
 var UNPUBLISHED_TEXT = /\b(?:configure|placeholder)\b/i;
 function boundedText(value, max) {
   if (typeof value !== "string") return null;
-  const text93 = value.trim();
-  if (!text93 || text93.length > max || /[\u0000-\u001f\u007f]/.test(text93) || UNPUBLISHED_TEXT.test(text93)) return null;
-  return text93;
+  const text96 = value.trim();
+  if (!text96 || text96.length > max || /[\u0000-\u001f\u007f]/.test(text96) || UNPUBLISHED_TEXT.test(text96)) return null;
+  return text96;
 }
-function publicPhone(value, fictionalDemo) {
-  const phone = boundedText(value, 40);
-  if (!phone) return null;
-  const digits = phone.replace(/\D/g, "");
-  const reservedFictionalNumber = /^1?[2-9]\d{2}55501\d{2}$/.test(digits);
-  if (reservedFictionalNumber) return fictionalDemo ? phone : null;
-  return /555/.test(digits) ? null : phone;
+function publicPhone(value) {
+  return boundedText(value, 40);
 }
-function publicEmail(value, fictionalDemo) {
+function publicEmail(value) {
   const email = boundedText(value, 254);
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
-  if (/\.example$/i.test(email)) return fictionalDemo ? email : null;
-  return /\.(?:invalid|test)$/i.test(email) ? null : email;
+  return email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
 }
 function publicZipCode(value) {
   const zipCode = boundedText(value, 24);
@@ -8994,32 +9754,32 @@ function publicHours(value) {
   }
   return Object.keys(hours).length ? hours : null;
 }
-var StorefrontPublicLocation = import_core105.graphql.object()({
+var StorefrontPublicLocation = import_core107.graphql.object()({
   name: "StorefrontPublicLocation",
   fields: {
-    id: import_core105.graphql.field({ type: import_core105.graphql.nonNull(import_core105.graphql.ID) }),
-    name: import_core105.graphql.field({ type: import_core105.graphql.String }),
-    address: import_core105.graphql.field({ type: import_core105.graphql.String }),
-    city: import_core105.graphql.field({ type: import_core105.graphql.String }),
-    state: import_core105.graphql.field({ type: import_core105.graphql.String }),
-    zipCode: import_core105.graphql.field({ type: import_core105.graphql.String }),
-    phone: import_core105.graphql.field({ type: import_core105.graphql.String }),
-    email: import_core105.graphql.field({ type: import_core105.graphql.String }),
-    hours: import_core105.graphql.field({ type: import_core105.graphql.JSON }),
-    timezone: import_core105.graphql.field({ type: import_core105.graphql.String })
+    id: import_core107.graphql.field({ type: import_core107.graphql.nonNull(import_core107.graphql.ID) }),
+    name: import_core107.graphql.field({ type: import_core107.graphql.String }),
+    address: import_core107.graphql.field({ type: import_core107.graphql.String }),
+    city: import_core107.graphql.field({ type: import_core107.graphql.String }),
+    state: import_core107.graphql.field({ type: import_core107.graphql.String }),
+    zipCode: import_core107.graphql.field({ type: import_core107.graphql.String }),
+    phone: import_core107.graphql.field({ type: import_core107.graphql.String }),
+    email: import_core107.graphql.field({ type: import_core107.graphql.String }),
+    hours: import_core107.graphql.field({ type: import_core107.graphql.JSON }),
+    timezone: import_core107.graphql.field({ type: import_core107.graphql.String })
   }
 });
-var StorefrontPublicSettings = import_core105.graphql.object()({
+var StorefrontPublicSettings = import_core107.graphql.object()({
   name: "StorefrontPublicSettings",
   fields: {
-    configured: import_core105.graphql.field({ type: import_core105.graphql.nonNull(import_core105.graphql.Boolean) }),
-    displayName: import_core105.graphql.field({ type: import_core105.graphql.String }),
-    accentHue: import_core105.graphql.field({ type: import_core105.graphql.Int }),
-    logoSvg: import_core105.graphql.field({ type: import_core105.graphql.String }),
-    logoHue: import_core105.graphql.field({ type: import_core105.graphql.Int }),
-    catalogNames: import_core105.graphql.field({ type: import_core105.graphql.nonNull(import_core105.graphql.list(import_core105.graphql.nonNull(import_core105.graphql.String))) }),
-    serviceCount: import_core105.graphql.field({ type: import_core105.graphql.nonNull(import_core105.graphql.Int) }),
-    primaryLocation: import_core105.graphql.field({ type: StorefrontPublicLocation })
+    configured: import_core107.graphql.field({ type: import_core107.graphql.nonNull(import_core107.graphql.Boolean) }),
+    displayName: import_core107.graphql.field({ type: import_core107.graphql.String }),
+    accentHue: import_core107.graphql.field({ type: import_core107.graphql.Int }),
+    logoSvg: import_core107.graphql.field({ type: import_core107.graphql.String }),
+    logoHue: import_core107.graphql.field({ type: import_core107.graphql.Int }),
+    catalogNames: import_core107.graphql.field({ type: import_core107.graphql.nonNull(import_core107.graphql.list(import_core107.graphql.nonNull(import_core107.graphql.String))) }),
+    serviceCount: import_core107.graphql.field({ type: import_core107.graphql.nonNull(import_core107.graphql.Int) }),
+    primaryLocation: import_core107.graphql.field({ type: StorefrontPublicLocation })
   }
 });
 var unconfigured = () => ({
@@ -9032,9 +9792,9 @@ var unconfigured = () => ({
   serviceCount: 0,
   primaryLocation: null
 });
-var publicStorefrontSettings = import_core105.graphql.field({
-  type: import_core105.graphql.nonNull(StorefrontPublicSettings),
-  args: { practiceSlug: import_core105.graphql.arg({ type: import_core105.graphql.nonNull(import_core105.graphql.String) }) },
+var publicStorefrontSettings = import_core107.graphql.field({
+  type: import_core107.graphql.nonNull(StorefrontPublicSettings),
+  args: { practiceSlug: import_core107.graphql.arg({ type: import_core107.graphql.nonNull(import_core107.graphql.String) }) },
   async resolve(_source, args, context) {
     if (!PRACTICE_SLUG.test(args.practiceSlug)) return unconfigured();
     const sudo = context.sudo();
@@ -9083,8 +9843,8 @@ var publicStorefrontSettings = import_core105.graphql.field({
         city: boundedText(location.city, 100),
         state: boundedText(location.state, 100),
         zipCode: publicZipCode(location.zipCode),
-        phone: publicPhone(location.phone, fictionalDemo),
-        email: publicEmail(location.email, fictionalDemo),
+        phone: publicPhone(location.phone),
+        email: publicEmail(location.email),
         hours: publicHours(location.hours),
         timezone: boundedText(location.timezone, 100)
       }
@@ -9093,7 +9853,7 @@ var publicStorefrontSettings = import_core105.graphql.field({
 });
 
 // features/keystone/extendGraphqlSchema/medspaPlanJourney.ts
-var import_core106 = require("@keystone-6/core");
+var import_core108 = require("@keystone-6/core");
 async function loadMedspaPlanJourney(context, consultationId, pages = {}) {
   const offsets = [pages.planPage ?? 0, pages.appointmentPage ?? 0, pages.historyPage ?? 0];
   if (offsets.some((value) => !Number.isSafeInteger(value) || value < 0 || !Number.isSafeInteger(value * 20))) throw new Error("Invalid history page");
@@ -9152,21 +9912,321 @@ async function assertAppointmentClinicalHeader(context, appointmentId) {
   if (!location || location.practice?.id !== actor.practiceId || location.isActive !== true) throw new Error("Current clinical location scope is unavailable");
   return { appointmentId: header.id, actorId: actor.actorId, practiceId: actor.practiceId, locationId: location.id };
 }
-var medspaAppointmentClinicalHeader = import_core106.graphql.field({ type: import_core106.graphql.JSON, args: { appointmentId: import_core106.graphql.arg({ type: import_core106.graphql.nonNull(import_core106.graphql.ID) }) }, resolve(_source, args, context) {
+var medspaAppointmentClinicalHeader = import_core108.graphql.field({ type: import_core108.graphql.JSON, args: { appointmentId: import_core108.graphql.arg({ type: import_core108.graphql.nonNull(import_core108.graphql.ID) }) }, resolve(_source, args, context) {
   return assertAppointmentClinicalHeader(context, args.appointmentId);
 } });
-var medspaPlanJourney = import_core106.graphql.field({ type: import_core106.graphql.JSON, args: { consultationId: import_core106.graphql.arg({ type: import_core106.graphql.nonNull(import_core106.graphql.ID) }), planPage: import_core106.graphql.arg({ type: import_core106.graphql.Int }), appointmentPage: import_core106.graphql.arg({ type: import_core106.graphql.Int }), historyPage: import_core106.graphql.arg({ type: import_core106.graphql.Int }) }, resolve(_source, args, context) {
+var medspaPlanJourney = import_core108.graphql.field({ type: import_core108.graphql.JSON, args: { consultationId: import_core108.graphql.arg({ type: import_core108.graphql.nonNull(import_core108.graphql.ID) }), planPage: import_core108.graphql.arg({ type: import_core108.graphql.Int }), appointmentPage: import_core108.graphql.arg({ type: import_core108.graphql.Int }), historyPage: import_core108.graphql.arg({ type: import_core108.graphql.Int }) }, resolve(_source, args, context) {
   return loadMedspaPlanJourney(context, args.consultationId, args);
 } });
-var medspaConsultationQueue = import_core106.graphql.field({ type: import_core106.graphql.JSON, args: { page: import_core106.graphql.arg({ type: import_core106.graphql.Int }), search: import_core106.graphql.arg({ type: import_core106.graphql.String }) }, resolve(_source, args, context) {
+var medspaConsultationQueue = import_core108.graphql.field({ type: import_core108.graphql.JSON, args: { page: import_core108.graphql.arg({ type: import_core108.graphql.Int }), search: import_core108.graphql.arg({ type: import_core108.graphql.String }) }, resolve(_source, args, context) {
   return loadMedspaConsultationQueue(context, args);
 } });
 
 // features/keystone/extendGraphqlSchema/appointmentSchedule.ts
-var import_core108 = require("@keystone-6/core");
+var import_core111 = require("@keystone-6/core");
 
 // features/keystone/mutations/appointmentWorkflows.ts
-var import_core107 = require("@keystone-6/core");
+var import_core110 = require("@keystone-6/core");
+
+// features/keystone/depositCheckout.ts
+var import_node_crypto5 = require("node:crypto");
+var import_core109 = require("@keystone-6/core");
+init_stripe();
+
+// features/keystone/lib/trustedOrigin.ts
+function trustedOrigin(env = process.env) {
+  const configured = env.APP_ORIGIN || env.NEXT_PUBLIC_APP_URL || (env.RAILWAY_PUBLIC_DOMAIN ? `https://${env.RAILWAY_PUBLIC_DOMAIN}` : "") || (env.NODE_ENV !== "production" ? env.PORTLESS_URL || "" : "");
+  if (configured) {
+    const url = new URL(configured);
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash || url.pathname !== "/") throw new Error("APP_ORIGIN must be an HTTP(S) origin without credentials or path.");
+    if (env.NODE_ENV === "production" && url.protocol !== "https:" && !["localhost", "127.0.0.1"].includes(url.hostname)) throw new Error("APP_ORIGIN must use HTTPS in production.");
+    return url.origin;
+  }
+  if (env.NODE_ENV === "production") throw new Error("Set APP_ORIGIN (or RAILWAY_PUBLIC_DOMAIN) before starting production.");
+  const port = env.PORT || "3000";
+  if (!/^\d{1,5}$/.test(port)) throw new Error("Invalid local application port.");
+  return `http://127.0.0.1:${port}`;
+}
+
+// features/keystone/depositCheckoutCore.ts
+var OPEN_STATUSES = /* @__PURE__ */ new Set(["pending", "requires_action", "authorized"]);
+function decideDepositSettlement(session, checkout) {
+  if (!OPEN_STATUSES.has(session.status)) return { action: "none", reason: "already_settled" };
+  if (checkout.providerReference !== session.providerReference) {
+    return { action: "review", reason: "Checkout session does not belong to this payment" };
+  }
+  if (checkout.state === "expired") return { action: "expire" };
+  if (checkout.state === "open") return { action: "none", reason: "still_open" };
+  if (checkout.state === "unpaid") return { action: "none", reason: "unpaid" };
+  if (!Number.isInteger(checkout.amount) || checkout.amount !== session.amount) {
+    return { action: "review", reason: `Stripe collected ${checkout.amount} ${checkout.currency}; the deposit is ${session.amount} ${session.currency}` };
+  }
+  if (checkout.currency.toLowerCase() !== session.currency.toLowerCase()) {
+    return { action: "review", reason: `Stripe collected ${checkout.currency}; the deposit is ${session.currency}` };
+  }
+  if (!checkout.paymentIntentId) return { action: "review", reason: "Paid Checkout has no payment intent to refund against" };
+  return { action: "complete", paymentIntentId: checkout.paymentIntentId };
+}
+function depositAppointmentAcceptsPayment(status) {
+  return status === "pending" || status === "confirmed";
+}
+function netDepositMinor(sessions) {
+  return sessions.filter((s) => s.purpose === "appointment_deposit" && (s.status === "completed" || s.status === "partially_refunded")).reduce((sum, s) => sum + Math.max(0, s.amount - Number(s.refundedAmount || 0)), 0);
+}
+function amountDueAfterDeposit(totalBeforeDeposit, depositCredit) {
+  if (!Number.isInteger(totalBeforeDeposit) || !Number.isInteger(depositCredit) || depositCredit < 0) throw new Error("Deposit amounts must be integer cents");
+  if (depositCredit > totalBeforeDeposit) throw new Error("The deposit held is more than the amount due. Refund the difference from Payments, then check out");
+  return totalBeforeDeposit - depositCredit;
+}
+
+// features/keystone/depositCheckout.ts
+var CHECKOUT_TTL_MS = 55 * 6e4;
+async function onlineDepositProvider(sudo, practiceId4) {
+  if (!stripeConfigured()) return null;
+  const rows = await sudo.query.PaymentProvider.findMany({
+    where: { practice: { id: { equals: practiceId4 } }, adapter: { equals: "stripe" }, isInstalled: { equals: true } },
+    take: 1,
+    orderBy: { isDefault: "desc" },
+    query: "id code adapter config"
+  });
+  return rows[0] ?? null;
+}
+var APPOINTMENT_QUERY = "id status depositAmount depositPaid practice { id } client { id user { id email } } provider { user { name } } lineItems { serviceTitle }";
+async function loadAccessibleAppointment(context, appointmentId, token) {
+  const sudo = context.sudo();
+  const appointment = await sudo.query.Appointment.findOne({ where: { id: appointmentId }, query: APPOINTMENT_QUERY });
+  if (!appointment) throw new Error("Appointment not found");
+  if (token) {
+    if (!validGuestAccessToken(appointmentId, token) || appointment.client?.id) throw new Error("Appointment not found");
+  } else {
+    const actor = await assertActiveActor(context).catch(() => null);
+    if (!actor || appointment.practice?.id !== actor.practiceId || appointment.client?.user?.id !== actor.actorId) throw new Error("Appointment not found");
+  }
+  return { sudo, appointment };
+}
+var SESSION_QUERY = "id status amount currency providerReference data practice { id } payment { id status } appointment { id status depositPaid } provider { id code adapter config }";
+function sessionData(session) {
+  return session.data && typeof session.data === "object" ? session.data : {};
+}
+async function settleDepositCheckout(sudo, sessionId, facts) {
+  const session = await sudo.query.PaymentSession.findOne({ where: { id: sessionId }, query: SESSION_QUERY });
+  if (!session || sessionData(session).purpose !== "appointment_deposit") return { outcome: "none", refundAttemptId: null };
+  const data = sessionData(session);
+  const decision = decideDepositSettlement(
+    { status: session.status, amount: session.amount, currency: session.currency, providerReference: data.checkoutSessionId || session.providerReference },
+    facts
+  );
+  const now2 = (/* @__PURE__ */ new Date()).toISOString();
+  if (decision.action === "none") return { outcome: "none", refundAttemptId: null };
+  if (decision.action === "review") {
+    await sudo.query.PaymentSession.updateOne({ where: { id: session.id }, data: { data: { ...data, needsReview: true, reviewReason: decision.reason } }, query: "id" });
+    return { outcome: "review", refundAttemptId: null };
+  }
+  if (decision.action === "expire") {
+    assertPaymentTransition(session.status, "cancelled");
+    await sudo.query.PaymentSession.updateOne({ where: { id: session.id }, data: { status: "cancelled", failedAt: now2 }, query: "id" });
+    if (session.payment?.id) await sudo.query.Payment.updateOne({ where: { id: session.payment.id }, data: { status: paymentRecordStatus("cancelled") }, query: "id" });
+    return { outcome: "expired", refundAttemptId: null };
+  }
+  assertPaymentTransition(session.status, "completed");
+  await sudo.query.PaymentSession.updateOne({
+    where: { id: session.id },
+    data: {
+      status: "completed",
+      completedAt: now2,
+      // Refunds are issued against the payment intent, so it becomes the session's provider reference.
+      providerReference: decision.paymentIntentId,
+      data: { ...data, checkoutSessionId: facts.providerReference, paymentIntentId: decision.paymentIntentId, checkoutUrl: null }
+    },
+    query: "id"
+  });
+  if (session.payment?.id) await sudo.query.Payment.updateOne({ where: { id: session.payment.id }, data: { status: "completed", processedAt: now2, stripePaymentIntentId: decision.paymentIntentId }, query: "id" });
+  const appointment = session.appointment;
+  if (appointment?.id && depositAppointmentAcceptsPayment(appointment.status)) {
+    await sudo.query.Appointment.updateOne({ where: { id: appointment.id }, data: { depositPaid: true }, query: "id" });
+    return { outcome: "completed", refundAttemptId: null };
+  }
+  if (session.payment?.id && session.practice?.id) {
+    const queued = await enqueueRefund(sudo, {
+      practiceId: session.practice.id,
+      paymentId: session.payment.id,
+      sessionId: session.id,
+      amountMinor: session.amount,
+      currencyCode: session.currency,
+      reason: "Deposit paid after the appointment was no longer open",
+      idempotencyKey: `${session.practice.id}:late-deposit:${session.id}`,
+      providerReference: decision.paymentIntentId,
+      actorId: null
+    });
+    return { outcome: "refund_queued", refundAttemptId: queued.attemptId };
+  }
+  return { outcome: "review", refundAttemptId: null };
+}
+async function openDepositSession(sudo, appointmentId) {
+  const rows = await sudo.query.PaymentSession.findMany({
+    where: { appointment: { id: { equals: appointmentId } }, status: { in: ["pending", "requires_action"] } },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+    query: SESSION_QUERY
+  });
+  return rows.find((row2) => sessionData(row2).purpose === "appointment_deposit") ?? null;
+}
+async function startDepositCheckoutFlow(context, args) {
+  const { sudo, appointment } = await loadAccessibleAppointment(context, args.appointmentId, args.token);
+  if (!depositAppointmentAcceptsPayment(appointment.status)) throw new Error("This appointment is no longer open for a deposit");
+  if (appointment.depositPaid) throw new Error("The deposit is already paid");
+  const amount = Number(appointment.depositAmount || 0);
+  if (!Number.isInteger(amount) || amount <= 0) throw new Error("This appointment does not require a deposit");
+  const practiceId4 = appointment.practice.id;
+  const provider = await onlineDepositProvider(sudo, practiceId4);
+  if (!provider) throw new Error("Online deposits are not available. The practice will collect the deposit.");
+  const open = await openDepositSession(sudo, appointment.id);
+  const openData = open ? sessionData(open) : {};
+  if (open && open.amount === amount && typeof openData.checkoutUrl === "string" && openData.checkoutUrl && Date.parse(openData.checkoutExpiresAt || "") > Date.now() + 5 * 6e4) {
+    return { url: openData.checkoutUrl };
+  }
+  const origin = trustedOrigin();
+  const base = `${origin}/booking/${encodeURIComponent(appointment.id)}`;
+  const tokenQuery = args.token ? `&token=${encodeURIComponent(args.token)}` : "";
+  const key = `${practiceId4}:deposit:${appointment.id}:${(0, import_node_crypto5.randomUUID)()}`;
+  const serviceName = appointment.lineItems?.map((line) => line.serviceTitle).filter(Boolean).join(", ") || "Appointment";
+  const checkout = await createProviderCheckout({
+    provider: paymentProviderFromRecord(provider),
+    amount,
+    currency: "usd",
+    idempotencyKey: key,
+    description: `Deposit \xB7 ${serviceName}`,
+    successUrl: `${base}?deposit=return${tokenQuery}`,
+    cancelUrl: `${base}?deposit=cancelled${tokenQuery}`,
+    customerEmail: appointment.client?.user?.email || null,
+    // Correlation only; the amount is never read back from metadata.
+    metadata: { purpose: "appointment_deposit", appointmentId: appointment.id, practiceId: practiceId4 }
+  });
+  await paymentLifecycleTransaction(context, `appointment:${appointment.id}`, async (tx) => {
+    const session = await tx.query.PaymentSession.createOne({
+      data: {
+        practice: { connect: { id: practiceId4 } },
+        appointment: { connect: { id: appointment.id } },
+        provider: { connect: { id: provider.id } },
+        idempotencyKey: key,
+        amount,
+        currency: "usd",
+        status: "pending",
+        providerReference: checkout.providerReference,
+        data: { purpose: "appointment_deposit", checkoutUrl: checkout.url, checkoutExpiresAt: checkout.expiresAt, checkoutSessionId: checkout.providerReference }
+      },
+      query: "id"
+    });
+    const payment = await tx.query.Payment.createOne({
+      data: {
+        idempotencyKey: `${key}:payment`,
+        practice: { connect: { id: practiceId4 } },
+        session: { connect: { id: session.id } },
+        subtotal: amount,
+        tax: 0,
+        tip: 0,
+        discount: 0,
+        totalAmount: amount,
+        paymentMethod: "credit_card",
+        status: "pending",
+        receiptEmail: appointment.client?.user?.email || "",
+        notes: `Online deposit for appointment ${appointment.id}`
+      },
+      query: "id"
+    });
+    await tx.query.PaymentSession.updateOne({ where: { id: session.id }, data: { payment: { connect: { id: payment.id } } }, query: "id" });
+  });
+  return { url: checkout.url };
+}
+async function confirmDepositCheckoutFlow(context, args) {
+  const { sudo, appointment } = await loadAccessibleAppointment(context, args.appointmentId, args.token);
+  if (appointment.depositPaid) return { paid: true };
+  const session = await openDepositSession(sudo, appointment.id);
+  if (!session?.provider) return { paid: false };
+  const checkoutId = sessionData(session).checkoutSessionId || session.providerReference;
+  const facts = await getProviderCheckoutStatus({ provider: paymentProviderFromRecord(session.provider), providerReference: checkoutId });
+  let refundAttemptId = null;
+  const outcome = await paymentLifecycleTransaction(context, `appointment:${appointment.id}`, async (tx) => {
+    const settled = await settleDepositCheckout(tx, session.id, { ...facts, providerReference: facts.providerReference });
+    refundAttemptId = settled.refundAttemptId;
+    return settled.outcome;
+  });
+  if (refundAttemptId) await processRefundOutbox(context, { attemptIds: [refundAttemptId], limit: 1 }).catch(() => void 0);
+  if (outcome === "review") throw new Error("The amount paid does not match the deposit. Contact the practice.");
+  return { paid: outcome === "completed" };
+}
+var DepositResult = import_core109.graphql.object()({
+  name: "StorefrontDepositResult",
+  fields: {
+    success: import_core109.graphql.field({ type: import_core109.graphql.nonNull(import_core109.graphql.Boolean) }),
+    error: import_core109.graphql.field({ type: import_core109.graphql.String }),
+    url: import_core109.graphql.field({ type: import_core109.graphql.String }),
+    paid: import_core109.graphql.field({ type: import_core109.graphql.Boolean })
+  }
+});
+var safeMessages = /^(Appointment not found|This appointment is no longer open for a deposit|The deposit is already paid|This appointment does not require a deposit|Online deposits are not available.*|The amount paid does not match.*)$/;
+var failure = (error) => {
+  const message2 = error instanceof Error ? error.message : "";
+  if (!safeMessages.test(message2)) console.error("Deposit checkout failed", error);
+  return { success: false, error: safeMessages.test(message2) ? message2 : "We couldn't open the deposit payment. Please try again.", url: null, paid: null };
+};
+var startDepositCheckout = import_core109.graphql.field({
+  type: import_core109.graphql.nonNull(DepositResult),
+  args: { appointmentId: import_core109.graphql.arg({ type: import_core109.graphql.nonNull(import_core109.graphql.ID) }), token: import_core109.graphql.arg({ type: import_core109.graphql.String }) },
+  async resolve(_source, args, context) {
+    try {
+      const { url } = await startDepositCheckoutFlow(context, args);
+      return { success: true, error: null, url, paid: null };
+    } catch (error) {
+      return failure(error);
+    }
+  }
+});
+var confirmDepositCheckout = import_core109.graphql.field({
+  type: import_core109.graphql.nonNull(DepositResult),
+  args: { appointmentId: import_core109.graphql.arg({ type: import_core109.graphql.nonNull(import_core109.graphql.ID) }), token: import_core109.graphql.arg({ type: import_core109.graphql.String }) },
+  async resolve(_source, args, context) {
+    try {
+      const { paid } = await confirmDepositCheckoutFlow(context, args);
+      return { success: true, error: null, url: null, paid };
+    } catch (error) {
+      return failure(error);
+    }
+  }
+});
+async function queueDepositRefundsOnCancel(sudo, appointmentId, practiceId4) {
+  const sessions = await sudo.query.PaymentSession.findMany({
+    where: { appointment: { id: { equals: appointmentId } }, status: { in: ["completed", "partially_refunded"] } },
+    take: 50,
+    query: "id amount currency status providerReference data payment { id refundedAmount refunds { amountMinor status } }"
+  });
+  const attempts = [];
+  for (const session of sessions) {
+    const data = sessionData(session);
+    if (data.purpose !== "appointment_deposit" || data.appliedToCheckout || !session.payment?.id || !session.providerReference) continue;
+    const reserved = (session.payment.refunds || []).filter((r) => r.status === "pending" || r.status === "completed").reduce((sum, r) => sum + Number(r.amountMinor || 0), 0);
+    const remaining = Number(session.amount) - reserved;
+    if (remaining <= 0) continue;
+    const queued = await enqueueRefund(sudo, {
+      practiceId: practiceId4,
+      paymentId: session.payment.id,
+      sessionId: session.id,
+      amountMinor: remaining,
+      currencyCode: session.currency,
+      reason: "Appointment cancelled: deposit returned",
+      idempotencyKey: `${practiceId4}:cancel-deposit:${session.id}`,
+      providerReference: session.providerReference,
+      actorId: null
+    });
+    if (queued.attemptId && !queued.replayed) attempts.push(queued.attemptId);
+  }
+  return attempts;
+}
+async function kickRefundAttempts(context, attemptIds) {
+  if (attemptIds.length) await processRefundOutbox(context, { attemptIds, limit: attemptIds.length }).catch((error) => console.error("Refund outbox kick failed", error));
+}
+
+// features/keystone/mutations/appointmentWorkflows.ts
 var transitions2 = {
   pending: ["confirmed", "cancelled", "no_show"],
   confirmed: ["in_progress", "cancelled", "no_show"],
@@ -9198,8 +10258,9 @@ async function transitionAppointmentTransaction(context, args) {
   }
   if (reason.length > 1e3) return { success: false, appointmentId: null, status: null, error: "Transition reason is too long" };
   if (args.status === "cancelled" && !reason) return { success: false, appointmentId: null, status: null, error: "A cancellation reason is required" };
+  let depositAttempts = [];
   try {
-    return await serializableWorkflow(context, "medspa-appointment-transition", [`appointment:${args.appointmentId}`, `idempotency:${context.session.data.practice?.id}:${args.idempotencyKey || args.appointmentId}`], async (transactionContext) => {
+    const transitioned = await serializableWorkflow(context, "medspa-appointment-transition", [`appointment:${args.appointmentId}`, `idempotency:${context.session.data.practice?.id}:${args.idempotencyKey || args.appointmentId}`], async (transactionContext) => {
       const authority2 = await assertAppointmentSchedulingAuthority(transactionContext, args.appointmentId, { cancellationOnly: args.status === "cancelled", purpose: args.expectedScope?.purpose });
       assertExpectedSchedulingScope(args.expectedScope, authority2.scope);
       const sudo = transactionContext.sudo();
@@ -9207,7 +10268,7 @@ async function transitionAppointmentTransaction(context, args) {
         where: { id: args.appointmentId },
         query: "id practice { id } revision status metadata consentsCount treatmentSessionsCount client { id user { id } } payment { id status refundedAmount totalAmount } transaction { id } resourceReservations(where: { status: { in: [reserved, in_use] } }) { id } supervisorReservations(where: { status: { equals: reserved } }) { id }"
       });
-      if (!appointment || appointment.practice?.id !== authority2.scope.practiceId || appointment.client?.id !== authority2.scope.clientId) throw new Error("Appointment not found");
+      if (!appointment || appointment.practice?.id !== authority2.scope.practiceId || appointmentClientKey(appointment) !== authority2.scope.clientId) throw new Error("Appointment not found");
       const planBooking = appointment.metadata?.planBooking;
       const requestHash = appointmentTransitionRequestHash(args, authority2.scope.actorId);
       const receipted = authority2.scope.purpose === "scheduler" || Boolean(planBooking || args.idempotencyKey || args.expectedScope || args.expectedRevision != null);
@@ -9254,6 +10315,7 @@ async function transitionAppointmentTransaction(context, args) {
         for (const reservation of appointment.resourceReservations || []) await sudo.query.AppointmentResourceReservation.updateOne({ where: { id: reservation.id }, data: { status: "cancelled" }, query: "id" });
         for (const reservation of appointment.supervisorReservations || []) await sudo.query.AppointmentSupervisorReservation.updateOne({ where: { id: reservation.id }, data: { status: "cancelled" }, query: "id" });
       }
+      if (args.status === "cancelled") depositAttempts = await queueDepositRefundsOnCancel(sudo, appointment.id, appointment.practice.id);
       let receipt = null;
       if (receipted) {
         const evidence = { version: 2, requestHash, scope: authority2.scope, membershipId: authority2.membershipId, delegation: authority2.delegation, planBooking: planBooking || null, fromStatus: appointment.status, toStatus: args.status, fromRevision: appointment.revision, toRevision: Number(appointment.revision || 1) + 1, actorId: authority2.scope.actorId, reason, occurredAt: now2 };
@@ -9263,29 +10325,31 @@ async function transitionAppointmentTransaction(context, args) {
       }
       return { success: true, appointmentId: appointment.id, status: args.status, receipt, error: null };
     });
+    await kickRefundAttempts(context, depositAttempts);
+    return transitioned;
   } catch (error) {
     return { success: false, appointmentId: null, status: null, error: errorMessage(error) };
   }
 }
-var transitionResult = import_core107.graphql.object()({
+var transitionResult = import_core110.graphql.object()({
   name: "TransitionAppointmentResult",
   fields: {
-    success: import_core107.graphql.field({ type: import_core107.graphql.nonNull(import_core107.graphql.Boolean) }),
-    appointmentId: import_core107.graphql.field({ type: import_core107.graphql.ID }),
-    status: import_core107.graphql.field({ type: import_core107.graphql.String }),
-    error: import_core107.graphql.field({ type: import_core107.graphql.String }),
-    receipt: import_core107.graphql.field({ type: import_core107.graphql.JSON })
+    success: import_core110.graphql.field({ type: import_core110.graphql.nonNull(import_core110.graphql.Boolean) }),
+    appointmentId: import_core110.graphql.field({ type: import_core110.graphql.ID }),
+    status: import_core110.graphql.field({ type: import_core110.graphql.String }),
+    error: import_core110.graphql.field({ type: import_core110.graphql.String }),
+    receipt: import_core110.graphql.field({ type: import_core110.graphql.JSON })
   }
 });
-var transitionAppointment = import_core107.graphql.field({
+var transitionAppointment = import_core110.graphql.field({
   type: transitionResult,
   args: {
-    appointmentId: import_core107.graphql.arg({ type: import_core107.graphql.nonNull(import_core107.graphql.ID) }),
-    expectedRevision: import_core107.graphql.arg({ type: import_core107.graphql.Int }),
-    idempotencyKey: import_core107.graphql.arg({ type: import_core107.graphql.String }),
-    expectedScope: import_core107.graphql.arg({ type: import_core107.graphql.JSON }),
-    status: import_core107.graphql.arg({ type: import_core107.graphql.nonNull(import_core107.graphql.String) }),
-    reason: import_core107.graphql.arg({ type: import_core107.graphql.String })
+    appointmentId: import_core110.graphql.arg({ type: import_core110.graphql.nonNull(import_core110.graphql.ID) }),
+    expectedRevision: import_core110.graphql.arg({ type: import_core110.graphql.Int }),
+    idempotencyKey: import_core110.graphql.arg({ type: import_core110.graphql.String }),
+    expectedScope: import_core110.graphql.arg({ type: import_core110.graphql.JSON }),
+    status: import_core110.graphql.arg({ type: import_core110.graphql.nonNull(import_core110.graphql.String) }),
+    reason: import_core110.graphql.arg({ type: import_core110.graphql.String })
   },
   resolve(_source, args, context) {
     return transitionAppointmentTransaction(context, args);
@@ -9401,24 +10465,24 @@ async function processAppointmentDepositTransaction(context, args) {
     return { success: false, appointmentId: null, paymentId: null, paymentSessionId: null, status: null, error: errorMessage(error) };
   }
 }
-var depositResult = import_core107.graphql.object()({
+var depositResult = import_core110.graphql.object()({
   name: "ProcessAppointmentDepositResult",
   fields: {
-    success: import_core107.graphql.field({ type: import_core107.graphql.nonNull(import_core107.graphql.Boolean) }),
-    appointmentId: import_core107.graphql.field({ type: import_core107.graphql.ID }),
-    paymentId: import_core107.graphql.field({ type: import_core107.graphql.ID }),
-    paymentSessionId: import_core107.graphql.field({ type: import_core107.graphql.ID }),
-    status: import_core107.graphql.field({ type: import_core107.graphql.String }),
-    error: import_core107.graphql.field({ type: import_core107.graphql.String })
+    success: import_core110.graphql.field({ type: import_core110.graphql.nonNull(import_core110.graphql.Boolean) }),
+    appointmentId: import_core110.graphql.field({ type: import_core110.graphql.ID }),
+    paymentId: import_core110.graphql.field({ type: import_core110.graphql.ID }),
+    paymentSessionId: import_core110.graphql.field({ type: import_core110.graphql.ID }),
+    status: import_core110.graphql.field({ type: import_core110.graphql.String }),
+    error: import_core110.graphql.field({ type: import_core110.graphql.String })
   }
 });
-var processAppointmentDeposit = import_core107.graphql.field({
+var processAppointmentDeposit = import_core110.graphql.field({
   type: depositResult,
   args: {
-    appointmentId: import_core107.graphql.arg({ type: import_core107.graphql.nonNull(import_core107.graphql.ID) }),
-    paymentMethod: import_core107.graphql.arg({ type: import_core107.graphql.nonNull(import_core107.graphql.String) }),
-    providerCode: import_core107.graphql.arg({ type: import_core107.graphql.String }),
-    idempotencyKey: import_core107.graphql.arg({ type: import_core107.graphql.nonNull(import_core107.graphql.String) })
+    appointmentId: import_core110.graphql.arg({ type: import_core110.graphql.nonNull(import_core110.graphql.ID) }),
+    paymentMethod: import_core110.graphql.arg({ type: import_core110.graphql.nonNull(import_core110.graphql.String) }),
+    providerCode: import_core110.graphql.arg({ type: import_core110.graphql.String }),
+    idempotencyKey: import_core110.graphql.arg({ type: import_core110.graphql.nonNull(import_core110.graphql.String) })
   },
   resolve(_source, args, context) {
     return processAppointmentDepositTransaction(context, args);
@@ -9432,25 +10496,36 @@ async function loadAppointmentSchedule(context, appointmentId, original, purpose
   const authority2 = await assertAppointmentSchedulingAuthority(context, appointmentId, { cancellationOnly: !original || original.status === "cancelled", purpose: original?.expectedScope?.purpose || purpose || void 0 });
   assertExpectedSchedulingScope(original?.expectedScope, authority2.scope);
   const row2 = await context.sudo().query.Appointment.findOne({ where: { id: appointmentId }, query: "id practice { id } location { id timezone } client { id } revision status startTime endTime metadata consentsCount treatmentSessionsCount payment { id } transaction { id }" });
-  if (!row2 || row2.practice?.id !== authority2.scope.practiceId || row2.location?.id !== authority2.scope.locationId || row2.client?.id !== authority2.scope.clientId) throw new Error("Appointment scheduling access is unavailable");
+  if (!row2 || row2.practice?.id !== authority2.scope.practiceId || row2.location?.id !== authority2.scope.locationId || appointmentClientKey(row2) !== authority2.scope.clientId) throw new Error("Appointment scheduling access is unavailable");
   const binding = row2.metadata?.planBooking;
   const receipt = original ? await loadAppointmentTransitionReceipt(context.sudo(), original, authority2.scope, binding) : null;
   const simpleCorrectionAllowed = ["pending", "confirmed"].includes(row2.status) && !row2.consentsCount && !row2.treatmentSessionsCount && !row2.payment?.id && !row2.transaction?.id;
   const allowedTransitions = [];
   if (authority2.scope.purpose === "scheduler" && row2.status === "pending") allowedTransitions.push("confirmed");
-  if (authority2.scope.purpose === "scheduler" && row2.status === "confirmed" && !row2.transaction?.id) allowedTransitions.push("in_progress");
+  const zone = row2.location?.timezone || "UTC";
+  const dayKey = (value) => {
+    try {
+      return new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(value);
+    } catch {
+      return value.toISOString().slice(0, 10);
+    }
+  };
+  const visitDay = row2.startTime ? dayKey(new Date(row2.startTime)) === dayKey(/* @__PURE__ */ new Date()) : false;
+  if (authority2.scope.purpose === "scheduler" && row2.status === "confirmed" && !row2.transaction?.id && visitDay) allowedTransitions.push("in_progress");
   if (simpleCorrectionAllowed) {
     allowedTransitions.push("cancelled");
     if (authority2.scope.purpose === "scheduler") allowedTransitions.push("no_show");
   }
-  return { scope: authority2.scope, timezone: row2.location?.timezone || "UTC", revision: row2.revision, status: row2.status, startTime: new Date(row2.startTime).toISOString(), endTime: row2.endTime ? new Date(row2.endTime).toISOString() : null, simpleCorrectionAllowed, allowedTransitions, receipt };
+  const guestMeta = row2.metadata?.guest;
+  const guest = authority2.scope.purpose === "scheduler" && !row2.client?.id && guestMeta && typeof guestMeta === "object" ? { name: String(guestMeta.name || "").slice(0, 120), email: String(guestMeta.email || "").slice(0, 254), phone: String(guestMeta.phone || "").slice(0, 40) } : null;
+  return { guest, scope: authority2.scope, timezone: row2.location?.timezone || "UTC", revision: row2.revision, status: row2.status, startTime: new Date(row2.startTime).toISOString(), endTime: row2.endTime ? new Date(row2.endTime).toISOString() : null, simpleCorrectionAllowed, allowedTransitions, receipt };
 }
-var medspaAppointmentSchedule = import_core108.graphql.field({ type: import_core108.graphql.JSON, args: { appointmentId: import_core108.graphql.arg({ type: import_core108.graphql.nonNull(import_core108.graphql.ID) }), original: import_core108.graphql.arg({ type: import_core108.graphql.JSON }), purpose: import_core108.graphql.arg({ type: import_core108.graphql.String }) }, resolve(_source, args, context) {
+var medspaAppointmentSchedule = import_core111.graphql.field({ type: import_core111.graphql.JSON, args: { appointmentId: import_core111.graphql.arg({ type: import_core111.graphql.nonNull(import_core111.graphql.ID) }), original: import_core111.graphql.arg({ type: import_core111.graphql.JSON }), purpose: import_core111.graphql.arg({ type: import_core111.graphql.String }) }, resolve(_source, args, context) {
   return loadAppointmentSchedule(context, args.appointmentId, args.original, args.purpose);
 } });
 
 // features/keystone/extendGraphqlSchema/medspaOperationsWorkspace.ts
-var import_core109 = require("@keystone-6/core");
+var import_core112 = require("@keystone-6/core");
 var sections = ["clients", "catalog", "benefits", "inventory", "engagement", "administration", "reports", "integrations"];
 var definitions = {
   clients: { title: "Client care", description: "Owned client relationships and due follow-up; no intake, notes, photos, or payment detail." },
@@ -9462,42 +10537,42 @@ var definitions = {
   reports: { title: "Bounded operations", description: "Settled commercial records and workload counts; no treatment-outcome claims." },
   integrations: { title: "Integrations & delivery", description: "Practice-scoped provider readiness and event exceptions without secrets or payloads." }
 };
-var metricType = import_core109.graphql.object()({ name: "MedSpaWorkspaceMetric", fields: { label: import_core109.graphql.field({ type: import_core109.graphql.nonNull(import_core109.graphql.String) }), value: import_core109.graphql.field({ type: import_core109.graphql.nonNull(import_core109.graphql.Int) }), format: import_core109.graphql.field({ type: import_core109.graphql.nonNull(import_core109.graphql.String) }) } });
-var recordType = import_core109.graphql.object()({ name: "MedSpaWorkspaceRecord", fields: { id: import_core109.graphql.field({ type: import_core109.graphql.nonNull(import_core109.graphql.ID) }), title: import_core109.graphql.field({ type: import_core109.graphql.nonNull(import_core109.graphql.String) }), subtitle: import_core109.graphql.field({ type: import_core109.graphql.String }), status: import_core109.graphql.field({ type: import_core109.graphql.String }), detail: import_core109.graphql.field({ type: import_core109.graphql.String }), amount: import_core109.graphql.field({ type: import_core109.graphql.Int }), metric: import_core109.graphql.field({ type: import_core109.graphql.Int }), occurredAt: import_core109.graphql.field({ type: import_core109.graphql.String }), href: import_core109.graphql.field({ type: import_core109.graphql.String }), action: import_core109.graphql.field({ type: import_core109.graphql.String }) } });
-var resultType = import_core109.graphql.object()({ name: "MedSpaOperationsWorkspace", fields: { section: import_core109.graphql.field({ type: import_core109.graphql.nonNull(import_core109.graphql.String) }), title: import_core109.graphql.field({ type: import_core109.graphql.nonNull(import_core109.graphql.String) }), description: import_core109.graphql.field({ type: import_core109.graphql.nonNull(import_core109.graphql.String) }), attentionCount: import_core109.graphql.field({ type: import_core109.graphql.nonNull(import_core109.graphql.Int) }), metrics: import_core109.graphql.field({ type: import_core109.graphql.nonNull(import_core109.graphql.list(import_core109.graphql.nonNull(metricType))) }), records: import_core109.graphql.field({ type: import_core109.graphql.nonNull(import_core109.graphql.list(import_core109.graphql.nonNull(recordType))) }) } });
+var metricType = import_core112.graphql.object()({ name: "MedSpaWorkspaceMetric", fields: { label: import_core112.graphql.field({ type: import_core112.graphql.nonNull(import_core112.graphql.String) }), value: import_core112.graphql.field({ type: import_core112.graphql.nonNull(import_core112.graphql.Int) }), format: import_core112.graphql.field({ type: import_core112.graphql.nonNull(import_core112.graphql.String) }) } });
+var recordType = import_core112.graphql.object()({ name: "MedSpaWorkspaceRecord", fields: { id: import_core112.graphql.field({ type: import_core112.graphql.nonNull(import_core112.graphql.ID) }), title: import_core112.graphql.field({ type: import_core112.graphql.nonNull(import_core112.graphql.String) }), subtitle: import_core112.graphql.field({ type: import_core112.graphql.String }), status: import_core112.graphql.field({ type: import_core112.graphql.String }), detail: import_core112.graphql.field({ type: import_core112.graphql.String }), amount: import_core112.graphql.field({ type: import_core112.graphql.Int }), metric: import_core112.graphql.field({ type: import_core112.graphql.Int }), occurredAt: import_core112.graphql.field({ type: import_core112.graphql.String }), href: import_core112.graphql.field({ type: import_core112.graphql.String }), action: import_core112.graphql.field({ type: import_core112.graphql.String }) } });
+var resultType = import_core112.graphql.object()({ name: "MedSpaOperationsWorkspace", fields: { section: import_core112.graphql.field({ type: import_core112.graphql.nonNull(import_core112.graphql.String) }), title: import_core112.graphql.field({ type: import_core112.graphql.nonNull(import_core112.graphql.String) }), description: import_core112.graphql.field({ type: import_core112.graphql.nonNull(import_core112.graphql.String) }), attentionCount: import_core112.graphql.field({ type: import_core112.graphql.nonNull(import_core112.graphql.Int) }), metrics: import_core112.graphql.field({ type: import_core112.graphql.nonNull(import_core112.graphql.list(import_core112.graphql.nonNull(metricType))) }), records: import_core112.graphql.field({ type: import_core112.graphql.nonNull(import_core112.graphql.list(import_core112.graphql.nonNull(recordType))) }) } });
 var count = (label, value) => ({ label, value, format: "count" });
 var money = (label, value) => ({ label, value: Math.round(value), format: "money" });
 var occurred = (value) => value ? new Date(value).toISOString() : null;
-var scoped = (practiceId5, extra) => extra ? { AND: [{ practice: { id: { equals: practiceId5 } } }, extra] } : { practice: { id: { equals: practiceId5 } } };
+var scoped = (practiceId4, extra) => extra ? { AND: [{ practice: { id: { equals: practiceId4 } } }, extra] } : { practice: { id: { equals: practiceId4 } } };
 var row = (item) => ({ subtitle: null, status: null, detail: null, amount: null, metric: null, occurredAt: null, href: null, action: null, ...item });
-async function load(section, sudo, practiceId5) {
+async function load(section, sudo, practiceId4) {
   if (section === "clients") {
     const now2 = (/* @__PURE__ */ new Date()).toISOString();
     const [items, total, followups] = await Promise.all([
-      sudo.query.Client.findMany({ where: scoped(practiceId5), take: 50, orderBy: { updatedAt: "desc" }, query: "id totalVisits lifetimeValue updatedAt user { name } preferredProvider { user { name } }" }),
-      sudo.query.Client.count({ where: scoped(practiceId5) }),
-      sudo.query.FollowUpTask.count({ where: scoped(practiceId5, { status: { in: ["open", "in_progress"] }, dueAt: { lte: now2 } }) })
+      sudo.query.Client.findMany({ where: scoped(practiceId4), take: 50, orderBy: { updatedAt: "desc" }, query: "id totalVisits lifetimeValue updatedAt user { name } preferredProvider { user { name } }" }),
+      sudo.query.Client.count({ where: scoped(practiceId4) }),
+      sudo.query.FollowUpTask.count({ where: scoped(practiceId4, { status: { in: ["open", "in_progress"] }, dueAt: { lte: now2 } }) })
     ]);
     return { metrics: [count("Clients in practice", total), count("Follow-ups due now", followups), money("Lifetime value \u2014 sample of latest 50 clients", items.reduce((sum, item) => sum + Number(item.lifetimeValue || 0), 0))], records: items.map((item) => row({ id: item.id, title: item.user?.name || "Unnamed client", subtitle: item.preferredProvider?.user?.name || "No preferred provider", status: "Care relationship", metric: item.totalVisits || 0, amount: item.lifetimeValue || 0, occurredAt: occurred(item.updatedAt) })), attentionCount: followups };
   }
   if (section === "catalog") {
-    const items = await sudo.query.Service.findMany({ where: scoped(practiceId5), take: 50, orderBy: { name: "asc" }, query: "id name status baseDuration price staffAuthorizationRequired requiresConsultation requiresIntakeReview requiredResources { id }" });
+    const items = await sudo.query.Service.findMany({ where: scoped(practiceId4), take: 50, orderBy: { name: "asc" }, query: "id name status baseDuration price staffAuthorizationRequired requiresConsultation requiresIntakeReview requiredResources { id }" });
     return { metrics: [count("Services shown (max 50)", items.length), count("Restricted in sample", items.filter((x) => x.staffAuthorizationRequired).length), count("Missing resources in sample", items.filter((x) => !x.requiredResources?.length).length)], records: items.map((item) => row({ id: item.id, title: item.name, status: item.status, detail: `${item.baseDuration || 0} min \xB7 ${item.requiredResources?.length || 0} required resources`, amount: item.price || 0, metric: item.requiredResources?.length || 0 })), attentionCount: items.filter((x) => x.status !== "active" || !x.requiredResources?.length).length };
   }
   if (section === "benefits") {
     const [memberships, packages, cards] = await Promise.all([
-      sudo.query.ClientMembership.findMany({ where: scoped(practiceId5), take: 50, orderBy: { updatedAt: "desc" }, query: "id status nextBillingDate client { name } membership { name } agreementsCount ledgerEntriesCount" }),
-      sudo.query.ClientPackage.findMany({ where: scoped(practiceId5), take: 50, query: "id status totalValue usedValue client { name } package { name }" }),
-      sudo.query.GiftCard.findMany({ where: scoped(practiceId5), take: 50, query: "id isActive currentBalance createdAt" })
+      sudo.query.ClientMembership.findMany({ where: scoped(practiceId4), take: 50, orderBy: { updatedAt: "desc" }, query: "id status nextBillingDate client { name } membership { name } agreementsCount ledgerEntriesCount" }),
+      sudo.query.ClientPackage.findMany({ where: scoped(practiceId4), take: 50, query: "id status totalValue usedValue client { name } package { name }" }),
+      sudo.query.GiftCard.findMany({ where: scoped(practiceId4), take: 50, query: "id isActive currentBalance createdAt" })
     ]);
     const records = [...memberships.map((item) => row({ id: `membership:${item.id}`, title: item.membership?.name || "Membership", subtitle: item.client?.name || null, status: item.status, detail: `${item.agreementsCount || 0} agreements \xB7 ${item.ledgerEntriesCount || 0} ledger entries`, occurredAt: occurred(item.nextBillingDate) })), ...packages.map((item) => row({ id: `package:${item.id}`, title: item.package?.name || "Package", subtitle: item.client?.name || null, status: item.status, amount: Math.max(0, (item.totalValue || 0) - (item.usedValue || 0)) })), ...cards.map((item) => row({ id: `gift:${item.id}`, title: "Gift card", status: item.isActive ? "active" : "inactive", amount: item.currentBalance || 0, occurredAt: occurred(item.createdAt) }))];
     return { metrics: [count("Memberships shown (max 50)", memberships.length), count("Packages shown (max 50)", packages.length), money("Gift liability \u2014 first 50 cards", cards.reduce((sum, item) => sum + Number(item.currentBalance || 0), 0))], records, attentionCount: memberships.filter((x) => !x.agreementsCount).length };
   }
   if (section === "inventory") {
     const [lots, products, locations] = await Promise.all([
-      sudo.query.InventoryLot.findMany({ where: scoped(practiceId5), take: 50, orderBy: { expiresAt: "asc" }, query: "id lotNumber status remainingQuantity expiresAt product { name } location { name }" }),
-      sudo.query.Product.findMany({ where: scoped(practiceId5, { isActive: { equals: true } }), take: 50, orderBy: { name: "asc" }, query: "id name sku quantity" }),
-      sudo.query.Location.findMany({ where: scoped(practiceId5, { isActive: { equals: true } }), take: 50, orderBy: { name: "asc" }, query: "id name" })
+      sudo.query.InventoryLot.findMany({ where: scoped(practiceId4), take: 50, orderBy: { expiresAt: "asc" }, query: "id lotNumber status remainingQuantity expiresAt product { name } location { name }" }),
+      sudo.query.Product.findMany({ where: scoped(practiceId4, { isActive: { equals: true } }), take: 50, orderBy: { name: "asc" }, query: "id name sku quantity" }),
+      sudo.query.Location.findMany({ where: scoped(practiceId4, { isActive: { equals: true } }), take: 50, orderBy: { name: "asc" }, query: "id name" })
     ]);
     const lotRows = lots.map((item) => row({ id: `lot:${item.id}`, title: item.product?.name || "Inventory lot", subtitle: `${item.lotNumber} \xB7 ${item.location?.name || "Unscoped"}`, status: item.status, detail: item.expiresAt ? `Expires ${new Date(item.expiresAt).toISOString().slice(0, 10)}` : "No expiry configured", metric: item.remainingQuantity || 0 }));
     const productRows = products.map((item) => row({ id: `product:${item.id}`, title: item.name || "Retail product", subtitle: item.sku || "No SKU", status: "active", detail: "Aggregate on-hand across locations \xB7 location availability is checked on write", metric: item.quantity || 0, action: "adjust_inventory" }));
@@ -9509,34 +10584,34 @@ async function load(section, sudo, practiceId5) {
     };
   }
   if (section === "engagement") {
-    const [waitlist, failed2] = await Promise.all([sudo.query.WaitlistEntry.findMany({ where: scoped(practiceId5, { status: { in: ["active", "notified"] } }), take: 50, orderBy: { createdAt: "asc" }, query: "id guestName status createdAt service { name } client { name }" }), sudo.query.MessageLog.count({ where: scoped(practiceId5, { status: { equals: "failed" } }) })]);
-    return { metrics: [count("Open waitlist", waitlist.length), count("Delivery failures", failed2)], records: waitlist.map((item) => row({ id: item.id, title: item.client?.name || item.guestName || "Waitlist client", subtitle: item.service?.name || null, status: item.status, occurredAt: occurred(item.createdAt), action: item.status === "active" ? "notify_waitlist" : null })), attentionCount: waitlist.length + failed2 };
+    const [waitlist, failed3] = await Promise.all([sudo.query.WaitlistEntry.findMany({ where: scoped(practiceId4, { status: { in: ["active", "notified"] } }), take: 50, orderBy: { createdAt: "asc" }, query: "id guestName status createdAt service { name } client { name }" }), sudo.query.MessageLog.count({ where: scoped(practiceId4, { status: { equals: "failed" } }) })]);
+    return { metrics: [count("Open waitlist", waitlist.length), count("Delivery failures", failed3)], records: waitlist.map((item) => row({ id: item.id, title: item.client?.name || item.guestName || "Waitlist client", subtitle: item.service?.name || null, status: item.status, occurredAt: occurred(item.createdAt), action: item.status === "active" ? "notify_waitlist" : null })), attentionCount: waitlist.length + failed3 };
   }
   if (section === "administration") {
-    const [credentials, resources, locations] = await Promise.all([sudo.query.ProviderCredential.findMany({ where: scoped(practiceId5), take: 50, orderBy: { expiresAt: "asc" }, query: "id licenseType status expiresAt provider { user { name } }" }), sudo.query.Resource.findMany({ where: scoped(practiceId5), take: 50, query: "id name type readinessStatus maintenanceDueAt location { name }" }), sudo.query.Location.count({ where: scoped(practiceId5, { isActive: { equals: true } }) })]);
+    const [credentials, resources, locations] = await Promise.all([sudo.query.ProviderCredential.findMany({ where: scoped(practiceId4), take: 50, orderBy: { expiresAt: "asc" }, query: "id licenseType status expiresAt provider { user { name } }" }), sudo.query.Resource.findMany({ where: scoped(practiceId4), take: 50, query: "id name type readinessStatus maintenanceDueAt location { name }" }), sudo.query.Location.count({ where: scoped(practiceId4, { isActive: { equals: true } }) })]);
     const records = [...credentials.map((item) => row({ id: `credential:${item.id}`, title: item.provider?.user?.name || "Provider credential", subtitle: item.licenseType, status: item.status, detail: item.expiresAt ? `Expires ${new Date(item.expiresAt).toISOString().slice(0, 10)}` : null, occurredAt: occurred(item.expiresAt) })), ...resources.map((item) => row({ id: `resource:${item.id}`, title: item.name, subtitle: `${item.type} \xB7 ${item.location?.name || "Unscoped"}`, status: item.readinessStatus, occurredAt: occurred(item.maintenanceDueAt) }))];
     return { metrics: [count("Active locations", locations), count("Credentials", credentials.length), count("Resources", resources.length)], records, attentionCount: credentials.filter((x) => x.status !== "verified" || new Date(x.expiresAt) <= new Date(Date.now() + 30 * 864e5)).length + resources.filter((x) => x.readinessStatus !== "available").length };
   }
   if (section === "reports") {
     const [payments, incidents, rights, commissions, payoutCount] = await Promise.all([
-      sudo.query.Payment.findMany({ where: scoped(practiceId5, { status: { in: ["completed", "partially_refunded", "refunded"] } }), take: 500, query: "id totalAmount refundedAmount processedAt status" }),
-      sudo.query.Incident.count({ where: scoped(practiceId5, { status: { in: ["open", "under_review"] } }) }),
-      sudo.query.PatientRightsRequest.count({ where: scoped(practiceId5, { status: { notIn: ["closed", "fulfilled"] } }) }),
-      sudo.query.Commission.findMany({ where: scoped(practiceId5, { isPaid: { equals: false } }), take: 500, query: "id commissionAmount isPaid" }),
-      sudo.query.Commission.count({ where: scoped(practiceId5, { isPaid: { equals: true } }) })
+      sudo.query.Payment.findMany({ where: scoped(practiceId4, { status: { in: ["completed", "partially_refunded", "refunded"] } }), take: 500, query: "id totalAmount refundedAmount processedAt status" }),
+      sudo.query.Incident.count({ where: scoped(practiceId4, { status: { in: ["open", "under_review"] } }) }),
+      sudo.query.PatientRightsRequest.count({ where: scoped(practiceId4, { status: { notIn: ["closed", "fulfilled"] } }) }),
+      sudo.query.Commission.findMany({ where: scoped(practiceId4, { isPaid: { equals: false } }), take: 500, query: "id commissionAmount isPaid" }),
+      sudo.query.Commission.count({ where: scoped(practiceId4, { isPaid: { equals: true } }) })
     ]);
     const net = payments.reduce((sum, item) => sum + Number(item.totalAmount || 0) - Number(item.refundedAmount || 0), 0);
     const commissionLiability = commissions.reduce((sum, item) => sum + Number(item.commissionAmount || 0), 0);
     return { metrics: [money("Net settled revenue \u2014 max 500 payments", net), money("Unpaid commission liability \u2014 max 500", commissionLiability), count("Paid commission records", payoutCount), count("Open incidents", incidents), count("Rights requests open", rights)], records: payments.slice(0, 50).map((item) => row({ id: item.id, title: "Settled payment", status: item.status, amount: Number(item.totalAmount || 0) - Number(item.refundedAmount || 0), occurredAt: occurred(item.processedAt) })), attentionCount: incidents + rights };
   }
-  const [providers, pending, failed, webhooks] = await Promise.all([
-    sudo.query.PaymentProvider.findMany({ where: scoped(practiceId5), take: 20, query: "id name code adapter isInstalled isDefault" }),
-    sudo.query.DomainEvent.count({ where: scoped(practiceId5, { status: { equals: "pending" } }) }),
-    sudo.query.DomainEvent.count({ where: scoped(practiceId5, { status: { equals: "dead_letter" } }) }),
-    sudo.query.PaymentWebhookEvent.findMany({ where: scoped(practiceId5), take: 100, orderBy: { processedAt: "desc" }, query: "id status" })
+  const [providers, pending, failed2, webhooks] = await Promise.all([
+    sudo.query.PaymentProvider.findMany({ where: scoped(practiceId4), take: 20, query: "id name code adapter isInstalled isDefault" }),
+    sudo.query.DomainEvent.count({ where: scoped(practiceId4, { status: { equals: "pending" } }) }),
+    sudo.query.DomainEvent.count({ where: scoped(practiceId4, { status: { equals: "dead_letter" } }) }),
+    sudo.query.PaymentWebhookEvent.findMany({ where: scoped(practiceId4), take: 100, orderBy: { processedAt: "desc" }, query: "id status" })
   ]);
   const webhookAttention = webhooks.filter((item) => item.status !== "processed").length;
-  return { metrics: [count("Providers installed (max 20)", providers.filter((x) => x.isInstalled).length), count("Events pending", pending), count("Events failed", failed), count("Webhook attention (max 100)", webhookAttention)], records: providers.map((item) => row({ id: item.id, title: item.name, subtitle: `${item.adapter} \xB7 ${item.code}`, status: item.isInstalled ? item.isDefault ? "installed_default" : "installed" : "not_installed", detail: "Secrets and payloads omitted" })), attentionCount: providers.filter((x) => !x.isInstalled).length + pending + failed + webhookAttention };
+  return { metrics: [count("Providers installed (max 20)", providers.filter((x) => x.isInstalled).length), count("Events recorded", pending), count("Events failed", failed2), count("Webhook attention (max 100)", webhookAttention)], records: providers.map((item) => row({ id: item.id, title: item.name, subtitle: `${item.adapter} \xB7 ${item.code}`, status: item.isInstalled ? item.isDefault ? "installed_default" : "installed" : "not_installed", detail: "Secrets and payloads omitted" })), attentionCount: failed2 + webhookAttention };
 }
 var sectionCapability = {
   clients: permissions.canReadClients,
@@ -9548,9 +10623,9 @@ var sectionCapability = {
   reports: permissions.canViewReports,
   integrations: permissions.canManageIntegrations
 };
-var medspaOperationsWorkspace = import_core109.graphql.field({
+var medspaOperationsWorkspace = import_core112.graphql.field({
   type: resultType,
-  args: { section: import_core109.graphql.arg({ type: import_core109.graphql.nonNull(import_core109.graphql.String) }) },
+  args: { section: import_core112.graphql.arg({ type: import_core112.graphql.nonNull(import_core112.graphql.String) }) },
   async resolve(_source, { section }, context) {
     if (!sections.includes(section)) throw new Error("Unsupported medspa operations workspace");
     const key = section;
@@ -9562,14 +10637,14 @@ var medspaOperationsWorkspace = import_core109.graphql.field({
 });
 
 // features/keystone/extendGraphqlSchema/clientPortal.ts
-var import_core110 = require("@keystone-6/core");
-var clientPortal = import_core110.graphql.field({
-  type: import_core110.graphql.JSON,
+var import_core113 = require("@keystone-6/core");
+var clientPortal = import_core113.graphql.field({
+  type: import_core113.graphql.JSON,
   async resolve(_source, _args, context) {
     if (!context.session?.itemId) return { authenticated: false, client: null, appointments: [], benefits: [], treatmentPlans: [], followUps: [], photoConsents: [], rightsRequests: [], releasedAssets: [] };
     const actor = await assertActiveActor(context);
-    const clients = await context.query.Client.findMany({ where: { user: { id: { equals: actor.actorId } }, practice: { id: { equals: actor.practiceId } } }, take: 1, query: "id totalVisits user { name email }" });
-    const client = clients[0];
+    const clients2 = await context.query.Client.findMany({ where: { user: { id: { equals: actor.actorId } }, practice: { id: { equals: actor.practiceId } } }, take: 1, query: "id totalVisits user { name email phone }" });
+    const client = clients2[0];
     if (!client) return { authenticated: true, client: null, appointments: [], benefits: [], treatmentPlans: [], followUps: [], photoConsents: [], rightsRequests: [], releasedAssets: [] };
     const appointments = await context.query.Appointment.findMany({ where: { practice: { id: { equals: actor.practiceId } }, client: { id: { equals: client.id } } }, take: 100, orderBy: { startTime: "desc" }, query: `id startTime endTime duration status bookedAt confirmedAt cancelledAt cancellationReason clientNotes
       location { name timezone } provider { user { name } title } lineItems { id serviceTitle serviceImagePath duration price quantity }
@@ -9590,19 +10665,20 @@ var clientPortal = import_core110.graphql.field({
       sudo.query.FollowUpTask.findMany({ where: { practice: { id: { equals: actor.practiceId } }, client: { id: { equals: client.id } } }, take: 100, orderBy: { dueAt: "desc" }, query: "id dueAt title instructions status completedAt actions(orderBy: { occurredAt: desc }, take: 20) { action redFlag occurredAt }" }),
       sudo.query.PhotoConsent.findMany({ where: { practice: { id: { equals: actor.practiceId } }, client: { id: { equals: client.id } } }, take: 100, orderBy: { effectiveFrom: "desc" }, query: "id purpose status mediaScope audienceScope effectiveFrom effectiveUntil actions(orderBy: { occurredAt: desc }) { action reason scope occurredAt }" })
     ]);
-    return { authenticated: true, client, appointments: appointments.map((appointment) => ({ ...appointment, transaction: appointment.transaction ? { id: appointment.transaction.id, status: appointment.transaction.status, paymentStatus: appointment.transaction.paymentStatus, completedAt: appointment.transaction.completedAt, lineItems: appointment.transaction.lineItems.map((line) => ({ id: line.id, itemType: line.itemType, quantity: line.quantity, unitPrice: line.unitPrice, discount: line.discount, title: line.metadata?.title || null })) } : null })), benefits: { packages, memberships }, treatmentPlans: plans, followUps, photoConsents, rightsRequests: rights, releasedAssets: assets };
+    const reviewedIds = new Set((appointments.length ? await sudo.query.Review.findMany({ where: { practice: { id: { equals: actor.practiceId } }, appointment: { id: { in: appointments.map((appointment) => appointment.id) } } }, take: 100, query: "appointment { id }" }) : []).map((review) => review.appointment?.id).filter(Boolean));
+    return { authenticated: true, client, appointments: appointments.map((appointment) => ({ ...appointment, reviewed: reviewedIds.has(appointment.id), transaction: appointment.transaction ? { id: appointment.transaction.id, status: appointment.transaction.status, paymentStatus: appointment.transaction.paymentStatus, completedAt: appointment.transaction.completedAt, lineItems: appointment.transaction.lineItems.map((line) => ({ id: line.id, itemType: line.itemType, quantity: line.quantity, unitPrice: line.unitPrice, discount: line.discount, title: line.metadata?.title || null })) } : null })), benefits: { packages, memberships }, treatmentPlans: plans, followUps, photoConsents, rightsRequests: rights, releasedAssets: assets };
   }
 });
 
 // features/keystone/mutations/runMedSpaOnboarding.ts
-var import_node_crypto4 = require("node:crypto");
-var import_core112 = require("@keystone-6/core");
+var import_node_crypto6 = require("node:crypto");
+var import_core115 = require("@keystone-6/core");
 
 // features/platform/onboarding/lib/seed.json
 var seed_default = {
   medspaInfo: {
-    key: "juniper-vale-demo-med-spa",
-    name: "Juniper Vale Med Spa \u2014 Demo",
+    key: "juniper-vale-med-spa",
+    name: "Juniper Vale Med Spa",
     address: "400 Juniper Avenue, Suite 210",
     city: "Brooklyn",
     state: "NY",
@@ -9611,72 +10687,112 @@ var seed_default = {
     email: "hello@medspa.openship.org",
     timezone: "America/New_York",
     hours: {
-      monday: { closed: true },
-      tuesday: { open: "10:00", close: "17:00", closed: false },
-      wednesday: { open: "10:00", close: "17:00", closed: false },
-      thursday: { open: "10:00", close: "17:00", closed: false },
-      friday: { open: "10:00", close: "16:00", closed: false },
-      saturday: { open: "10:00", close: "14:00", closed: false },
-      sunday: { closed: true }
+      monday: {
+        closed: true
+      },
+      tuesday: {
+        open: "10:00",
+        close: "17:00",
+        closed: false
+      },
+      wednesday: {
+        open: "10:00",
+        close: "17:00",
+        closed: false
+      },
+      thursday: {
+        open: "10:00",
+        close: "17:00",
+        closed: false
+      },
+      friday: {
+        open: "10:00",
+        close: "16:00",
+        closed: false
+      },
+      saturday: {
+        open: "10:00",
+        close: "14:00",
+        closed: false
+      },
+      sunday: {
+        closed: true
+      }
     }
   },
   resources: [
     {
-      key: "demo-consultation-room",
+      key: "consultation-room",
       name: "Consultation room",
       type: "room",
       capacity: 1,
       isActive: true,
       isPublic: true,
       readinessStatus: "available",
-      notes: "Fictional room used only to exercise the demo consultation-request schedule. It is not represented as a clinical treatment environment."
+      notes: ""
     },
     {
-      key: "treatment-room-placeholder",
-      name: "Treatment Room \u2014 Configuration Required",
+      key: "treatment-room",
+      name: "Treatment room",
       type: "room",
       capacity: 1,
-      isActive: false,
-      isPublic: false,
-      readinessStatus: "acceptance_testing",
-      notes: "Private inactive placeholder. Readiness, emergency requirements, and clinical release remain unconfigured."
+      isActive: true,
+      isPublic: true,
+      readinessStatus: "available",
+      notes: ""
     },
     {
-      key: "energy-device-placeholder",
-      name: "Energy Device \u2014 Configuration Required",
-      type: "device",
+      key: "light-suite",
+      name: "Light therapy suite",
+      type: "room",
       capacity: 1,
-      isActive: false,
-      isPublic: false,
-      readinessStatus: "acceptance_testing",
-      notes: "Private inactive placeholder. No device identity, registration, training, maintenance, calibration, or clinical release is claimed."
+      isActive: true,
+      isPublic: true,
+      readinessStatus: "available",
+      notes: ""
     }
   ],
   categories: [
     {
       key: "consultations",
       name: "Consultations",
-      slug: "demo-services",
-      description: "Appointment planning.",
+      slug: "consultations",
+      description: "",
       displayOrder: 10,
       icon: "clipboard"
     },
     {
-      key: "medical-aesthetics",
-      name: "Medical Aesthetics",
-      slug: "medical-aesthetics",
-      description: "Inactive placeholders requiring approved jurisdiction, credential, protocol, consent, product, and resource packs.",
+      key: "facials",
+      name: "Facials & peels",
+      slug: "facials-peels",
+      description: "",
       displayOrder: 20,
-      icon: "shield"
+      icon: "sparkles"
+    },
+    {
+      key: "injectables",
+      name: "Injectables",
+      slug: "injectables",
+      description: "",
+      displayOrder: 30,
+      icon: "syringe"
+    },
+    {
+      key: "light",
+      name: "Light & skin renewal",
+      slug: "light-skin-renewal",
+      description: "",
+      displayOrder: 40,
+      icon: "sun"
     }
   ],
   services: [
     {
-      key: "medical-aesthetics-consultation",
-      name: "Consultation request",
+      key: "new-client-consultation",
+      name: "New client consultation",
       category: "Consultations",
-      description: "Scheduling and service information.",
-      baseDuration: 45,
+      description: "Goals, skin assessment and a treatment plan.",
+      baseDuration: 30,
       price: 0,
       basePrice: 0,
       depositRequired: false,
@@ -9687,80 +10803,200 @@ var seed_default = {
       requiresIntakeReview: false,
       requiresLotTraceability: false,
       requiredResources: [
-        "demo-consultation-room"
+        "consultation-room"
       ],
       isPublic: true
     },
     {
-      key: "injectable-treatment-placeholder",
-      name: "Injectable Treatment \u2014 Configuration Required",
-      category: "Medical Aesthetics",
-      description: "Inactive until approved products, patient-specific order, consent, credential, supervision, protocol, and lot custody are configured.",
-      baseDuration: 60,
-      price: 1,
-      basePrice: 1,
+      key: "injectables-consultation",
+      name: "Injectables consultation",
+      category: "Injectables",
+      description: "Neuromodulator and filler planning with a provider.",
+      baseDuration: 30,
+      price: 0,
+      basePrice: 0,
       depositRequired: false,
       depositAmount: 0,
-      status: "inactive",
-      staffAuthorizationRequired: true,
-      requiresConsultation: true,
-      requiresIntakeReview: true,
-      requiresLotTraceability: true,
-      requiredResources: [
-        "treatment-room-placeholder"
-      ],
-      isPublic: false
-    },
-    {
-      key: "energy-treatment-placeholder",
-      name: "Energy Treatment \u2014 Configuration Required",
-      category: "Medical Aesthetics",
-      description: "Inactive until device identity, intended use, facility rules, training, maintenance, clinical authority, protocol, and consent are configured.",
-      baseDuration: 60,
-      price: 1,
-      basePrice: 1,
-      depositRequired: false,
-      depositAmount: 0,
-      status: "inactive",
-      staffAuthorizationRequired: true,
-      requiresConsultation: true,
-      requiresIntakeReview: true,
+      status: "active",
+      staffAuthorizationRequired: false,
+      requiresConsultation: false,
+      requiresIntakeReview: false,
       requiresLotTraceability: false,
       requiredResources: [
-        "treatment-room-placeholder",
-        "energy-device-placeholder"
+        "consultation-room"
       ],
-      isPublic: false
+      isPublic: true
+    },
+    {
+      key: "signature-facial",
+      imagePath: "/images/salon/facial-treatment.webp",
+      name: "Signature hydrating facial",
+      category: "Facials & peels",
+      description: "Cleanse, exfoliation, extraction and hydration.",
+      baseDuration: 60,
+      price: 16500,
+      basePrice: 16500,
+      depositRequired: false,
+      depositAmount: 0,
+      status: "active",
+      staffAuthorizationRequired: false,
+      requiresConsultation: false,
+      requiresIntakeReview: false,
+      requiresLotTraceability: false,
+      requiredResources: [
+        "treatment-room"
+      ],
+      isPublic: true
+    },
+    {
+      key: "glow-peel",
+      imagePath: "/images/services/custom-clinical-facial.svg",
+      name: "Glow chemical peel",
+      category: "Facials & peels",
+      description: "Light resurfacing peel for tone and texture.",
+      baseDuration: 45,
+      price: 14e3,
+      basePrice: 14e3,
+      depositRequired: false,
+      depositAmount: 0,
+      status: "active",
+      staffAuthorizationRequired: false,
+      requiresConsultation: false,
+      requiresIntakeReview: false,
+      requiresLotTraceability: false,
+      requiredResources: [
+        "treatment-room"
+      ],
+      isPublic: true
+    },
+    {
+      key: "dermaplaning",
+      imagePath: "/images/gallery/clinical-facial-ritual.svg",
+      name: "Dermaplaning",
+      category: "Facials & peels",
+      description: "Gentle exfoliation for smoother skin.",
+      baseDuration: 45,
+      price: 9500,
+      basePrice: 9500,
+      depositRequired: false,
+      depositAmount: 0,
+      status: "active",
+      staffAuthorizationRequired: false,
+      requiresConsultation: false,
+      requiresIntakeReview: false,
+      requiresLotTraceability: false,
+      requiredResources: [
+        "treatment-room"
+      ],
+      isPublic: true
+    },
+    {
+      key: "led-therapy",
+      name: "LED light therapy",
+      category: "Light & skin renewal",
+      description: "Red and blue light session.",
+      baseDuration: 30,
+      price: 6500,
+      basePrice: 6500,
+      depositRequired: false,
+      depositAmount: 0,
+      status: "active",
+      staffAuthorizationRequired: false,
+      requiresConsultation: false,
+      requiresIntakeReview: false,
+      requiresLotTraceability: false,
+      requiredResources: [
+        "light-suite"
+      ],
+      isPublic: true
     }
   ],
   providers: [
     {
-      key: "avery-rowan-demo-coordinator",
-      name: "Avery Rowan",
-      email: "avery.rowan@juniper-vale-demo.example",
+      key: "maya-ortiz",
+      imagePath: "/images/salon/provider-maya.webp",
+      name: "Maya Ortiz",
+      email: "maya.ortiz@medspa.openship.org",
       phone: "+1 (212) 555-0162",
-      role: "assistant",
-      tier: "junior",
-      title: "Scheduling coordinator",
-      bio: "Appointment planning.",
+      role: "nurse",
+      tier: "senior",
+      title: "Aesthetic nurse",
+      bio: "",
       baseCommissionRate: 0,
       status: "active",
       isActive: true,
       isPublic: true,
       specializations: [
-        "medical-aesthetics-consultation"
+        "new-client-consultation",
+        "injectables-consultation",
+        "glow-peel",
+        "led-therapy"
+      ]
+    },
+    {
+      key: "lena-park",
+      imagePath: "/images/salon/provider-priya.webp",
+      name: "Lena Park",
+      email: "lena.park@medspa.openship.org",
+      phone: "+1 (212) 555-0163",
+      role: "esthetician",
+      tier: "senior",
+      title: "Lead esthetician",
+      bio: "",
+      baseCommissionRate: 0,
+      status: "active",
+      isActive: true,
+      isPublic: true,
+      specializations: [
+        "new-client-consultation",
+        "signature-facial",
+        "glow-peel",
+        "dermaplaning",
+        "led-therapy"
       ]
     }
   ],
   scheduleBlocks: [
     {
-      key: "avery-demo-consultation-hours",
-      provider: "avery-rowan-demo-coordinator",
-      daysOfWeek: [2, 3, 4],
+      key: "maya-weekdays",
+      provider: "maya-ortiz",
+      daysOfWeek: [
+        2,
+        3,
+        4
+      ],
+      startTime: "10:00",
+      endTime: "17:00",
+      breakStart: "13:00",
+      breakEnd: "13:30",
+      isAvailable: true,
+      isPublic: true
+    },
+    {
+      key: "lena-week",
+      provider: "lena-park",
+      daysOfWeek: [
+        3,
+        4,
+        5
+      ],
+      startTime: "10:00",
+      endTime: "16:00",
+      breakStart: "12:30",
+      breakEnd: "13:00",
+      isAvailable: true,
+      isPublic: true
+    },
+    {
+      key: "lena-saturday",
+      provider: "lena-park",
+      daysOfWeek: [
+        6
+      ],
       startTime: "10:00",
       endTime: "14:00",
-      breakStart: "12:00",
-      breakEnd: "12:30",
+      breakStart: "",
+      breakEnd: "",
       isAvailable: true,
       isPublic: true
     }
@@ -9769,7 +11005,7 @@ var seed_default = {
   intakeForms: [
     {
       key: "medical-history-intake",
-      name: "Medical History Intake",
+      name: "Medical history",
       requiredForServices: [],
       fields: [
         {
@@ -9807,15 +11043,56 @@ var seed_default = {
   ],
   formTemplates: [
     {
-      key: "medical-history-intake-v1",
-      name: "Medical History Intake v1",
+      key: "medical-history-v1",
+      name: "Medical history",
       type: "clinical_intake",
-      description: "Versioned intake only; it is not treatment consent or a clinical decision.",
+      description: "",
+      requiredForCategories: [
+        "facials",
+        "injectables",
+        "light"
+      ],
       fields: [
+        {
+          id: "goals",
+          type: "textarea",
+          label: "Goals and concerns",
+          required: true
+        },
+        {
+          id: "conditions",
+          type: "textarea",
+          label: "Medical conditions",
+          required: true
+        },
+        {
+          id: "medications",
+          type: "textarea",
+          label: "Medications and supplements",
+          required: true
+        },
+        {
+          id: "allergies",
+          type: "textarea",
+          label: "Allergies and prior reactions",
+          required: true
+        },
+        {
+          id: "pregnant",
+          type: "checkbox",
+          label: "Pregnant or breastfeeding",
+          required: false
+        },
+        {
+          id: "priorProcedures",
+          type: "textarea",
+          label: "Prior aesthetic procedures",
+          required: false
+        },
         {
           id: "historyAcknowledgement",
           type: "checkbox",
-          label: "I confirm this history is complete to the best of my knowledge",
+          label: "This history is complete and accurate",
           required: true
         }
       ]
@@ -9827,10 +11104,11 @@ var seed_default = {
   messageTemplates: [
     {
       key: "appointment-reminder",
-      name: "Appointment Reminder",
+      name: "Appointment reminder",
       type: "reminder",
-      content: "Demo reminder template: a recorded appointment status does not establish treatment eligibility or clinical authorization.",
+      content: "Hi {{clientName}}, this is a reminder of your appointment on {{appointmentDate}}.",
       variables: [
+        "clientName",
         "appointmentDate"
       ]
     }
@@ -9840,18 +11118,16 @@ var seed_default = {
   paymentProviders: [
     {
       key: "manual-cash",
-      name: "Manual Cash \u2014 Enable After Policy Review",
+      name: "Cash",
       code: "pp_manual_cash",
       adapter: "manual",
-      isInstalled: false,
-      isDefault: false,
-      config: {
-        purpose: "operator-recorded cash only"
-      }
+      isInstalled: true,
+      isDefault: true,
+      config: {}
     },
     {
       key: "stripe",
-      name: "Stripe \u2014 Configuration Required",
+      name: "Stripe",
       code: "pp_stripe",
       adapter: "stripe",
       isInstalled: false,
@@ -9867,7 +11143,7 @@ var seed_default = {
 };
 
 // features/keystone/mutations/inventoryWorkflows.ts
-var import_core111 = require("@keystone-6/core");
+var import_core114 = require("@keystone-6/core");
 var denied2 = { success: false, movementId: null, balanceAfter: null };
 function validKey2(value) {
   return value.trim().length >= 12 && value.length <= 200;
@@ -9936,32 +11212,37 @@ async function adjustMedSpaInventoryTransaction(context, input) {
       `product:${input.productId}`,
       `location:${input.locationId}`,
       `idempotency:${input.idempotencyKey}`
-    ], (transactionContext) => recordInventoryMovement(transactionContext, {
-      ...input,
-      practiceId: context.session.data.practice.id,
-      type: input.delta > 0 ? "receive" : "adjustment"
-    }));
+    ], async (transactionContext) => {
+      const product = await transactionContext.sudo().query.Product.findOne({ where: { id: input.productId }, query: "id trackLots practice { id }" });
+      if (!product || product.practice?.id !== transactionContext.session?.data?.practice?.id) return { ...denied2, error: "Product is unavailable" };
+      if (product.trackLots) return { ...denied2, error: "Tracked inventory requires controlled lot receiving or disposition" };
+      return recordInventoryMovement(transactionContext, {
+        ...input,
+        practiceId: transactionContext.session.data.practice.id,
+        type: input.delta > 0 ? "receive" : "adjustment"
+      });
+    });
   } catch (error) {
     return { ...denied2, error: error instanceof Error ? error.message : "Inventory adjustment failed" };
   }
 }
-var resultType2 = import_core111.graphql.object()({
+var resultType2 = import_core114.graphql.object()({
   name: "MedSpaInventoryResult",
   fields: {
-    success: import_core111.graphql.field({ type: import_core111.graphql.nonNull(import_core111.graphql.Boolean) }),
-    movementId: import_core111.graphql.field({ type: import_core111.graphql.ID }),
-    balanceAfter: import_core111.graphql.field({ type: import_core111.graphql.Int }),
-    error: import_core111.graphql.field({ type: import_core111.graphql.String })
+    success: import_core114.graphql.field({ type: import_core114.graphql.nonNull(import_core114.graphql.Boolean) }),
+    movementId: import_core114.graphql.field({ type: import_core114.graphql.ID }),
+    balanceAfter: import_core114.graphql.field({ type: import_core114.graphql.Int }),
+    error: import_core114.graphql.field({ type: import_core114.graphql.String })
   }
 });
-var adjustMedSpaInventory = import_core111.graphql.field({
+var adjustMedSpaInventory = import_core114.graphql.field({
   type: resultType2,
   args: {
-    productId: import_core111.graphql.arg({ type: import_core111.graphql.nonNull(import_core111.graphql.ID) }),
-    locationId: import_core111.graphql.arg({ type: import_core111.graphql.nonNull(import_core111.graphql.ID) }),
-    delta: import_core111.graphql.arg({ type: import_core111.graphql.nonNull(import_core111.graphql.Int) }),
-    reason: import_core111.graphql.arg({ type: import_core111.graphql.nonNull(import_core111.graphql.String) }),
-    idempotencyKey: import_core111.graphql.arg({ type: import_core111.graphql.nonNull(import_core111.graphql.String) })
+    productId: import_core114.graphql.arg({ type: import_core114.graphql.nonNull(import_core114.graphql.ID) }),
+    locationId: import_core114.graphql.arg({ type: import_core114.graphql.nonNull(import_core114.graphql.ID) }),
+    delta: import_core114.graphql.arg({ type: import_core114.graphql.nonNull(import_core114.graphql.Int) }),
+    reason: import_core114.graphql.arg({ type: import_core114.graphql.nonNull(import_core114.graphql.String) }),
+    idempotencyKey: import_core114.graphql.arg({ type: import_core114.graphql.nonNull(import_core114.graphql.String) })
   },
   resolve(_source, args, context) {
     return adjustMedSpaInventoryTransaction(context, args);
@@ -9971,27 +11252,27 @@ var adjustMedSpaInventory = import_core111.graphql.field({
 // features/keystone/onboardingImageScope.ts
 var ONBOARDING_IMAGE_LOOKUP_LIMIT = 500;
 var ONBOARDING_IMAGE_LOOKUP_TAKE = ONBOARDING_IMAGE_LOOKUP_LIMIT + 1;
-function requirePracticeId(practiceId5) {
-  if (typeof practiceId5 !== "string" || !practiceId5.trim()) {
+function requirePracticeId(practiceId4) {
+  if (typeof practiceId4 !== "string" || !practiceId4.trim()) {
     throw new Error("Onboarding image lookup requires an established practice scope");
   }
-  return practiceId5;
+  return practiceId4;
 }
 function validateCandidates(candidateIds) {
   if (candidateIds.length > ONBOARDING_IMAGE_LOOKUP_LIMIT) {
     throw new Error("Onboarding image candidate set exceeded its safe bound");
   }
   const ids = /* @__PURE__ */ new Set();
-  for (const id of candidateIds) {
-    if (typeof id !== "string" || !id || ids.has(id)) {
+  for (const id2 of candidateIds) {
+    if (typeof id2 !== "string" || !id2 || ids.has(id2)) {
       throw new Error("Onboarding image candidate set is malformed");
     }
-    ids.add(id);
+    ids.add(id2);
   }
   return ids;
 }
-async function loadScopedOnboardingImageIds(practiceId5, findMany) {
-  const scopedPracticeId = requirePracticeId(practiceId5);
+async function loadScopedOnboardingImageIds(practiceId4, findMany) {
+  const scopedPracticeId = requirePracticeId(practiceId4);
   const rows = await findMany({
     where: { practice: { id: { equals: scopedPracticeId } } },
     take: ONBOARDING_IMAGE_LOOKUP_TAKE,
@@ -10008,17 +11289,17 @@ async function loadScopedOnboardingImageIds(practiceId5, findMany) {
     if (!row2 || typeof row2 !== "object" || Array.isArray(row2)) {
       throw new Error("Onboarding image lookup returned a malformed row");
     }
-    const image2 = row2;
-    if (typeof image2.id !== "string" || !image2.id || seen.has(image2.id) || image2.practice?.id !== scopedPracticeId) {
+    const image3 = row2;
+    if (typeof image3.id !== "string" || !image3.id || seen.has(image3.id) || image3.practice?.id !== scopedPracticeId) {
       throw new Error("Onboarding image lookup returned a row outside its practice scope");
     }
-    seen.add(image2.id);
-    ids.push(image2.id);
+    seen.add(image3.id);
+    ids.push(image3.id);
   }
   return { status: "ready", ids };
 }
-async function findScopedImage(practiceId5, candidateIds, findMany, predicate) {
-  const scopedPracticeId = requirePracticeId(practiceId5);
+async function findScopedImage(practiceId4, candidateIds, findMany, predicate) {
+  const scopedPracticeId = requirePracticeId(practiceId4);
   const candidateSet = validateCandidates(candidateIds);
   if (!candidateSet.size) return { status: "missing" };
   const rows = await findMany({
@@ -10040,8 +11321,8 @@ async function findScopedImage(practiceId5, candidateIds, findMany, predicate) {
   }
   return { status: "found", id: row2.id };
 }
-async function resolveScopedOnboardingImage(practiceId5, candidateIds, seedKey, imagePath, findMany) {
-  const scopedPracticeId = requirePracticeId(practiceId5);
+async function resolveScopedOnboardingImage(practiceId4, candidateIds, seedKey, imagePath, findMany) {
+  const scopedPracticeId = requirePracticeId(practiceId4);
   if (typeof imagePath !== "string" || !imagePath) {
     throw new Error("Onboarding image path is invalid");
   }
@@ -10098,12 +11379,12 @@ function selectionWithPractice(query) {
 }
 async function guardedOnboardingPracticeCreate({
   list: list99,
-  practiceId: practiceId5,
+  practiceId: practiceId4,
   data,
   query,
   create
 }) {
-  if (typeof practiceId5 !== "string" || !practiceId5.trim()) {
+  if (typeof practiceId4 !== "string" || !practiceId4.trim()) {
     throw new Error(`Onboarding cannot create ${list99} without an established practice`);
   }
   if (!practiceOwnedLists.has(list99)) {
@@ -10113,43 +11394,43 @@ async function guardedOnboardingPracticeCreate({
     const relation = data.practice;
     const requestedPracticeId = relation?.connect?.id;
     const relationKeys = relation && typeof relation === "object" ? Object.keys(relation) : [];
-    if (requestedPracticeId !== practiceId5 || relationKeys.length !== 1 || relationKeys[0] !== "connect") {
+    if (requestedPracticeId !== practiceId4 || relationKeys.length !== 1 || relationKeys[0] !== "connect") {
       throw new Error(`Onboarding ${list99} create cannot change practice ownership`);
     }
   }
   const created = await create({
-    data: { ...data, practice: { connect: { id: practiceId5 } } },
+    data: { ...data, practice: { connect: { id: practiceId4 } } },
     query: selectionWithPractice(query)
   });
   const result2 = created;
-  if (!result2 || typeof result2.id !== "string" || !result2.id || result2.practice?.id !== practiceId5) {
+  if (!result2 || typeof result2.id !== "string" || !result2.id || result2.practice?.id !== practiceId4) {
     throw new Error(`Onboarding ${list99} create did not retain its practice ownership`);
   }
   return created;
 }
 async function guardedOnboardingPracticeUpdate({
   list: list99,
-  id,
-  practiceId: practiceId5,
+  id: id2,
+  practiceId: practiceId4,
   data,
   query,
   read,
   update
 }) {
-  if (typeof practiceId5 !== "string" || !practiceId5.trim()) {
+  if (typeof practiceId4 !== "string" || !practiceId4.trim()) {
     throw new Error(`Onboarding cannot update ${list99} without an established practice`);
   }
   if (!practiceOwnedLists.has(list99)) {
     throw new Error(`Onboarding cannot update ${list99}: authoritative direct practice ownership is not configured`);
   }
-  if (typeof id !== "string" || !id) {
+  if (typeof id2 !== "string" || !id2) {
     throw new Error(`Onboarding cannot update ${list99} with a missing record identity`);
   }
   const rows = await read({
     where: {
       AND: [
-        { id: { equals: id } },
-        { practice: { id: { equals: practiceId5 } } }
+        { id: { equals: id2 } },
+        { practice: { id: { equals: practiceId4 } } }
       ]
     },
     take: 2,
@@ -10159,36 +11440,36 @@ async function guardedOnboardingPracticeUpdate({
     throw new Error(`Onboarding ${list99} update target is stale, missing, or outside the established practice`);
   }
   const current = rows[0];
-  if (!current || current.id !== id || current.practice?.id !== practiceId5) {
+  if (!current || current.id !== id2 || current.practice?.id !== practiceId4) {
     throw new Error(`Onboarding ${list99} update target failed its practice recheck`);
   }
   if (Object.prototype.hasOwnProperty.call(data, "practice")) {
     const requestedPracticeId = data.practice?.connect?.id;
-    if (requestedPracticeId !== practiceId5 || data.practice?.disconnect) {
+    if (requestedPracticeId !== practiceId4 || data.practice?.disconnect) {
       throw new Error(`Onboarding ${list99} update cannot change practice ownership`);
     }
   }
   const selection = /\bpractice\s*\{/.test(query) ? query : `${query} practice { id }`;
   const updated = await update({
-    where: { id },
-    data: { ...data, practice: { connect: { id: practiceId5 } } },
+    where: { id: id2 },
+    data: { ...data, practice: { connect: { id: practiceId4 } } },
     query: selection
   });
   const result2 = updated;
-  if (!result2 || result2.id !== id || result2.practice?.id !== practiceId5) {
+  if (!result2 || result2.id !== id2 || result2.practice?.id !== practiceId4) {
     throw new Error(`Onboarding ${list99} update did not retain its practice ownership`);
   }
   return updated;
 }
-function assertOnboardingLocationPractice(location, practiceId5, expectedLocationId) {
-  if (typeof practiceId5 !== "string" || !practiceId5.trim()) {
+function assertOnboardingLocationPractice(location, practiceId4, expectedLocationId) {
+  if (typeof practiceId4 !== "string" || !practiceId4.trim()) {
     throw new Error("Onboarding primary location check requires an established practice");
   }
   if (!location || typeof location !== "object" || Array.isArray(location)) {
     throw new Error("Onboarding primary location is missing or outside the established practice");
   }
   const candidate = location;
-  if (typeof candidate.id !== "string" || !candidate.id || expectedLocationId && candidate.id !== expectedLocationId || candidate.practice?.id !== practiceId5) {
+  if (typeof candidate.id !== "string" || !candidate.id || expectedLocationId && candidate.id !== expectedLocationId || candidate.practice?.id !== practiceId4) {
     throw new Error("Onboarding primary location is stale or outside the established practice");
   }
 }
@@ -10211,24 +11492,28 @@ var REQUIRED_ARRAYS = [
   "gallery",
   "paymentProviders"
 ];
-function validateSeed(input, isolatedLocal) {
-  if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("MedSpa seed must be an object");
+function needsClinicalAuthority(service) {
+  return service.staffAuthorizationRequired !== false || service.requiresConsultation === true || service.requiresIntakeReview === true || service.requiresLotTraceability === true;
+}
+function validateSeed(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Setup data must be a JSON object");
   const seed = input;
   if (!seed.medspaInfo || typeof seed.medspaInfo !== "object" || Array.isArray(seed.medspaInfo)) {
-    throw new Error("MedSpa seed requires medspaInfo");
+    throw new Error("Setup data needs medspaInfo");
   }
   if (!seed.storefront || typeof seed.storefront !== "object" || Array.isArray(seed.storefront)) {
-    throw new Error("MedSpa seed requires storefront settings");
+    throw new Error("Setup data needs storefront settings");
   }
-  if (!isolatedLocal || !/\b(?:demo|mock)\b/i.test(String(seed.medspaInfo.name || "")) || !String(seed.storefront.displayName || "").trim()) {
-    throw new Error("Onboarding practice and storefront identities must be clearly marked demo or mock");
+  if (!String(seed.medspaInfo.name || "").trim() || !String(seed.storefront.displayName || "").trim()) {
+    throw new Error("Enter a practice name and a storefront display name");
   }
-  if (!Number.isInteger(seed.storefront.accentHue) || seed.storefront.accentHue < 0 || seed.storefront.accentHue > 360 || seed.storefront.isPublished !== true) {
-    throw new Error("Onboarding storefront settings must publish a valid demo hue");
+  if (!/[a-z0-9]/i.test(String(seed.medspaInfo.name))) throw new Error("Practice name needs at least one letter or number");
+  if (!Number.isInteger(seed.storefront.accentHue) || seed.storefront.accentHue < 0 || seed.storefront.accentHue > 360) {
+    throw new Error("Storefront hue must be a whole number from 0 to 360");
   }
   for (const key of REQUIRED_ARRAYS) {
-    if (!Array.isArray(seed[key])) throw new Error(`MedSpa seed requires ${key}`);
-    if (seed[key].length > 500) throw new Error(`MedSpa seed ${key} exceeds the 500-item limit`);
+    if (!Array.isArray(seed[key])) throw new Error(`Setup data needs a ${key} list`);
+    if (seed[key].length > 500) throw new Error(`Setup data ${key} has more than 500 items`);
   }
   const imagePaths = [
     ...seed.services.map((item) => item.imagePath),
@@ -10236,61 +11521,53 @@ function validateSeed(input, isolatedLocal) {
     ...seed.gallery.map((item) => item.imagePath)
   ].filter(Boolean);
   if (imagePaths.some((value) => typeof value !== "string" || !/^\/images\/[a-z0-9_./-]+$/i.test(value) || value.includes(".."))) {
-    throw new Error("MedSpa seed image paths must be canonical relative /images/ paths");
+    throw new Error("Image paths must start with /images/");
   }
   const resourceTypes = /* @__PURE__ */ new Set(["room", "device", "equipment", "station", "other"]);
-  if (seed.resources.some((item) => !resourceTypes.has(item.type))) throw new Error("MedSpa seed contains an unsupported resource type");
-  if (!/\b(?:demo|mock|fictional)\b/i.test(`${seed.medspaInfo.name || ""} ${seed.medspaInfo.address || ""}`) || !/^\+?1?[\s().-]*[2-9]\d{2}[\s().-]*555[\s.-]*01\d{2}$/.test(String(seed.medspaInfo.phone || "")) || !/@[a-z0-9.-]+\.example$/i.test(String(seed.medspaInfo.email || ""))) {
-    throw new Error("Onboarding location and contact must be unmistakably fictional demo data");
-  }
+  if (seed.resources.some((item) => !resourceTypes.has(item.type))) throw new Error("Rooms and equipment use room, device, equipment, station or other");
   const resourcesByKey = new Map(seed.resources.map((item) => [item.key, item]));
   for (const resource of seed.resources) {
-    if (typeof resource.isPublic !== "boolean" || resource.isPublic && resource.isActive !== true) {
-      throw new Error(`Resource ${resource.name || "unknown"} must be explicitly public and active or remain private`);
-    }
+    if (resource.isPublic === true && resource.isActive === false) throw new Error(`${resource.name || "A room"} can't be bookable while inactive`);
   }
-  if (seed.appointments.length) throw new Error("Onboarding cannot manufacture appointment or treatment evidence");
+  if (seed.appointments.length) throw new Error("Setup can't create appointments");
   for (const service of seed.services) {
+    const name = service.name || "A treatment";
     if (!Number.isInteger(service.price) || service.price < 0 || !Number.isInteger(service.basePrice) || service.basePrice < 0) {
-      throw new Error(`Service ${service.name || "unknown"} prices must be non-negative integer cents`);
+      throw new Error(`${name}: prices must be whole cents`);
     }
-    if (typeof service.isPublic !== "boolean" || service.isPublic !== (service.status === "active")) {
-      throw new Error(`Service ${service.name || "unknown"} must publish only when active`);
-    }
-    if (service.isPublic && (!isolatedLocal || service.price !== 0 || service.basePrice !== 0 || Number(service.depositAmount || 0) !== 0 || service.staffAuthorizationRequired !== false || service.requiresConsultation !== false || service.requiresIntakeReview !== false || service.requiresLotTraceability !== false)) {
-      throw new Error(`Public onboarding service ${service.name || "unknown"} must be a non-clinical demo request`);
+    if (service.isPublic === true && service.status !== "active") throw new Error(`${name} must be active to be bookable online`);
+    if (service.isPublic === true && needsClinicalAuthority(service)) {
+      throw new Error(`${name} needs clinical authority, so it can't be bookable online yet`);
     }
     for (const resourceKey of service.requiredResources || []) {
       const resource = resourcesByKey.get(resourceKey);
-      if (service.isPublic && (!resource || resource.isActive !== true || resource.isPublic !== true)) {
-        throw new Error(`Public onboarding service ${service.name || "unknown"} requires an active explicitly public resource`);
+      if (!resource) throw new Error(`${name} uses an unknown room "${resourceKey}"`);
+      if (service.isPublic === true && (resource.isActive === false || resource.isPublic !== true)) {
+        throw new Error(`${name} is bookable online, so ${resource.name} must be active and bookable too`);
       }
     }
-  }
-  if (!seed.services.some((service) => service.status === "active" && service.isPublic === true)) {
-    throw new Error("Onboarding requires at least one active mock public service");
   }
   const servicesByKey = new Map(seed.services.map((item) => [item.key, item]));
   const providersByKey = new Map(seed.providers.map((item) => [item.key, item]));
   for (const provider of seed.providers) {
-    if (typeof provider.isPublic !== "boolean" || provider.isPublic && (provider.status !== "active" || provider.isActive !== true || provider.role !== "assistant" || !isolatedLocal)) {
-      throw new Error(`Public onboarding provider ${provider.name || "unknown"} must be active, explicitly public, fictional demo support personnel`);
+    const name = provider.name || "A provider";
+    if (!String(provider.email || "").includes("@")) throw new Error(`${name} needs an email address`);
+    if (provider.isPublic === true && (provider.status !== "active" || provider.isActive !== true)) {
+      throw new Error(`${name} must be active to be bookable online`);
     }
     for (const serviceKey of provider.specializations || []) {
-      const service = servicesByKey.get(serviceKey);
-      if (provider.isPublic && (!service || service.status !== "active" || service.isPublic !== true)) {
-        throw new Error(`Public onboarding provider ${provider.name || "unknown"} may reference only active explicitly public services`);
-      }
+      if (!servicesByKey.has(serviceKey)) throw new Error(`${name} lists an unknown treatment "${serviceKey}"`);
     }
   }
   for (const block of seed.scheduleBlocks) {
     const provider = providersByKey.get(block.provider);
-    if (typeof block.isPublic !== "boolean" || block.isPublic && (block.isAvailable !== true || !provider || provider.isPublic !== true)) {
-      throw new Error(`Public onboarding schedule ${block.key || "unknown"} must be available and belong to explicitly public demo personnel`);
+    if (!provider) throw new Error(`Schedule ${block.key || ""} belongs to an unknown provider`);
+    if (block.isPublic === true && (block.isAvailable === false || provider.isPublic !== true)) {
+      throw new Error(`${provider.name}'s online hours need an available, bookable provider`);
     }
   }
   if (seed.products.some((item) => item.trackLots !== false && Number(item.quantity || 0) > 0)) {
-    throw new Error("Tracked inventory must enter through controlled lot receiving");
+    throw new Error("Lot-tracked products start at zero; receive stock through inventory");
   }
   for (const [section, fields] of Object.entries({
     memberships: ["monthlyPrice"],
@@ -10300,7 +11577,7 @@ function validateSeed(input, isolatedLocal) {
     for (const item of seed[section]) {
       for (const field2 of fields) {
         if (item[field2] != null && !Number.isInteger(item[field2])) {
-          throw new Error(`${section}.${field2} must be integer cents`);
+          throw new Error(`${section}.${field2} must be whole cents`);
         }
       }
     }
@@ -10310,8 +11587,8 @@ function validateSeed(input, isolatedLocal) {
 function appointmentStart(item) {
   const start = /* @__PURE__ */ new Date();
   start.setDate(start.getDate() + (item.dayOffset || 1));
-  const [hours, minutes] = (item.time || "10:00").split(":").map(Number);
-  start.setHours(hours, minutes, 0, 0);
+  const [hours, minutes2] = (item.time || "10:00").split(":").map(Number);
+  start.setHours(hours, minutes2, 0, 0);
   return start;
 }
 async function runMedSpaOnboardingTransaction(context, seedInput = seed_default, failurePoint) {
@@ -10326,7 +11603,7 @@ async function runMedSpaOnboardingTransaction(context, seedInput = seed_default,
     throw new Error("The one-time onboarding role is not an isolated bootstrap role");
   }
   const isolatedLocal = await assertOwnedLocalDatabase(context.prisma);
-  const seed = validateSeed(seedInput, isolatedLocal);
+  const seed = validateSeed(seedInput);
   return context.transaction(async (transactionContext) => {
     await transactionContext.prisma.$executeRawUnsafe(
       "SELECT pg_advisory_xact_lock(hashtext($1))",
@@ -10362,16 +11639,16 @@ async function runMedSpaOnboardingTransaction(context, seedInput = seed_default,
       created += 1;
       return record;
     };
-    const updateOne = async (list99, id, data, query = "id") => {
+    const updateOne = async (list99, id2, data, query = "id") => {
       if (list99 === "Practice") {
-        if (!onboardingPracticeId || id !== onboardingPracticeId) {
+        if (!onboardingPracticeId || id2 !== onboardingPracticeId) {
           throw new Error("Onboarding Practice update must match the established practice identity");
         }
-        const existing = await sudo.query.Practice.findOne({ where: { id }, query: "id" });
+        const existing = await sudo.query.Practice.findOne({ where: { id: id2 }, query: "id" });
         if (!existing || existing.id !== onboardingPracticeId) {
           throw new Error("Onboarding Practice update target is stale or missing");
         }
-        const updated2 = await sudo.query.Practice.updateOne({ where: { id }, data, query });
+        const updated2 = await sudo.query.Practice.updateOne({ where: { id: id2 }, data, query });
         if (!updated2 || updated2.id !== onboardingPracticeId) {
           throw new Error("Onboarding Practice update did not retain its established identity");
         }
@@ -10380,7 +11657,7 @@ async function runMedSpaOnboardingTransaction(context, seedInput = seed_default,
       }
       const updated = await guardedOnboardingPracticeUpdate({
         list: list99,
-        id,
+        id: id2,
         practiceId: onboardingPracticeId,
         data,
         query,
@@ -10395,15 +11672,15 @@ async function runMedSpaOnboardingTransaction(context, seedInput = seed_default,
     let practice;
     if (onboardingPracticeId) {
       practice = await sudo.query.Practice.findOne({ where: { id: onboardingPracticeId }, query: "id slug name isDemo" });
-      if (!practice?.isDemo) throw new Error("Fictional setup cannot overwrite a non-demo practice");
       if (!practice) throw new Error("Authenticated practice not found");
+      if (!isolatedLocal || !practice.isDemo) throw new Error("Practice setup has already been completed");
       if (practice.name !== medspa.name) practice = await updateOne("Practice", practice.id, { name: medspa.name }, "id slug name");
       if (!actor.role.practice?.id) await sudo.query.Role.updateOne({ where: { id: actor.role.id }, data: { practice: { connect: { id: practice.id } } }, query: "id" });
     } else {
       const collision = await sudo.query.Practice.findMany({ where: { slug: { equals: practiceSlug } }, take: 1, query: "id" });
       if (collision.length) throw new Error("Practice slug is already in use");
       practice = await sudo.query.Practice.createOne({
-        data: { name: medspa.name, slug: practiceSlug, currencyCode: "USD", isActive: true, isDemo: true },
+        data: { name: medspa.name, slug: practiceSlug, currencyCode: "USD", isActive: true, isDemo: isolatedLocal },
         query: "id slug name"
       });
       if (!practice || typeof practice.id !== "string" || practice.name !== medspa.name || practice.slug !== practiceSlug) {
@@ -10415,7 +11692,7 @@ async function runMedSpaOnboardingTransaction(context, seedInput = seed_default,
       await transactionContext.prisma.role.update({ where: { id: actor.role.id }, data: { practiceId: practice.id } });
       const scopedSession = { ...context.session, data: { ...context.session.data, practice: { id: practice.id } } };
       sudo = transactionContext.withSession(scopedSession).sudo();
-      await sudo.query.AuditEvent.createOne({ data: { practice: { connect: { id: practice.id } }, actor: { connect: { id: userId } }, action: "practice.bootstrap.completed", resourceType: "Practice", resourceId: practice.id, correlationId: `onboarding:${practice.id}`, evidence: { roleId: actor.role.id }, evidenceHash: (0, import_node_crypto4.createHash)("sha256").update(`${userId}:${actor.role.id}:${practice.id}`).digest("hex"), occurredAt: (/* @__PURE__ */ new Date()).toISOString() }, query: "id" });
+      await sudo.query.AuditEvent.createOne({ data: { practice: { connect: { id: practice.id } }, actor: { connect: { id: userId } }, action: "practice.bootstrap.completed", resourceType: "Practice", resourceId: practice.id, correlationId: `onboarding:${practice.id}`, evidence: { roleId: actor.role.id }, evidenceHash: (0, import_node_crypto6.createHash)("sha256").update(`${userId}:${actor.role.id}:${practice.id}`).digest("hex"), occurredAt: (/* @__PURE__ */ new Date()).toISOString() }, query: "id" });
     }
     const locationData = {
       name: seed.storefront.displayName.trim(),
@@ -10487,10 +11764,10 @@ async function runMedSpaOnboardingTransaction(context, seedInput = seed_default,
       categoryIds[item.name] = record.id;
     }
     let onboardingImageIds = null;
-    const getOnboardingImageIds = async (practiceId5) => {
+    const getOnboardingImageIds = async (practiceId4) => {
       if (onboardingImageIds) return onboardingImageIds;
       const lookup = await loadScopedOnboardingImageIds(
-        practiceId5,
+        practiceId4,
         (args) => sudo.query.MedSpaImage.findMany(args)
       );
       if (lookup.status === "overflow") {
@@ -10540,8 +11817,8 @@ async function runMedSpaOnboardingTransaction(context, seedInput = seed_default,
     const serviceIds = {};
     const serviceRecords = {};
     for (const item of seed.services) {
-      const image2 = item.imagePath ? await imageByPath(item.imagePath, item.name, { seedKey: `service-image:${item.key}`, placement: "service" }) : null;
-      const resourceConnections = (item.requiredResources || []).map((key) => resourceIds[key]).filter(Boolean).map((id) => ({ id }));
+      const image3 = item.imagePath ? await imageByPath(item.imagePath, item.name, { seedKey: `service-image:${item.key}`, placement: "service" }) : null;
+      const resourceConnections = (item.requiredResources || []).map((key) => resourceIds[key]).filter(Boolean).map((id2) => ({ id: id2 }));
       const data = {
         name: item.name,
         description: item.description || "",
@@ -10559,7 +11836,7 @@ async function runMedSpaOnboardingTransaction(context, seedInput = seed_default,
         metadata: { ...item.metadata || {}, seedKey: item.key, source: "onboarding" },
         category: categoryIds[item.category] ? { connect: { id: categoryIds[item.category] } } : void 0,
         requiredResources: { connect: resourceConnections },
-        image: image2 ? { connect: { id: image2.id } } : void 0
+        image: image3 ? { connect: { id: image3.id } } : void 0
       };
       const existing = await findOne("Service", { name: { equals: item.name } });
       const record = existing ? await updateOne("Service", existing.id, data, "id name price basePrice baseDuration image { imagePath image { url } }") : await createOne("Service", data, "id name price basePrice baseDuration image { imagePath image { url } }");
@@ -10571,20 +11848,19 @@ async function runMedSpaOnboardingTransaction(context, seedInput = seed_default,
       displayName: seed.storefront.displayName.trim(),
       primaryLocation: { connect: { id: location.id } },
       accentHue: seed.storefront.accentHue,
-      logoSvg: DEFAULT_LOGO_SVG,
-      logoHue: 0,
-      isPublished: true
+      isPublished: seed.storefront.isPublished === true
     };
+    await transactionContext.prisma.$executeRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))", "medspa-storefront-settings", practice.id);
     const existingStorefront = await findOne("StorefrontSetting", {}, "id revision displayName accentHue isPublished primaryLocation { id }");
     if (existingStorefront) {
-      const unchanged = existingStorefront.displayName === storefrontData.displayName && existingStorefront.accentHue === storefrontData.accentHue && existingStorefront.isPublished === true && existingStorefront.primaryLocation?.id === location.id;
+      const unchanged = existingStorefront.displayName === storefrontData.displayName && existingStorefront.accentHue === storefrontData.accentHue && existingStorefront.isPublished === storefrontData.isPublished && existingStorefront.primaryLocation?.id === location.id;
       if (unchanged) reused += 1;
       else await updateOne("StorefrontSetting", existingStorefront.id, {
         ...storefrontData,
         revision: existingStorefront.revision + 1
       });
     } else {
-      await createOne("StorefrontSetting", { ...storefrontData, revision: 1 });
+      await createOne("StorefrontSetting", { ...storefrontData, logoSvg: DEFAULT_LOGO_SVG, logoHue: seed.storefront.accentHue, revision: 1 });
     }
     if (failurePoint === "services") throw new Error("Injected onboarding failure after services");
     const userIds = {};
@@ -10607,8 +11883,8 @@ async function runMedSpaOnboardingTransaction(context, seedInput = seed_default,
     const providerIds = {};
     for (const item of seed.providers) {
       const user = await ensureUser(item);
-      const image2 = item.imagePath ? await imageByPath(item.imagePath, item.name, { seedKey: `provider-image:${item.key}`, placement: "provider" }) : null;
-      const specializations = (item.specializations || []).map((key) => serviceIds[key]).filter(Boolean).map((id) => ({ id }));
+      const image3 = item.imagePath ? await imageByPath(item.imagePath, item.name, { seedKey: `provider-image:${item.key}`, placement: "provider" }) : null;
+      const specializations = (item.specializations || []).map((key) => serviceIds[key]).filter(Boolean).map((id2) => ({ id: id2 }));
       const data = {
         user: { connect: { id: user.id } },
         role: item.role || "assistant",
@@ -10620,7 +11896,7 @@ async function runMedSpaOnboardingTransaction(context, seedInput = seed_default,
         status: item.status || "inactive",
         isActive: item.isActive === true,
         isPublic: item.isPublic === true,
-        photo: image2 ? { connect: { id: image2.id } } : void 0,
+        photo: image3 ? { connect: { id: image3.id } } : void 0,
         specializations: { connect: specializations },
         locations: { connect: [{ id: location.id }] }
       };
@@ -10675,27 +11951,28 @@ async function runMedSpaOnboardingTransaction(context, seedInput = seed_default,
     }
     if (failurePoint === "people") throw new Error("Injected onboarding failure after people");
     for (const item of seed.intakeForms) {
-      const services = (item.requiredForServices || []).map((key) => serviceIds[key]).filter(Boolean).map((id) => ({ id }));
+      const services = (item.requiredForServices || []).map((key) => serviceIds[key]).filter(Boolean).map((id2) => ({ id: id2 }));
       const data = { name: item.name, fields: item.fields, isActive: true, requiredForServices: { connect: services } };
       const existing = await findOne("IntakeForm", { name: { equals: item.name } });
       if (existing) await updateOne("IntakeForm", existing.id, data);
       else await createOne("IntakeForm", data);
     }
     for (const item of seed.formTemplates) {
-      const data = { name: item.name, type: item.type, description: item.description || "", fields: item.fields, isActive: true };
+      const categories = (item.requiredForCategories || []).map((key) => categoryIds[key]).filter(Boolean).map((id2) => ({ id: id2 }));
+      const data = { name: item.name, type: item.type, description: item.description || "", fields: item.fields, isActive: true, requiredForCategories: { connect: categories } };
       const existing = await findOne("FormTemplate", { name: { equals: item.name } });
       if (existing) await updateOne("FormTemplate", existing.id, data);
       else await createOne("FormTemplate", data);
     }
     for (const item of seed.memberships) {
-      const services = (item.includedServices || []).map((key) => serviceIds[key]).filter(Boolean).map((id) => ({ id }));
+      const services = (item.includedServices || []).map((key) => serviceIds[key]).filter(Boolean).map((id2) => ({ id: id2 }));
       const data = { name: item.name, description: item.description || "", monthlyPrice: item.monthlyPrice, discountPercent: item.discountPercent, isActive: true, includedServices: { connect: services } };
       const existing = await findOne("Membership", { name: { equals: item.name } });
       if (existing) await updateOne("Membership", existing.id, data);
       else await createOne("Membership", data);
     }
     for (const item of seed.packages) {
-      const services = (item.services || []).map((key) => serviceIds[key] || Object.entries(serviceRecords).find(([, service]) => service.name === key)?.[1]?.id).filter(Boolean).map((id) => ({ id }));
+      const services = (item.services || []).map((key) => serviceIds[key] || Object.entries(serviceRecords).find(([, service]) => service.name === key)?.[1]?.id).filter(Boolean).map((id2) => ({ id: id2 }));
       const data = { name: item.name, description: item.description || "", totalPrice: item.totalPrice, savingsAmount: item.savingsAmount, validDays: item.validDays, isActive: true, services: { connect: services } };
       const existing = await findOne("ServicePackage", { name: { equals: item.name } });
       if (existing) await updateOne("ServicePackage", existing.id, data);
@@ -10825,60 +12102,94 @@ async function runMedSpaOnboardingTransaction(context, seedInput = seed_default,
     return { success: true, completed: true, created, reused, locationId: location.id, error: null };
   }, { maxWait: 5e3, timeout: 12e4, isolationLevel: "Serializable" });
 }
-var resultType3 = import_core112.graphql.object()({
+function onboardingFailureMessage(error) {
+  const code = error?.code;
+  if (typeof code === "string" && /^P\d{4}$/.test(code)) return "Setup couldn't be saved. Nothing was created; try again.";
+  if (error instanceof Error && error.message && error.message.length <= 300) return error.message;
+  return "Setup failed. Nothing was created; try again.";
+}
+var resultType3 = import_core115.graphql.object()({
   name: "RunMedSpaOnboardingResult",
   fields: {
-    success: import_core112.graphql.field({ type: import_core112.graphql.nonNull(import_core112.graphql.Boolean) }),
-    completed: import_core112.graphql.field({ type: import_core112.graphql.nonNull(import_core112.graphql.Boolean) }),
-    created: import_core112.graphql.field({ type: import_core112.graphql.nonNull(import_core112.graphql.Int) }),
-    reused: import_core112.graphql.field({ type: import_core112.graphql.nonNull(import_core112.graphql.Int) }),
-    locationId: import_core112.graphql.field({ type: import_core112.graphql.ID }),
-    error: import_core112.graphql.field({ type: import_core112.graphql.String })
+    success: import_core115.graphql.field({ type: import_core115.graphql.nonNull(import_core115.graphql.Boolean) }),
+    completed: import_core115.graphql.field({ type: import_core115.graphql.nonNull(import_core115.graphql.Boolean) }),
+    created: import_core115.graphql.field({ type: import_core115.graphql.nonNull(import_core115.graphql.Int) }),
+    reused: import_core115.graphql.field({ type: import_core115.graphql.nonNull(import_core115.graphql.Int) }),
+    locationId: import_core115.graphql.field({ type: import_core115.graphql.ID }),
+    error: import_core115.graphql.field({ type: import_core115.graphql.String })
   }
 });
-var runMedSpaOnboarding = import_core112.graphql.field({
+var runMedSpaOnboarding = import_core115.graphql.field({
   type: resultType3,
-  args: { seed: import_core112.graphql.arg({ type: import_core112.graphql.JSON }) },
+  args: { seed: import_core115.graphql.arg({ type: import_core115.graphql.JSON }) },
   async resolve(_source, { seed }, context) {
-    return runMedSpaOnboardingTransaction(context, seed ?? seed_default);
+    try {
+      return await runMedSpaOnboardingTransaction(context, seed ?? seed_default);
+    } catch (error) {
+      return { success: false, completed: false, created: 0, reused: 0, locationId: null, error: onboardingFailureMessage(error) };
+    }
   }
 });
 
 // features/keystone/mutations/completeAppointmentCheckout.ts
-var import_core113 = require("@keystone-6/core");
-function configuredTaxRate() {
-  const rate = Number(process.env.TAX_RATE);
-  if (!Number.isFinite(rate) || rate < 0 || rate > 1) throw new Error("TAX_RATE must be explicitly configured between 0 and 1");
-  return rate;
+var import_core116 = require("@keystone-6/core");
+
+// features/keystone/checkoutInput.ts
+function configuredTaxRate(value = process.env.TAX_RATE, practiceRate) {
+  if (typeof value === "string" && value.trim()) {
+    const rate = Number(value.trim());
+    if (!Number.isFinite(rate) || rate < 0 || rate > 1) throw new Error("TAX_RATE must be between 0 and 1");
+    return rate;
+  }
+  if (typeof practiceRate === "number" && Number.isFinite(practiceRate) && practiceRate >= 0 && practiceRate <= 1) return practiceRate;
+  throw new Error("Set a tax rate for the practice before checkout");
 }
 function parseRetail(input) {
-  if (!Array.isArray(input)) return [];
+  if (input === void 0 || input === null) return [];
+  if (!Array.isArray(input)) throw new Error("Retail items must be an array");
   if (input.length > 50) throw new Error("Too many retail items");
   const quantities = /* @__PURE__ */ new Map();
   for (const item of input) {
-    const productId = String(item?.productId || "");
-    const quantity = Number(item?.quantity || 0);
-    if (!productId || !Number.isInteger(quantity) || quantity <= 0 || quantity > 1e3) continue;
-    quantities.set(productId, (quantities.get(productId) || 0) + quantity);
+    if (!item || typeof item !== "object" || Array.isArray(item) || Object.keys(item).some((key) => key !== "productId" && key !== "quantity") || typeof item.productId !== "string" || !item.productId.trim() || item.productId.length > 200 || typeof item.quantity !== "number" || !Number.isSafeInteger(item.quantity) || item.quantity <= 0 || item.quantity > 1e3) {
+      throw new Error("Each retail item requires a product and an integer quantity between 1 and 1000");
+    }
+    const productId = item.productId.trim();
+    const quantity = (quantities.get(productId) || 0) + item.quantity;
+    if (quantity > 1e3) throw new Error("Total quantity per retail product must not exceed 1000");
+    quantities.set(productId, quantity);
   }
   return [...quantities].map(([productId, quantity]) => ({ productId, quantity }));
 }
+
+// features/keystone/mutations/completeAppointmentCheckout.ts
+var CheckoutQuote = class extends Error {
+  constructor(total, description, email) {
+    super("checkout-quote");
+    this.total = total;
+    this.description = description;
+    this.email = email;
+  }
+};
 async function completeAppointmentCheckoutTransaction(context, args) {
   let actor;
   try {
-    actor = requireActorPractice(context, permissions.canManageFinance, "Authorized finance access is required");
+    actor = { ...requireActorPractice(context, permissions.canManageFinance, "Authorized finance access is required"), canManagePractice: permissions.canManagePractice({ session: context.session }) };
     await assertPracticeRecord(context, "Appointment", args.appointmentId);
   } catch (error) {
     return { success: false, transactionId: null, paymentId: null, error: error instanceof Error ? error.message : "Appointment not found" };
   }
+  if (args.paymentMethod !== "cash") return { success: false, transactionId: null, paymentId: null, error: "Card payments are taken with Charge card" };
+  return runControlledCheckout(context, actor, args, { kind: "cash" });
+}
+async function runControlledCheckout(context, actor, args, mode) {
   if (!args.idempotencyKey?.trim() || args.idempotencyKey.length < 12) {
     return { success: false, transactionId: null, paymentId: null, error: "A valid idempotency key is required" };
   }
   let retail;
   try {
     retail = parseRetail(args.retailItems);
-    if (args.paymentMethod !== "cash") throw new Error("Controlled checkout currently supports operator-recorded cash only");
-    if (args.discountAmount > 0 && (!permissions.canManagePractice({ session: context.session }) || !args.discountReason?.trim() || args.discountReason.length > 1e3)) throw new Error("Discretionary discounts require current practice-manager authority and a reason");
+    if (mode.kind === "cash" && args.paymentMethod !== "cash") throw new Error("Cash checkout records cash only");
+    if (args.discountAmount > 0 && (!actor.canManagePractice || !args.discountReason?.trim() || args.discountReason.length > 1e3)) throw new Error("Discretionary discounts require current practice-manager authority and a reason");
     if (!Number.isInteger(args.tipAmount) || !Number.isInteger(args.discountAmount) || args.tipAmount < 0 || args.discountAmount < 0 || args.tipAmount > 1e7 || args.discountAmount > 1e7) {
       throw new Error("Checkout amounts must be nonnegative integer cents");
     }
@@ -10886,7 +12197,8 @@ async function completeAppointmentCheckoutTransaction(context, args) {
     return { success: false, transactionId: null, paymentId: null, error: error instanceof Error ? error.message : "Invalid checkout input" };
   }
   const scopedCheckoutKey = aggregateIdempotencyKey(actor.practiceId, `checkout:${evidenceHash(args.idempotencyKey)}`);
-  const checkoutRequestHash = evidenceHash({ practiceId: actor.practiceId, appointmentId: args.appointmentId, paymentMethod: args.paymentMethod, tipAmount: args.tipAmount, discountAmount: args.discountAmount, discountReason: args.discountReason?.trim() || null, retail, clientPackageId: args.clientPackageId || null, clientMembershipId: args.clientMembershipId || null });
+  const tender = mode.kind === "cash" ? "cash" : "credit_card";
+  const checkoutRequestHash = evidenceHash({ practiceId: actor.practiceId, appointmentId: args.appointmentId, paymentMethod: tender, tipAmount: args.tipAmount, discountAmount: args.discountAmount, discountReason: args.discountReason?.trim() || null, retail, clientPackageId: args.clientPackageId || null, clientMembershipId: args.clientMembershipId || null });
   try {
     return await serializableWorkflow(context, "medspa-domain-resource", [
       `appointment:${args.appointmentId}`,
@@ -10908,7 +12220,8 @@ async function completeAppointmentCheckoutTransaction(context, args) {
       const appointment = await sudo.query.Appointment.findOne({
         where: { id: args.appointmentId },
         query: `
-          id status depositAmount depositPaid payment { id } transaction { id } practice { id } location { id name isActive }
+          id status depositAmount depositPaid payment { id } transaction { id } practice { id taxRate } location { id name isActive }
+          paymentSessions(where: { status: { in: [completed, partially_refunded] } }, take: 50) { id status amount data payment { id refundedAmount } }
           client { id lifetimeValue totalVisits user { id email } }
           provider { id baseCommissionRate user { id } }
           consultation { id status staffDecisionRecorded service { id } }
@@ -10942,7 +12255,7 @@ async function completeAppointmentCheckoutTransaction(context, args) {
         for (const { line, requirements } of restrictedLines) {
           const serviceId = requirements.serviceId;
           if (appointment.consultation.service?.id !== serviceId) throw new Error("Each restricted service requires matching consultation evidence");
-          const completedAuthorizedSessions = appointment.treatmentSessions?.filter((session2) => session2.service?.id === serviceId && session2.status === "completed" && session2.staffAuthorizationConfirmed === true && session2.administrations?.some((administration) => administration.service?.id === serviceId && administration.status === "completed" && administration.evidenceHash && administration.treatmentSession?.id === session2.id && administration.order?.id === session2.order?.id && administration.consent?.id === session2.consent?.id)) || [];
+          const completedAuthorizedSessions = appointment.treatmentSessions?.filter((session) => session.service?.id === serviceId && session.status === "completed" && session.staffAuthorizationConfirmed === true && session.administrations?.some((administration) => administration.service?.id === serviceId && administration.status === "completed" && administration.evidenceHash && administration.treatmentSession?.id === session.id && administration.order?.id === session.order?.id && administration.consent?.id === session.consent?.id)) || [];
           if (completedAuthorizedSessions.length < Number(line.quantity || 1)) throw new Error("Each restricted service requires matching completed treatment evidence before checkout");
         }
       }
@@ -10964,15 +12277,16 @@ async function completeAppointmentCheckoutTransaction(context, args) {
         const membership = (await sudo.query.ClientMembership.findMany({
           where: { id: { equals: args.clientMembershipId }, practice: { id: { equals: actor.practiceId } } },
           take: 1,
-          query: "id status pausedUntil client { id } agreements(orderBy: { acceptedAt: desc }, take: 1) { id effectiveUntil termsHash evidenceHash benefitSnapshot }"
+          query: "id status pausedUntil client { id } agreements(orderBy: { acceptedAt: desc }, take: 1) { id effectiveUntil termsHash evidenceHash benefitSnapshot membership { id discountPercent includedServices { id } } }"
         }))[0];
         const paused = membership?.pausedUntil && new Date(membership.pausedUntil).getTime() > Date.now();
         if (!membership || membership.status !== "active" || paused || membership.client?.id !== appointment.client.user.id) throw new Error("Membership is not available for this client");
         const agreement = membership.agreements?.[0];
         if (!agreement || !agreement.evidenceHash || !agreement.termsHash || agreement.effectiveUntil && new Date(agreement.effectiveUntil) <= /* @__PURE__ */ new Date()) throw new Error("Membership agreement is not effective");
         const benefits = agreement.benefitSnapshot && typeof agreement.benefitSnapshot === "object" ? agreement.benefitSnapshot : {};
-        const includedServiceIds = Array.isArray(benefits.includedServiceIds) ? benefits.includedServiceIds.filter((id) => typeof id === "string") : [];
-        const discountPercent = Number(benefits.discountPercent);
+        const publishedServiceIds = new Set((agreement.membership?.includedServices || []).map((service) => service.id));
+        const includedServiceIds = Array.isArray(benefits.includedServiceIds) ? benefits.includedServiceIds.filter((id2) => typeof id2 === "string" && publishedServiceIds.has(id2)) : [];
+        const discountPercent = Math.min(Number(benefits.discountPercent), Number(agreement.membership?.discountPercent ?? 0));
         if (!includedServiceIds.length || !Number.isFinite(discountPercent) || discountPercent <= 0 || discountPercent > 100) throw new Error("Immutable membership benefit evidence is unavailable");
         const included = new Set(includedServiceIds);
         const eligibleLines = appointment.lineItems.filter((line) => included.has(line.service?.id));
@@ -10996,7 +12310,7 @@ async function completeAppointmentCheckoutTransaction(context, args) {
         }))[0];
         if (!clientPackage || clientPackage.status !== "active" || clientPackage.client?.id !== appointment.client.user.id || clientPackage.expiresAt && new Date(clientPackage.expiresAt) <= /* @__PURE__ */ new Date()) throw new Error("Package is unavailable, expired, or assigned to another client");
         const entitlement = clientPackage.metadata?.entitlementSnapshot;
-        const packageServiceIds = Array.isArray(entitlement?.serviceIds) ? entitlement.serviceIds.filter((id) => typeof id === "string") : [];
+        const packageServiceIds = Array.isArray(entitlement?.serviceIds) ? entitlement.serviceIds.filter((id2) => typeof id2 === "string") : [];
         if (entitlement?.snapshotVersion !== 1 || !packageServiceIds.length) throw new Error("Immutable package entitlement snapshot is unavailable");
         const included = new Set(packageServiceIds);
         packageServiceLine = appointment.lineItems.find((line) => included.has(line.service?.id)) || null;
@@ -11024,11 +12338,21 @@ async function completeAppointmentCheckoutTransaction(context, args) {
       const subtotal = serviceSubtotal + retailSubtotal;
       const taxable = Math.max(0, subtotal - discount);
       if (discount > serviceSubtotal) throw new Error("Discounts and benefits cannot exceed the service subtotal");
-      const tax = Math.round(taxable * configuredTaxRate());
+      const tax = Math.round(taxable * configuredTaxRate(process.env.TAX_RATE, appointment.practice?.taxRate));
       const tip = Math.max(0, args.tipAmount || 0);
-      if (appointment.depositPaid) throw new Error("Deposit allocation is unavailable until payment-allocation reconciliation is implemented");
-      const depositCredit = 0;
-      const total = Math.max(0, taxable + tax + tip - depositCredit);
+      const heldDeposits = (appointment.paymentSessions || []).filter((session) => {
+        const data = session.data && typeof session.data === "object" ? session.data : {};
+        return data.purpose === "appointment_deposit" && !data.appliedToCheckout;
+      });
+      const depositCredit = netDepositMinor(heldDeposits.map((session) => ({ amount: session.amount, status: session.status, purpose: "appointment_deposit", refundedAmount: session.payment?.refundedAmount })));
+      if (appointment.depositPaid && depositCredit === 0 && !heldDeposits.length && Number(appointment.depositAmount || 0) > 0) {
+        throw new Error("The recorded deposit has no settled payment to credit. Reconcile it from Payments first");
+      }
+      const total = amountDueAfterDeposit(taxable + tax + tip, depositCredit);
+      if (mode.kind === "quote") {
+        const description = appointment.lineItems.map((line) => line.serviceTitle).filter(Boolean).join(", ") || "Appointment";
+        throw new CheckoutQuote(total, description, appointment.client?.user?.email || null);
+      }
       const now2 = (/* @__PURE__ */ new Date()).toISOString();
       const transaction = await sudo.query.MedSpaTransaction.createOne({
         data: {
@@ -11040,11 +12364,11 @@ async function completeAppointmentCheckoutTransaction(context, args) {
           appointment: { connect: { id: appointment.id } },
           staff: appointment.provider?.id ? { connect: { id: appointment.provider.id } } : void 0,
           tip,
-          paymentMethod: packageCredit ? "split" : "cash",
+          paymentMethod: packageCredit ? "split" : mode.kind === "card" ? "card" : "cash",
           paymentStatus: "paid",
           status: "completed",
           completedAt: now2,
-          metadata: { source: "controlled_checkout", serviceSubtotal, retailSubtotal, discount, discountReason: args.discountReason?.trim() || null, membershipDiscount, packageCredit, discountAllocations: appointment.lineItems.map((line) => ({ lineItemId: line.id, serviceId: line.service?.id || null, ...lineDiscountComponents.get(line.id) || { manual: 0, membership: 0, package: 0 } })), tax, depositCredit, total }
+          metadata: { source: "controlled_checkout", tender, serviceSubtotal, retailSubtotal, discount, discountReason: args.discountReason?.trim() || null, membershipDiscount, packageCredit, discountAllocations: appointment.lineItems.map((line) => ({ lineItemId: line.id, serviceId: line.service?.id || null, ...lineDiscountComponents.get(line.id) || { manual: 0, membership: 0, package: 0 } })), tax, depositCredit, total }
         },
         query: "id"
       });
@@ -11109,26 +12433,58 @@ async function completeAppointmentCheckoutTransaction(context, args) {
         });
         if (!movement.success) throw new Error(movement.error || "Inventory movement failed");
       }
-      const providers = await sudo.query.PaymentProvider.findMany({
-        where: { practice: { id: { equals: actor.practiceId } }, adapter: { equals: "manual" }, isInstalled: { equals: true } },
-        take: 1,
-        query: "id code adapter config"
-      });
-      const provider = providers[0];
-      if (!provider) throw new Error("Operator payment provider is unavailable");
-      const providerConfig = paymentProviderFromRecord(provider);
-      const initiated = await createProviderPaymentSession({ provider: providerConfig, amount: total, currency: "usd", idempotencyKey: scopedCheckoutKey, metadata: { appointmentId: appointment.id, operatorId: context.session.itemId } });
-      const confirmed = await confirmProviderPayment({ provider: providerConfig, providerReference: initiated.providerReference, amount: total, idempotencyKey: `${scopedCheckoutKey}:confirm` });
-      if (confirmed.status !== "completed") throw new Error("Operator payment was not completed");
-      const session = await sudo.query.PaymentSession.createOne({
-        data: { practice: { connect: { id: actor.practiceId } }, appointment: { connect: { id: appointment.id } }, provider: { connect: { id: provider.id } }, idempotencyKey: scopedCheckoutKey, amount: total, currency: "usd", status: "completed", providerReference: initiated.providerReference, completedAt: now2, data: { source: "controlled_checkout", purpose: "controlled_checkout", settlementMethod: "operator_recorded_cash", checkoutRequestHash, discountReason: args.discountReason?.trim() || null, ...initiated.data || {}, ...confirmed.data || {} } },
-        query: "id"
-      });
-      const payment = await sudo.query.Payment.createOne({
-        data: { idempotencyKey: aggregateIdempotencyKey(scopedCheckoutKey, "payment"), practice: { connect: { id: actor.practiceId } }, appointment: { connect: { id: appointment.id } }, session: { connect: { id: session.id } }, subtotal, tax, tip, discount, totalAmount: total, paymentMethod: args.paymentMethod, status: "completed", processedAt: now2, processedBy: { connect: { id: context.session.itemId } }, receiptEmail: appointment.client?.user?.email || "", notes: "Recorded by controlled appointment checkout" },
-        query: "id"
-      });
-      await sudo.query.PaymentSession.updateOne({ where: { id: session.id }, data: { payment: { connect: { id: payment.id } } }, query: "id" });
+      let payment;
+      if (mode.kind === "card") {
+        const card = await sudo.query.PaymentSession.findOne({ where: { id: mode.sessionId }, query: "id status amount data practice { id } appointment { id } payment { id }" });
+        const cardData = card?.data && typeof card.data === "object" ? card.data : {};
+        if (!card || cardData.purpose !== "checkout_card" || card.practice?.id !== actor.practiceId || card.appointment?.id !== appointment.id) throw new Error("Card payment session not found");
+        if (!card.payment?.id || !["pending", "requires_action"].includes(card.status)) throw new Error("Card payment was already settled");
+        if (Number(card.amount) !== total) throw new CardAmountMismatch(Number(card.amount), total);
+        payment = await sudo.query.Payment.updateOne({
+          where: { id: card.payment.id },
+          data: {
+            appointment: { connect: { id: appointment.id } },
+            subtotal,
+            tax,
+            tip,
+            discount,
+            totalAmount: total,
+            status: "completed",
+            processedAt: now2,
+            stripePaymentIntentId: mode.paymentIntentId,
+            processedBy: { connect: { id: actor.actorId } },
+            receiptEmail: appointment.client?.user?.email || "",
+            notes: "Card payment taken at checkout (Stripe)"
+          },
+          query: "id"
+        });
+        await sudo.query.PaymentSession.updateOne({ where: { id: card.id }, data: { status: "completed", completedAt: now2, providerReference: mode.paymentIntentId, data: { ...cardData, checkoutRequestHash, paymentIntentId: mode.paymentIntentId, checkoutUrl: null, settledAt: now2, transactionId: transaction.id } }, query: "id" });
+      } else {
+        const providers = await sudo.query.PaymentProvider.findMany({
+          where: { practice: { id: { equals: actor.practiceId } }, adapter: { equals: "manual" }, isInstalled: { equals: true } },
+          take: 1,
+          query: "id code adapter config"
+        });
+        const provider = providers[0];
+        if (!provider) throw new Error("Operator payment provider is unavailable");
+        const providerConfig = paymentProviderFromRecord(provider);
+        const initiated = await createProviderPaymentSession({ provider: providerConfig, amount: total, currency: "usd", idempotencyKey: scopedCheckoutKey, metadata: { appointmentId: appointment.id, operatorId: actor.actorId } });
+        const confirmed = await confirmProviderPayment({ provider: providerConfig, providerReference: initiated.providerReference, amount: total, idempotencyKey: `${scopedCheckoutKey}:confirm` });
+        if (confirmed.status !== "completed") throw new Error("Operator payment was not completed");
+        const session = await sudo.query.PaymentSession.createOne({
+          data: { practice: { connect: { id: actor.practiceId } }, appointment: { connect: { id: appointment.id } }, provider: { connect: { id: provider.id } }, idempotencyKey: scopedCheckoutKey, amount: total, currency: "usd", status: "completed", providerReference: initiated.providerReference, completedAt: now2, data: { source: "controlled_checkout", purpose: "controlled_checkout", settlementMethod: "operator_recorded_cash", checkoutRequestHash, discountReason: args.discountReason?.trim() || null, ...initiated.data || {}, ...confirmed.data || {} } },
+          query: "id"
+        });
+        payment = await sudo.query.Payment.createOne({
+          data: { idempotencyKey: aggregateIdempotencyKey(scopedCheckoutKey, "payment"), practice: { connect: { id: actor.practiceId } }, appointment: { connect: { id: appointment.id } }, session: { connect: { id: session.id } }, subtotal, tax, tip, discount, totalAmount: total, paymentMethod: args.paymentMethod, status: "completed", processedAt: now2, processedBy: { connect: { id: actor.actorId } }, receiptEmail: appointment.client?.user?.email || "", notes: "Recorded by controlled appointment checkout" },
+          query: "id"
+        });
+        await sudo.query.PaymentSession.updateOne({ where: { id: session.id }, data: { payment: { connect: { id: payment.id } } }, query: "id" });
+      }
+      for (const deposit of heldDeposits) {
+        const depositData = deposit.data && typeof deposit.data === "object" ? deposit.data : {};
+        await sudo.query.PaymentSession.updateOne({ where: { id: deposit.id }, data: { data: { ...depositData, appliedToCheckout: true, appliedCheckoutPaymentId: payment.id, appliedAt: now2 } }, query: "id" });
+      }
       if (retailLines.length) {
         await sudo.query.ProductSale.createOne({
           data: { practice: { connect: { id: actor.practiceId } }, appointment: { connect: { id: appointment.id } }, products: retailLines.map((item) => ({ productId: item.product.id, name: item.product.name, sku: item.product.sku, quantity: item.quantity, price: item.unitPrice, subtotal: item.unitPrice * item.quantity })), total: retailSubtotal, soldBy: appointment.provider?.user?.id ? { connect: { id: appointment.provider.user.id } } : void 0 },
@@ -11141,7 +12497,7 @@ async function completeAppointmentCheckoutTransaction(context, args) {
         if (!providerId || !item.service?.id || rate <= 0) continue;
         const grossSaleAmount = (item.price || 0) * (item.quantity || 1);
         const saleAmount = Math.max(0, grossSaleAmount - (lineDiscounts.get(item.id) || 0));
-        await sudo.query.Commission.createOne({ data: { practice: { connect: { id: actor.practiceId } }, provider: { connect: { id: providerId } }, service: { connect: { id: item.service.id } }, payment: { connect: { id: payment.id } }, saleAmount, commissionRate: rate, commissionAmount: Math.round(saleAmount * rate), isPaid: false, notes: "Generated by controlled checkout" }, query: "id" });
+        await sudo.query.Commission.createOne({ data: { practice: { connect: { id: actor.practiceId } }, provider: { connect: { id: providerId } }, service: { connect: { id: item.service.id } }, payment: { connect: { id: payment.id } }, saleAmount, commissionRate: rate, commissionAmount: commissionMinor(saleAmount, rate), isPaid: false, notes: "Generated by controlled checkout" }, query: "id" });
       }
       if (args.clientMembershipId && membershipDiscount > 0) {
         const membership = (await sudo.query.ClientMembership.findMany({ where: { id: { equals: args.clientMembershipId }, practice: { id: { equals: actor.practiceId } } }, take: 1, query: "id agreements(orderBy: { acceptedAt: desc }, take: 1) { id }" }))[0];
@@ -11160,31 +12516,39 @@ async function completeAppointmentCheckoutTransaction(context, args) {
       return { success: true, transactionId: transaction.id, paymentId: payment.id, error: null };
     });
   } catch (error) {
+    if (error instanceof CheckoutQuote || error instanceof CardAmountMismatch) throw error;
     console.error("Controlled appointment checkout failed", error);
     return { success: false, transactionId: null, paymentId: null, error: error instanceof Error ? error.message : "Checkout failed" };
   }
 }
-var resultType4 = import_core113.graphql.object()({
+var CardAmountMismatch = class extends Error {
+  constructor(paid, due) {
+    super(`Card payment of ${paid} does not match the ${due} now due`);
+    this.paid = paid;
+    this.due = due;
+  }
+};
+var resultType4 = import_core116.graphql.object()({
   name: "CompleteAppointmentCheckoutResult",
   fields: {
-    success: import_core113.graphql.field({ type: import_core113.graphql.nonNull(import_core113.graphql.Boolean) }),
-    transactionId: import_core113.graphql.field({ type: import_core113.graphql.ID }),
-    paymentId: import_core113.graphql.field({ type: import_core113.graphql.ID }),
-    error: import_core113.graphql.field({ type: import_core113.graphql.String })
+    success: import_core116.graphql.field({ type: import_core116.graphql.nonNull(import_core116.graphql.Boolean) }),
+    transactionId: import_core116.graphql.field({ type: import_core116.graphql.ID }),
+    paymentId: import_core116.graphql.field({ type: import_core116.graphql.ID }),
+    error: import_core116.graphql.field({ type: import_core116.graphql.String })
   }
 });
-var completeAppointmentCheckout = import_core113.graphql.field({
+var completeAppointmentCheckout = import_core116.graphql.field({
   type: resultType4,
   args: {
-    appointmentId: import_core113.graphql.arg({ type: import_core113.graphql.nonNull(import_core113.graphql.ID) }),
-    paymentMethod: import_core113.graphql.arg({ type: import_core113.graphql.nonNull(import_core113.graphql.String) }),
-    tipAmount: import_core113.graphql.arg({ type: import_core113.graphql.nonNull(import_core113.graphql.Int) }),
-    discountAmount: import_core113.graphql.arg({ type: import_core113.graphql.nonNull(import_core113.graphql.Int) }),
-    discountReason: import_core113.graphql.arg({ type: import_core113.graphql.String }),
-    retailItems: import_core113.graphql.arg({ type: import_core113.graphql.JSON }),
-    clientPackageId: import_core113.graphql.arg({ type: import_core113.graphql.ID }),
-    clientMembershipId: import_core113.graphql.arg({ type: import_core113.graphql.ID }),
-    idempotencyKey: import_core113.graphql.arg({ type: import_core113.graphql.nonNull(import_core113.graphql.String) })
+    appointmentId: import_core116.graphql.arg({ type: import_core116.graphql.nonNull(import_core116.graphql.ID) }),
+    paymentMethod: import_core116.graphql.arg({ type: import_core116.graphql.nonNull(import_core116.graphql.String) }),
+    tipAmount: import_core116.graphql.arg({ type: import_core116.graphql.nonNull(import_core116.graphql.Int) }),
+    discountAmount: import_core116.graphql.arg({ type: import_core116.graphql.nonNull(import_core116.graphql.Int) }),
+    discountReason: import_core116.graphql.arg({ type: import_core116.graphql.String }),
+    retailItems: import_core116.graphql.arg({ type: import_core116.graphql.JSON }),
+    clientPackageId: import_core116.graphql.arg({ type: import_core116.graphql.ID }),
+    clientMembershipId: import_core116.graphql.arg({ type: import_core116.graphql.ID }),
+    idempotencyKey: import_core116.graphql.arg({ type: import_core116.graphql.nonNull(import_core116.graphql.String) })
   },
   resolve(_source, args, context) {
     return completeAppointmentCheckoutTransaction(context, args);
@@ -11192,18 +12556,18 @@ var completeAppointmentCheckout = import_core113.graphql.field({
 });
 
 // features/keystone/mutations/packageWorkflows.ts
-var import_core114 = require("@keystone-6/core");
+var import_core117 = require("@keystone-6/core");
 async function redeemClientPackageTransaction(context, args) {
-  const denied18 = { success: false, clientPackageId: null, usageId: null, usedValue: null, remainingValue: null, status: null };
+  const denied22 = { success: false, clientPackageId: null, usageId: null, usedValue: null, remainingValue: null, status: null };
   let actor;
   try {
     actor = requireActorPractice(context, permissions.canManageFinance, "Authorized finance access is required");
     await Promise.all([assertPracticeRecord(context, "ClientPackage", args.clientPackageId), assertPracticeRecord(context, "Appointment", args.appointmentId), assertPracticeRecord(context, "Service", args.serviceId)]);
   } catch (error) {
-    return { ...denied18, error: error instanceof Error ? error.message : "Package record not found" };
+    return { ...denied22, error: error instanceof Error ? error.message : "Package record not found" };
   }
-  if (!Number.isInteger(args.valueUsed) || args.valueUsed <= 0 || args.valueUsed > 1e7) return { ...denied18, error: "Package usage must be positive integer cents" };
-  if (!args.idempotencyKey?.trim() || args.idempotencyKey.length < 12 || args.idempotencyKey.length > 200) return { ...denied18, error: "Idempotency key is invalid" };
+  if (!Number.isInteger(args.valueUsed) || args.valueUsed <= 0 || args.valueUsed > 1e7) return { ...denied22, error: "Package usage must be positive integer cents" };
+  if (!args.idempotencyKey?.trim() || args.idempotencyKey.length < 12 || args.idempotencyKey.length > 200) return { ...denied22, error: "Idempotency key is invalid" };
   try {
     return await serializableWorkflow(context, "medspa-domain-resource", [
       `appointment:${args.appointmentId}`,
@@ -11268,19 +12632,19 @@ async function redeemClientPackageTransaction(context, args) {
       return { success: true, clientPackageId: clientPackage.id, usageId: usage.id, usedValue, remainingValue: Math.max(0, Number(clientPackage.totalValue || 0) - usedValue), status, error: null };
     });
   } catch (error) {
-    return { ...denied18, error: error instanceof Error ? error.message : "Package usage failed" };
+    return { ...denied22, error: error instanceof Error ? error.message : "Package usage failed" };
   }
 }
 async function reverseClientPackageUsageTransaction(context, args) {
-  const denied18 = { success: false, clientPackageId: null, usageId: null, usedValue: null, remainingValue: null, status: null };
+  const denied22 = { success: false, clientPackageId: null, usageId: null, usedValue: null, remainingValue: null, status: null };
   let actor;
   try {
     actor = requireActorPractice(context, permissions.canManageFinance);
     await assertPracticeRecord(context, "ClientPackageUsage", args.usageId);
   } catch (error) {
-    return { ...denied18, error: error instanceof Error ? error.message : "Package usage not found" };
+    return { ...denied22, error: error instanceof Error ? error.message : "Package usage not found" };
   }
-  if (!validIdempotencyKey(args.idempotencyKey) || !args.reason.trim()) return { ...denied18, error: "Package reversal evidence is invalid" };
+  if (!validIdempotencyKey(args.idempotencyKey) || !args.reason.trim()) return { ...denied22, error: "Package reversal evidence is invalid" };
   try {
     return await serializableWorkflow(context, "medspa-package-reversal", [`usage:${args.usageId}`, `idempotency:${args.idempotencyKey}`], async (tx) => {
       const sudo = tx.sudo();
@@ -11294,32 +12658,32 @@ async function reverseClientPackageUsageTransaction(context, args) {
       return { success: true, clientPackageId: usage.clientPackage.id, usageId: usage.id, usedValue, remainingValue: Math.max(0, Number(usage.clientPackage.totalValue || 0) - usedValue), status: "active", error: null };
     });
   } catch (error) {
-    return { ...denied18, error: error instanceof Error ? error.message : "Package reversal failed" };
+    return { ...denied22, error: error instanceof Error ? error.message : "Package reversal failed" };
   }
 }
-var resultType5 = import_core114.graphql.object()({
+var resultType5 = import_core117.graphql.object()({
   name: "RedeemClientPackageResult",
   fields: {
-    success: import_core114.graphql.field({ type: import_core114.graphql.nonNull(import_core114.graphql.Boolean) }),
-    clientPackageId: import_core114.graphql.field({ type: import_core114.graphql.ID }),
-    usageId: import_core114.graphql.field({ type: import_core114.graphql.ID }),
-    usedValue: import_core114.graphql.field({ type: import_core114.graphql.Int }),
-    remainingValue: import_core114.graphql.field({ type: import_core114.graphql.Int }),
-    status: import_core114.graphql.field({ type: import_core114.graphql.String }),
-    error: import_core114.graphql.field({ type: import_core114.graphql.String })
+    success: import_core117.graphql.field({ type: import_core117.graphql.nonNull(import_core117.graphql.Boolean) }),
+    clientPackageId: import_core117.graphql.field({ type: import_core117.graphql.ID }),
+    usageId: import_core117.graphql.field({ type: import_core117.graphql.ID }),
+    usedValue: import_core117.graphql.field({ type: import_core117.graphql.Int }),
+    remainingValue: import_core117.graphql.field({ type: import_core117.graphql.Int }),
+    status: import_core117.graphql.field({ type: import_core117.graphql.String }),
+    error: import_core117.graphql.field({ type: import_core117.graphql.String })
   }
 });
-var reverseClientPackageUsage = import_core114.graphql.field({ type: resultType5, args: { usageId: import_core114.graphql.arg({ type: import_core114.graphql.nonNull(import_core114.graphql.ID) }), reason: import_core114.graphql.arg({ type: import_core114.graphql.nonNull(import_core114.graphql.String) }), idempotencyKey: import_core114.graphql.arg({ type: import_core114.graphql.nonNull(import_core114.graphql.String) }) }, resolve(_source, args, context) {
+var reverseClientPackageUsage = import_core117.graphql.field({ type: resultType5, args: { usageId: import_core117.graphql.arg({ type: import_core117.graphql.nonNull(import_core117.graphql.ID) }), reason: import_core117.graphql.arg({ type: import_core117.graphql.nonNull(import_core117.graphql.String) }), idempotencyKey: import_core117.graphql.arg({ type: import_core117.graphql.nonNull(import_core117.graphql.String) }) }, resolve(_source, args, context) {
   return reverseClientPackageUsageTransaction(context, args);
 } });
-var redeemClientPackage = import_core114.graphql.field({
+var redeemClientPackage = import_core117.graphql.field({
   type: resultType5,
   args: {
-    clientPackageId: import_core114.graphql.arg({ type: import_core114.graphql.nonNull(import_core114.graphql.ID) }),
-    appointmentId: import_core114.graphql.arg({ type: import_core114.graphql.nonNull(import_core114.graphql.ID) }),
-    serviceId: import_core114.graphql.arg({ type: import_core114.graphql.nonNull(import_core114.graphql.ID) }),
-    valueUsed: import_core114.graphql.arg({ type: import_core114.graphql.nonNull(import_core114.graphql.Int) }),
-    idempotencyKey: import_core114.graphql.arg({ type: import_core114.graphql.nonNull(import_core114.graphql.String) })
+    clientPackageId: import_core117.graphql.arg({ type: import_core117.graphql.nonNull(import_core117.graphql.ID) }),
+    appointmentId: import_core117.graphql.arg({ type: import_core117.graphql.nonNull(import_core117.graphql.ID) }),
+    serviceId: import_core117.graphql.arg({ type: import_core117.graphql.nonNull(import_core117.graphql.ID) }),
+    valueUsed: import_core117.graphql.arg({ type: import_core117.graphql.nonNull(import_core117.graphql.Int) }),
+    idempotencyKey: import_core117.graphql.arg({ type: import_core117.graphql.nonNull(import_core117.graphql.String) })
   },
   resolve(_source, args, context) {
     return redeemClientPackageTransaction(context, args);
@@ -11327,7 +12691,7 @@ var redeemClientPackage = import_core114.graphql.field({
 });
 
 // features/keystone/mutations/waitlistWorkflows.ts
-var import_core115 = require("@keystone-6/core");
+var import_core118 = require("@keystone-6/core");
 var denied3 = { success: false, waitlistEntryId: null, status: null };
 function parseDate(value) {
   if (!value) return null;
@@ -11339,7 +12703,7 @@ async function joinWaitlistTransaction(context, args) {
   let actor;
   try {
     actor = requireActorPractice(context, permissions.canSchedule, "Authorized scheduling access is required");
-    await Promise.all([assertPracticeRecord(context, "Service", args.serviceId), args.clientId ? assertPracticeRecord(context, "User", args.clientId) : Promise.resolve(null), ...(args.preferredProviderIds || []).map((id) => assertPracticeRecord(context, "Provider", id))]);
+    await Promise.all([assertPracticeRecord(context, "Service", args.serviceId), args.clientId ? assertPracticeRecord(context, "User", args.clientId) : Promise.resolve(null), ...(args.preferredProviderIds || []).map((id2) => assertPracticeRecord(context, "Provider", id2))]);
   } catch (error) {
     return { ...denied3, error: error instanceof Error ? error.message : "Waitlist scope is unavailable" };
   }
@@ -11402,7 +12766,7 @@ async function joinWaitlistTransaction(context, args) {
           guestName,
           guestPhone,
           service: { connect: { id: args.serviceId } },
-          preferredProviders: providerIds.length ? { connect: providerIds.map((id) => ({ id })) } : void 0,
+          preferredProviders: providerIds.length ? { connect: providerIds.map((id2) => ({ id: id2 })) } : void 0,
           preferredDays,
           preferredTimeRange,
           dateRangeStart: start?.toISOString(),
@@ -11479,41 +12843,41 @@ async function transitionWaitlistEntryTransaction(context, args) {
     return { ...denied3, error: error instanceof Error ? error.message : "Waitlist transition failed" };
   }
 }
-var resultType6 = import_core115.graphql.object()({
+var resultType6 = import_core118.graphql.object()({
   name: "WaitlistWorkflowResult",
   fields: {
-    success: import_core115.graphql.field({ type: import_core115.graphql.nonNull(import_core115.graphql.Boolean) }),
-    waitlistEntryId: import_core115.graphql.field({ type: import_core115.graphql.ID }),
-    status: import_core115.graphql.field({ type: import_core115.graphql.String }),
-    error: import_core115.graphql.field({ type: import_core115.graphql.String })
+    success: import_core118.graphql.field({ type: import_core118.graphql.nonNull(import_core118.graphql.Boolean) }),
+    waitlistEntryId: import_core118.graphql.field({ type: import_core118.graphql.ID }),
+    status: import_core118.graphql.field({ type: import_core118.graphql.String }),
+    error: import_core118.graphql.field({ type: import_core118.graphql.String })
   }
 });
-var joinWaitlist = import_core115.graphql.field({
+var joinWaitlist = import_core118.graphql.field({
   type: resultType6,
   args: {
-    clientId: import_core115.graphql.arg({ type: import_core115.graphql.ID }),
-    guestName: import_core115.graphql.arg({ type: import_core115.graphql.String }),
-    guestPhone: import_core115.graphql.arg({ type: import_core115.graphql.String }),
-    serviceId: import_core115.graphql.arg({ type: import_core115.graphql.nonNull(import_core115.graphql.ID) }),
-    preferredProviderIds: import_core115.graphql.arg({ type: import_core115.graphql.list(import_core115.graphql.nonNull(import_core115.graphql.ID)) }),
-    preferredDays: import_core115.graphql.arg({ type: import_core115.graphql.JSON }),
-    preferredTimeRange: import_core115.graphql.arg({ type: import_core115.graphql.String }),
-    dateRangeStart: import_core115.graphql.arg({ type: import_core115.graphql.String }),
-    dateRangeEnd: import_core115.graphql.arg({ type: import_core115.graphql.String }),
-    notes: import_core115.graphql.arg({ type: import_core115.graphql.String }),
-    idempotencyKey: import_core115.graphql.arg({ type: import_core115.graphql.nonNull(import_core115.graphql.String) })
+    clientId: import_core118.graphql.arg({ type: import_core118.graphql.ID }),
+    guestName: import_core118.graphql.arg({ type: import_core118.graphql.String }),
+    guestPhone: import_core118.graphql.arg({ type: import_core118.graphql.String }),
+    serviceId: import_core118.graphql.arg({ type: import_core118.graphql.nonNull(import_core118.graphql.ID) }),
+    preferredProviderIds: import_core118.graphql.arg({ type: import_core118.graphql.list(import_core118.graphql.nonNull(import_core118.graphql.ID)) }),
+    preferredDays: import_core118.graphql.arg({ type: import_core118.graphql.JSON }),
+    preferredTimeRange: import_core118.graphql.arg({ type: import_core118.graphql.String }),
+    dateRangeStart: import_core118.graphql.arg({ type: import_core118.graphql.String }),
+    dateRangeEnd: import_core118.graphql.arg({ type: import_core118.graphql.String }),
+    notes: import_core118.graphql.arg({ type: import_core118.graphql.String }),
+    idempotencyKey: import_core118.graphql.arg({ type: import_core118.graphql.nonNull(import_core118.graphql.String) })
   },
   resolve(_source, args, context) {
     return joinWaitlistTransaction(context, args);
   }
 });
-var transitionWaitlistEntry = import_core115.graphql.field({
+var transitionWaitlistEntry = import_core118.graphql.field({
   type: resultType6,
   args: {
-    waitlistEntryId: import_core115.graphql.arg({ type: import_core115.graphql.nonNull(import_core115.graphql.ID) }),
-    action: import_core115.graphql.arg({ type: import_core115.graphql.nonNull(import_core115.graphql.String) }),
-    appointmentId: import_core115.graphql.arg({ type: import_core115.graphql.ID }),
-    reason: import_core115.graphql.arg({ type: import_core115.graphql.String })
+    waitlistEntryId: import_core118.graphql.arg({ type: import_core118.graphql.nonNull(import_core118.graphql.ID) }),
+    action: import_core118.graphql.arg({ type: import_core118.graphql.nonNull(import_core118.graphql.String) }),
+    appointmentId: import_core118.graphql.arg({ type: import_core118.graphql.ID }),
+    reason: import_core118.graphql.arg({ type: import_core118.graphql.String })
   },
   resolve(_source, args, context) {
     return transitionWaitlistEntryTransaction(context, args);
@@ -11521,7 +12885,7 @@ var transitionWaitlistEntry = import_core115.graphql.field({
 });
 
 // features/keystone/mutations/scheduleWorkflows.ts
-var import_core116 = require("@keystone-6/core");
+var import_core119 = require("@keystone-6/core");
 var denied4 = { success: false, scheduleId: null, revision: null };
 function dateKey(value, label = "Schedule date") {
   if (!value) return null;
@@ -11568,6 +12932,8 @@ function normalize(input) {
     breakStart,
     breakEnd,
     isAvailable: type === "time_off" ? false : input.isAvailable !== false,
+    // Online booking only sees hours that are explicitly public; omitted keeps the stored value.
+    ...input.isPublic === void 0 || input.isPublic === null ? {} : { isPublic: type !== "time_off" && input.isPublic === true },
     reason,
     effectiveFrom: type === "recurring" ? timestampForDate(effectiveFrom) : null,
     effectiveTo: type === "recurring" ? timestampForDate(effectiveTo) : null,
@@ -11678,46 +13044,47 @@ async function setProviderScheduleAvailabilityTransaction(context, input) {
     return { ...denied4, error: error instanceof Error ? error.message : "Schedule workflow failed" };
   }
 }
-var resultType7 = import_core116.graphql.object()({
+var resultType7 = import_core119.graphql.object()({
   name: "ProviderScheduleWorkflowResult",
   fields: {
-    success: import_core116.graphql.field({ type: import_core116.graphql.nonNull(import_core116.graphql.Boolean) }),
-    scheduleId: import_core116.graphql.field({ type: import_core116.graphql.ID }),
-    revision: import_core116.graphql.field({ type: import_core116.graphql.Int }),
-    error: import_core116.graphql.field({ type: import_core116.graphql.String })
+    success: import_core119.graphql.field({ type: import_core119.graphql.nonNull(import_core119.graphql.Boolean) }),
+    scheduleId: import_core119.graphql.field({ type: import_core119.graphql.ID }),
+    revision: import_core119.graphql.field({ type: import_core119.graphql.Int }),
+    error: import_core119.graphql.field({ type: import_core119.graphql.String })
   }
 });
-var upsertProviderSchedule = import_core116.graphql.field({
+var upsertProviderSchedule = import_core119.graphql.field({
   type: resultType7,
   args: {
-    scheduleId: import_core116.graphql.arg({ type: import_core116.graphql.ID }),
-    providerId: import_core116.graphql.arg({ type: import_core116.graphql.nonNull(import_core116.graphql.ID) }),
-    locationId: import_core116.graphql.arg({ type: import_core116.graphql.nonNull(import_core116.graphql.ID) }),
-    type: import_core116.graphql.arg({ type: import_core116.graphql.nonNull(import_core116.graphql.String) }),
-    dayOfWeek: import_core116.graphql.arg({ type: import_core116.graphql.Int }),
-    localDate: import_core116.graphql.arg({ type: import_core116.graphql.String }),
-    startTime: import_core116.graphql.arg({ type: import_core116.graphql.nonNull(import_core116.graphql.String) }),
-    endTime: import_core116.graphql.arg({ type: import_core116.graphql.nonNull(import_core116.graphql.String) }),
-    breakStart: import_core116.graphql.arg({ type: import_core116.graphql.String }),
-    breakEnd: import_core116.graphql.arg({ type: import_core116.graphql.String }),
-    isAvailable: import_core116.graphql.arg({ type: import_core116.graphql.Boolean }),
-    reason: import_core116.graphql.arg({ type: import_core116.graphql.String }),
-    effectiveFrom: import_core116.graphql.arg({ type: import_core116.graphql.String }),
-    effectiveTo: import_core116.graphql.arg({ type: import_core116.graphql.String }),
-    idempotencyKey: import_core116.graphql.arg({ type: import_core116.graphql.String }),
-    expectedRevision: import_core116.graphql.arg({ type: import_core116.graphql.Int })
+    scheduleId: import_core119.graphql.arg({ type: import_core119.graphql.ID }),
+    providerId: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.ID) }),
+    locationId: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.ID) }),
+    type: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }),
+    dayOfWeek: import_core119.graphql.arg({ type: import_core119.graphql.Int }),
+    localDate: import_core119.graphql.arg({ type: import_core119.graphql.String }),
+    startTime: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }),
+    endTime: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }),
+    breakStart: import_core119.graphql.arg({ type: import_core119.graphql.String }),
+    breakEnd: import_core119.graphql.arg({ type: import_core119.graphql.String }),
+    isAvailable: import_core119.graphql.arg({ type: import_core119.graphql.Boolean }),
+    isPublic: import_core119.graphql.arg({ type: import_core119.graphql.Boolean }),
+    reason: import_core119.graphql.arg({ type: import_core119.graphql.String }),
+    effectiveFrom: import_core119.graphql.arg({ type: import_core119.graphql.String }),
+    effectiveTo: import_core119.graphql.arg({ type: import_core119.graphql.String }),
+    idempotencyKey: import_core119.graphql.arg({ type: import_core119.graphql.String }),
+    expectedRevision: import_core119.graphql.arg({ type: import_core119.graphql.Int })
   },
   resolve(_source, args, context) {
     return upsertProviderScheduleTransaction(context, args);
   }
 });
-var setProviderScheduleAvailability = import_core116.graphql.field({
+var setProviderScheduleAvailability = import_core119.graphql.field({
   type: resultType7,
   args: {
-    scheduleId: import_core116.graphql.arg({ type: import_core116.graphql.nonNull(import_core116.graphql.ID) }),
-    isAvailable: import_core116.graphql.arg({ type: import_core116.graphql.nonNull(import_core116.graphql.Boolean) }),
-    reason: import_core116.graphql.arg({ type: import_core116.graphql.String }),
-    expectedRevision: import_core116.graphql.arg({ type: import_core116.graphql.nonNull(import_core116.graphql.Int) })
+    scheduleId: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.ID) }),
+    isAvailable: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.Boolean) }),
+    reason: import_core119.graphql.arg({ type: import_core119.graphql.String }),
+    expectedRevision: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.Int) })
   },
   resolve(_source, args, context) {
     return setProviderScheduleAvailabilityTransaction(context, args);
@@ -11725,7 +13092,7 @@ var setProviderScheduleAvailability = import_core116.graphql.field({
 });
 
 // features/keystone/mutations/commissionWorkflows.ts
-var import_core117 = require("@keystone-6/core");
+var import_core120 = require("@keystone-6/core");
 var denied5 = { success: false, payoutCount: 0, totalAmount: 0 };
 async function payoutCommissionsTransaction(context, commissionIds) {
   try {
@@ -11733,16 +13100,16 @@ async function payoutCommissionsTransaction(context, commissionIds) {
   } catch (error) {
     return { ...denied5, error: error instanceof Error ? error.message : "Authorized finance access is required" };
   }
-  const ids = [...new Set(commissionIds.map((id) => id.trim()).filter(Boolean))];
+  const ids = [...new Set(commissionIds.map((id2) => id2.trim()).filter(Boolean))];
   if (ids.length === 0 || ids.length > 200) {
     return { ...denied5, error: "Choose between 1 and 200 commissions" };
   }
   try {
-    await Promise.all(ids.map((id) => assertPracticeRecord(context, "Commission", id)));
+    await Promise.all(ids.map((id2) => assertPracticeRecord(context, "Commission", id2)));
     return await serializableWorkflow(
       context,
       "medspa-commission-payout",
-      ids.map((id) => `commission:${id}`),
+      ids.map((id2) => `commission:${id2}`),
       async (transactionContext) => {
         const sudo = transactionContext.sudo();
         const commissions = await sudo.query.Commission.findMany({
@@ -11776,19 +13143,19 @@ async function payoutCommissionsTransaction(context, commissionIds) {
     return { ...denied5, error: error instanceof Error ? error.message : "Commission payout failed" };
   }
 }
-var resultType8 = import_core117.graphql.object()({
+var resultType8 = import_core120.graphql.object()({
   name: "CommissionPayoutResult",
   fields: {
-    success: import_core117.graphql.field({ type: import_core117.graphql.nonNull(import_core117.graphql.Boolean) }),
-    payoutCount: import_core117.graphql.field({ type: import_core117.graphql.nonNull(import_core117.graphql.Int) }),
-    totalAmount: import_core117.graphql.field({ type: import_core117.graphql.nonNull(import_core117.graphql.Int) }),
-    error: import_core117.graphql.field({ type: import_core117.graphql.String })
+    success: import_core120.graphql.field({ type: import_core120.graphql.nonNull(import_core120.graphql.Boolean) }),
+    payoutCount: import_core120.graphql.field({ type: import_core120.graphql.nonNull(import_core120.graphql.Int) }),
+    totalAmount: import_core120.graphql.field({ type: import_core120.graphql.nonNull(import_core120.graphql.Int) }),
+    error: import_core120.graphql.field({ type: import_core120.graphql.String })
   }
 });
-var payoutCommissions = import_core117.graphql.field({
+var payoutCommissions = import_core120.graphql.field({
   type: resultType8,
   args: {
-    commissionIds: import_core117.graphql.arg({ type: import_core117.graphql.nonNull(import_core117.graphql.list(import_core117.graphql.nonNull(import_core117.graphql.ID))) })
+    commissionIds: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.list(import_core120.graphql.nonNull(import_core120.graphql.ID))) })
   },
   resolve(_source, args, context) {
     return payoutCommissionsTransaction(context, args.commissionIds);
@@ -11796,7 +13163,7 @@ var payoutCommissions = import_core117.graphql.field({
 });
 
 // features/keystone/mutations/resourceWorkflows.ts
-var import_core118 = require("@keystone-6/core");
+var import_core121 = require("@keystone-6/core");
 var denied6 = { success: false, resourceId: null, revision: null };
 async function setResourceAvailabilityTransaction(context, input) {
   try {
@@ -11842,21 +13209,21 @@ async function setResourceAvailabilityTransaction(context, input) {
     return { ...denied6, error: error instanceof Error ? error.message : "Resource update failed" };
   }
 }
-var resultType9 = import_core118.graphql.object()({
+var resultType9 = import_core121.graphql.object()({
   name: "ResourceWorkflowResult",
   fields: {
-    success: import_core118.graphql.field({ type: import_core118.graphql.nonNull(import_core118.graphql.Boolean) }),
-    resourceId: import_core118.graphql.field({ type: import_core118.graphql.ID }),
-    revision: import_core118.graphql.field({ type: import_core118.graphql.Int }),
-    error: import_core118.graphql.field({ type: import_core118.graphql.String })
+    success: import_core121.graphql.field({ type: import_core121.graphql.nonNull(import_core121.graphql.Boolean) }),
+    resourceId: import_core121.graphql.field({ type: import_core121.graphql.ID }),
+    revision: import_core121.graphql.field({ type: import_core121.graphql.Int }),
+    error: import_core121.graphql.field({ type: import_core121.graphql.String })
   }
 });
-var setResourceAvailability = import_core118.graphql.field({
+var setResourceAvailability = import_core121.graphql.field({
   type: resultType9,
   args: {
-    resourceId: import_core118.graphql.arg({ type: import_core118.graphql.nonNull(import_core118.graphql.ID) }),
-    isActive: import_core118.graphql.arg({ type: import_core118.graphql.nonNull(import_core118.graphql.Boolean) }),
-    expectedRevision: import_core118.graphql.arg({ type: import_core118.graphql.nonNull(import_core118.graphql.Int) })
+    resourceId: import_core121.graphql.arg({ type: import_core121.graphql.nonNull(import_core121.graphql.ID) }),
+    isActive: import_core121.graphql.arg({ type: import_core121.graphql.nonNull(import_core121.graphql.Boolean) }),
+    expectedRevision: import_core121.graphql.arg({ type: import_core121.graphql.nonNull(import_core121.graphql.Int) })
   },
   resolve(_source, args, context) {
     return setResourceAvailabilityTransaction(context, args);
@@ -11864,14 +13231,14 @@ var setResourceAvailability = import_core118.graphql.field({
 });
 
 // features/keystone/mutations/authorityPackWorkflows.ts
-var import_core119 = require("@keystone-6/core");
+var import_core122 = require("@keystone-6/core");
 var denied7 = { success: false, recordId: null, evidenceHash: null };
 function authority(context) {
   const actor = requireActorPractice(context, permissions.canManageClinical, "Clinical authority-pack access is required");
   if (!permissions.canManagePractice({ session: context.session })) throw new Error("Practice-owner approval is required for authority packs");
   return actor;
 }
-function failure(error) {
+function failure2(error) {
   return { ...denied7, error: error instanceof Error ? error.message : "Authority-pack workflow failed" };
 }
 async function registerProviderCredentialTransaction(context, args) {
@@ -11879,7 +13246,7 @@ async function registerProviderCredentialTransaction(context, args) {
   try {
     actor = authority(context);
   } catch (error) {
-    return failure(error);
+    return failure2(error);
   }
   const from = new Date(args.effectiveFrom);
   const expires = new Date(args.expiresAt);
@@ -11916,7 +13283,7 @@ async function registerProviderCredentialTransaction(context, args) {
       return { success: true, recordId: record.id, evidenceHash: hash, error: null };
     });
   } catch (error) {
-    return failure(error);
+    return failure2(error);
   }
 }
 async function configureProviderAuthorizationTransaction(context, args) {
@@ -11924,7 +13291,7 @@ async function configureProviderAuthorizationTransaction(context, args) {
   try {
     actor = authority(context);
   } catch (error) {
-    return failure(error);
+    return failure2(error);
   }
   const from = new Date(args.effectiveFrom);
   const to = args.effectiveTo ? new Date(args.effectiveTo) : null;
@@ -11959,7 +13326,7 @@ async function configureProviderAuthorizationTransaction(context, args) {
       return { success: true, recordId: record.id, evidenceHash: record.authorityEvidenceHash, error: null };
     });
   } catch (error) {
-    return failure(error);
+    return failure2(error);
   }
 }
 async function publishConsentTemplateTransaction(context, args) {
@@ -11967,7 +13334,7 @@ async function publishConsentTemplateTransaction(context, args) {
   try {
     actor = authority(context);
   } catch (error) {
-    return failure(error);
+    return failure2(error);
   }
   const from = new Date(args.effectiveFrom);
   const until = args.effectiveUntil ? new Date(args.effectiveUntil) : null;
@@ -11985,7 +13352,7 @@ async function publishConsentTemplateTransaction(context, args) {
       return { success: true, recordId: record.id, evidenceHash: record.contentHash, error: null };
     });
   } catch (error) {
-    return failure(error);
+    return failure2(error);
   }
 }
 async function transitionProviderAuthorityTransaction(context, args) {
@@ -11995,7 +13362,7 @@ async function transitionProviderAuthorityTransaction(context, args) {
     actor = authority(context);
     await assertPracticeRecord(context, args.targetType === "provider" ? "Provider" : args.targetType === "credential" ? "ProviderCredential" : "ProviderAuthorization", args.targetId);
   } catch (error) {
-    return failure(error);
+    return failure2(error);
   }
   if (!validIdempotencyKey(args.idempotencyKey) || !args.reason.trim() || args.reason.length > 1e3) return { ...denied7, error: "Authority transition evidence is invalid" };
   try {
@@ -12043,20 +13410,20 @@ async function transitionProviderAuthorityTransaction(context, args) {
       return { success: true, recordId: args.targetId, evidenceHash: hash, error: null };
     });
   } catch (error) {
-    return failure(error);
+    return failure2(error);
   }
 }
-var resultType10 = import_core119.graphql.object()({ name: "AuthorityPackResult", fields: { success: import_core119.graphql.field({ type: import_core119.graphql.nonNull(import_core119.graphql.Boolean) }), recordId: import_core119.graphql.field({ type: import_core119.graphql.ID }), evidenceHash: import_core119.graphql.field({ type: import_core119.graphql.String }), error: import_core119.graphql.field({ type: import_core119.graphql.String }) } });
-var wrap = (fn, args) => import_core119.graphql.field({ type: resultType10, args, resolve(_s, values, context) {
+var resultType10 = import_core122.graphql.object()({ name: "AuthorityPackResult", fields: { success: import_core122.graphql.field({ type: import_core122.graphql.nonNull(import_core122.graphql.Boolean) }), recordId: import_core122.graphql.field({ type: import_core122.graphql.ID }), evidenceHash: import_core122.graphql.field({ type: import_core122.graphql.String }), error: import_core122.graphql.field({ type: import_core122.graphql.String }) } });
+var wrap = (fn, args) => import_core122.graphql.field({ type: resultType10, args, resolve(_s, values, context) {
   return fn(context, values);
 } });
-var registerProviderCredential = wrap(registerProviderCredentialTransaction, { providerId: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.ID) }), locationId: import_core119.graphql.arg({ type: import_core119.graphql.ID }), licenseType: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }), licenseNumber: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }), jurisdiction: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }), effectiveFrom: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }), expiresAt: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }), verificationSource: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }), evidenceReference: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }), scopeEvidence: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.JSON) }), supervisionRequired: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.Boolean) }), supervisorId: import_core119.graphql.arg({ type: import_core119.graphql.ID }), protocolVersion: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }), idempotencyKey: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }) });
-var configureProviderAuthorization = wrap(configureProviderAuthorizationTransaction, { providerId: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.ID) }), credentialId: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.ID) }), locationId: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.ID) }), serviceId: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.ID) }), requiredSupervisorId: import_core119.graphql.arg({ type: import_core119.graphql.ID }), supervisionRequired: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.Boolean) }), supervisionMode: import_core119.graphql.arg({ type: import_core119.graphql.String }), effectiveFrom: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }), effectiveTo: import_core119.graphql.arg({ type: import_core119.graphql.String }), policyVersion: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }), evidenceLabel: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }), evidenceReference: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }), authorityEvidence: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.JSON) }), idempotencyKey: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }) });
-var transitionProviderAuthority = wrap(transitionProviderAuthorityTransaction, { targetType: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }), targetId: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.ID) }), action: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }), reason: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }), idempotencyKey: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }) });
-var publishConsentTemplate = wrap(publishConsentTemplateTransaction, { serviceId: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.ID) }), jurisdiction: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }), language: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }), version: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }), content: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.JSON) }), effectiveFrom: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }), effectiveUntil: import_core119.graphql.arg({ type: import_core119.graphql.String }), supersedesId: import_core119.graphql.arg({ type: import_core119.graphql.ID }), idempotencyKey: import_core119.graphql.arg({ type: import_core119.graphql.nonNull(import_core119.graphql.String) }) });
+var registerProviderCredential = wrap(registerProviderCredentialTransaction, { providerId: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.ID) }), locationId: import_core122.graphql.arg({ type: import_core122.graphql.ID }), licenseType: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), licenseNumber: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), jurisdiction: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), effectiveFrom: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), expiresAt: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), verificationSource: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), evidenceReference: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), scopeEvidence: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.JSON) }), supervisionRequired: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.Boolean) }), supervisorId: import_core122.graphql.arg({ type: import_core122.graphql.ID }), protocolVersion: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), idempotencyKey: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }) });
+var configureProviderAuthorization = wrap(configureProviderAuthorizationTransaction, { providerId: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.ID) }), credentialId: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.ID) }), locationId: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.ID) }), serviceId: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.ID) }), requiredSupervisorId: import_core122.graphql.arg({ type: import_core122.graphql.ID }), supervisionRequired: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.Boolean) }), supervisionMode: import_core122.graphql.arg({ type: import_core122.graphql.String }), effectiveFrom: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), effectiveTo: import_core122.graphql.arg({ type: import_core122.graphql.String }), policyVersion: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), evidenceLabel: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), evidenceReference: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), authorityEvidence: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.JSON) }), idempotencyKey: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }) });
+var transitionProviderAuthority = wrap(transitionProviderAuthorityTransaction, { targetType: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), targetId: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.ID) }), action: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), reason: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), idempotencyKey: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }) });
+var publishConsentTemplate = wrap(publishConsentTemplateTransaction, { serviceId: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.ID) }), jurisdiction: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), language: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), version: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), content: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.JSON) }), effectiveFrom: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), effectiveUntil: import_core122.graphql.arg({ type: import_core122.graphql.String }), supersedesId: import_core122.graphql.arg({ type: import_core122.graphql.ID }), idempotencyKey: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }) });
 
 // features/keystone/mutations/clinicalWorkflows.ts
-var import_core120 = require("@keystone-6/core");
+var import_core123 = require("@keystone-6/core");
 var denied8 = { success: false, recordId: null, evidenceHash: null };
 var now = () => (/* @__PURE__ */ new Date()).toISOString();
 function fail(error, fallback) {
@@ -12138,6 +13505,8 @@ async function recordContraindicationFindingTransaction(context, args) {
   try {
     await Promise.all([assertPracticeRecord(context, "Consultation", args.consultationId), assertPracticeRecord(context, "Client", args.clientId), assertPracticeRecord(context, "Service", args.serviceId)]);
     return await serializableWorkflow(context, "medspa-contraindication", [`consultation:${args.consultationId}`, `idempotency:${args.idempotencyKey}`], async (tx) => {
+      const consultation = await assertPracticeRecord(tx, "Consultation", args.consultationId, "id practice { id } client { id } service { id }");
+      if (consultation.client?.id !== args.clientId || consultation.service?.id !== args.serviceId) throw new Error("Contraindication finding must match the consultation patient and service");
       const sudo = tx.sudo();
       const existing = (await sudo.query.ContraindicationFinding.findMany({ where: { practice: { id: { equals: actor.practiceId } }, idempotencyKey: { equals: args.idempotencyKey } }, take: 1, query: "id sourceEvidenceHash" }))[0];
       if (existing) return { success: true, recordId: existing.id, evidenceHash: existing.sourceEvidenceHash, error: null };
@@ -12245,7 +13614,8 @@ async function createClinicalOrderTransaction(context, args) {
       capturedAt: signedAt.toISOString()
     };
     const scopedOrderKey = `${actor.practiceId}:clinical-order:${args.idempotencyKey}`;
-    const orderRequestHash = evidenceHash({ ...args, actorId: actor.actorId, serviceRequirements });
+    const { capturedAt: _capturedAt, ...stableRequirements } = serviceRequirements;
+    const orderRequestHash = evidenceHash({ ...args, actorId: actor.actorId, serviceRequirements: stableRequirements });
     return await serializableWorkflow(context, "medspa-clinical-order", [`client:${args.clientId}`, `service:${args.serviceId}`, `idempotency:${scopedOrderKey}`], async (tx) => {
       const sudo = tx.sudo();
       const existing = (await sudo.query.ClinicalOrder.findMany({ where: { practice: { id: { equals: actor.practiceId } }, idempotencyKey: { equals: scopedOrderKey } }, take: 1, query: "id evidenceHash instructionSnapshot" }))[0];
@@ -12332,6 +13702,8 @@ async function signConsentTransaction(context, args) {
     const evidence = { templateHash: template.contentHash, clientId: client.id, appointmentId: appointment.id, serviceId: args.serviceId, signerName: args.signerName.trim(), signerRole: args.signerRole, representativeAuthority: args.representativeAuthority || null, discussionEvidence: bounded(args.discussionEvidence), signatureEvidenceHash: evidenceHash(args.signatureEvidence), presentedById: args.presentedById, signedAt: signedAt.toISOString() };
     const hash = evidenceHash(evidence);
     return await serializableWorkflow(context, "medspa-consent", [`client:${client.id}`, `service:${args.serviceId}`, `idempotency:${args.idempotencyKey}`], async (tx) => {
+      const acceptedAppointment = await assertPracticeRecord(tx, "Appointment", args.appointmentId, "id practice { id } client { id } lineItems { service { id } }");
+      if (acceptedAppointment.client?.id !== client.id || !acceptedAppointment.lineItems?.some((line) => line.service?.id === args.serviceId)) throw new Error("Consent service must belong to the accepted appointment");
       const sudo = tx.sudo();
       const existing = (await sudo.query.ConsentRecord.findMany({ where: { practice: { id: { equals: client.practice.id } }, idempotencyKey: { equals: args.idempotencyKey } }, take: 1, query: "id evidenceHash" }))[0];
       if (existing) return { success: true, recordId: existing.id, evidenceHash: existing.evidenceHash, error: null };
@@ -12546,8 +13918,8 @@ async function startTreatmentSessionTransaction(context, args) {
       }
       const legacy = await sudo.query.ClinicalAuthorityEvent.findMany({ where: { practice: { id: { equals: actor.practiceId } }, idempotencyKey: { equals: `${args.idempotencyKey}:authority` } }, take: 1, query: "id" });
       if (legacy.length) throw new Error("Legacy start evidence has no original-command receipt; retain it for read-only review");
-      const resourceIds = [header.room?.id, header.device?.id].filter((id) => typeof id === "string" && Boolean(id));
-      const resources = await Promise.all(resourceIds.map((id) => assertPracticeRecord(tx, "Resource", id, "id type practice { id } location { id }")));
+      const resourceIds = [header.room?.id, header.device?.id].filter((id2) => typeof id2 === "string" && Boolean(id2));
+      const resources = await Promise.all(resourceIds.map((id2) => assertPracticeRecord(tx, "Resource", id2, "id type practice { id } location { id }")));
       if (!header.room?.id || resources.some((resource) => resource.location?.id !== header.location.id)) throw new Error("Current treatment resource location scope is unavailable");
       await lockBookingCapacity(tx, header.provider.id, [{ requiredResources: resources }], header.supervisor?.id ? [header.supervisor.id] : []);
       const session = await sudo.query.TreatmentSession.findOne({ where: { id: args.treatmentSessionId }, query: `
@@ -12589,22 +13961,22 @@ async function startTreatmentSessionTransaction(context, args) {
     return fail(error, "Treatment start failed");
   }
 }
-var resultType11 = import_core120.graphql.object()({ name: "ClinicalWorkflowResult", fields: { success: import_core120.graphql.field({ type: import_core120.graphql.nonNull(import_core120.graphql.Boolean) }), recordId: import_core120.graphql.field({ type: import_core120.graphql.ID }), evidenceHash: import_core120.graphql.field({ type: import_core120.graphql.String }), error: import_core120.graphql.field({ type: import_core120.graphql.String }) } });
-var field = (resolve2, args) => import_core120.graphql.field({ type: resultType11, args, resolve(_source, values, context) {
+var resultType11 = import_core123.graphql.object()({ name: "ClinicalWorkflowResult", fields: { success: import_core123.graphql.field({ type: import_core123.graphql.nonNull(import_core123.graphql.Boolean) }), recordId: import_core123.graphql.field({ type: import_core123.graphql.ID }), evidenceHash: import_core123.graphql.field({ type: import_core123.graphql.String }), error: import_core123.graphql.field({ type: import_core123.graphql.String }) } });
+var field = (resolve2, args) => import_core123.graphql.field({ type: resultType11, args, resolve(_source, values, context) {
   return resolve2(context, values);
 } });
-var recordConsultation = field(recordConsultationTransaction, { clientId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), appointmentId: import_core120.graphql.arg({ type: import_core120.graphql.ID }), providerId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), locationId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), serviceId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), status: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), history: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.JSON) }), examination: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.JSON) }), goals: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.JSON) }), alternatives: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.JSON) }), contraindicationReview: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.JSON) }), summary: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), indication: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), candidacyDecision: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), protocolVersion: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), supersedesId: import_core120.graphql.arg({ type: import_core120.graphql.ID }), idempotencyKey: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }) });
-var recordContraindicationFinding = field(recordContraindicationFindingTransaction, { consultationId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), clientId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), serviceId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), ruleCode: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), ruleVersion: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), severity: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), sourceEvidence: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.JSON) }), idempotencyKey: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }) });
-var decideContraindication = field(decideContraindicationTransaction, { findingId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), providerId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), disposition: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), rationale: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), expiresAt: import_core120.graphql.arg({ type: import_core120.graphql.String }), idempotencyKey: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }) });
-var issueClinicalOrder = field(createClinicalOrderTransaction, { consultationId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), planId: import_core120.graphql.arg({ type: import_core120.graphql.ID }), clientId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), locationId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), serviceId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), orderedById: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), authorizedPerformerId: import_core120.graphql.arg({ type: import_core120.graphql.ID }), supervisorId: import_core120.graphql.arg({ type: import_core120.graphql.ID }), indication: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), protocolVersion: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), instruction: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.JSON) }), anatomicSite: import_core120.graphql.arg({ type: import_core120.graphql.String }), doseRange: import_core120.graphql.arg({ type: import_core120.graphql.String }), performerConstraints: import_core120.graphql.arg({ type: import_core120.graphql.String }), validUntil: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), supersedesId: import_core120.graphql.arg({ type: import_core120.graphql.ID }), idempotencyKey: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }) });
-var signTreatmentConsent = field(signConsentTransaction, { clientId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), appointmentId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), serviceId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), templateVersionId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), presentedById: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), signerName: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), signerRole: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), representativeAuthority: import_core120.graphql.arg({ type: import_core120.graphql.String }), interpreter: import_core120.graphql.arg({ type: import_core120.graphql.String }), witness: import_core120.graphql.arg({ type: import_core120.graphql.String }), discussionEvidence: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.JSON) }), signatureEvidence: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), effectiveUntil: import_core120.graphql.arg({ type: import_core120.graphql.String }), supersedesId: import_core120.graphql.arg({ type: import_core120.graphql.ID }), idempotencyKey: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }) });
-var approveTreatmentPlan = field(approveTreatmentPlanTransaction, { expectedConsultationHash: import_core120.graphql.arg({ type: import_core120.graphql.String }), clientId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), consultationId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), providerId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), title: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), goals: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), startsAt: import_core120.graphql.arg({ type: import_core120.graphql.String }), endsAt: import_core120.graphql.arg({ type: import_core120.graphql.String }), items: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.JSON) }), supersedesId: import_core120.graphql.arg({ type: import_core120.graphql.ID }), idempotencyKey: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }) });
-var prepareTreatmentSession = field(prepareTreatmentSessionTransaction, { planId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), appointmentId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), orderId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), consentId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), providerId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), supervisorId: import_core120.graphql.arg({ type: import_core120.graphql.ID }), serviceId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), roomId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), deviceId: import_core120.graphql.arg({ type: import_core120.graphql.ID }), durationMinutes: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.Int) }), idempotencyKey: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }) });
-var startTreatmentSession = field(startTreatmentSessionTransaction, { treatmentSessionId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), protocolVersion: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), timeOutEvidence: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.JSON) }), idempotencyKey: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }) });
-var recordTreatmentAdministration = field(recordTreatmentAdministrationTransaction, { treatmentSessionId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), orderId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), consentId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), performerId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), supervisorId: import_core120.graphql.arg({ type: import_core120.graphql.ID }), roomId: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.ID) }), deviceId: import_core120.graphql.arg({ type: import_core120.graphql.ID }), protocolVersion: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), timeOutEvidence: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.JSON) }), anatomicMap: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.JSON) }), deviceSettings: import_core120.graphql.arg({ type: import_core120.graphql.JSON }), technique: import_core120.graphql.arg({ type: import_core120.graphql.String }), immediateOutcome: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), aftercare: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.JSON) }), startedAt: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), completedAt: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), lots: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.JSON) }), status: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }), idempotencyKey: import_core120.graphql.arg({ type: import_core120.graphql.nonNull(import_core120.graphql.String) }) });
+var recordConsultation = field(recordConsultationTransaction, { clientId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), appointmentId: import_core123.graphql.arg({ type: import_core123.graphql.ID }), providerId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), locationId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), serviceId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), status: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), history: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.JSON) }), examination: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.JSON) }), goals: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.JSON) }), alternatives: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.JSON) }), contraindicationReview: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.JSON) }), summary: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), indication: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), candidacyDecision: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), protocolVersion: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), supersedesId: import_core123.graphql.arg({ type: import_core123.graphql.ID }), idempotencyKey: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }) });
+var recordContraindicationFinding = field(recordContraindicationFindingTransaction, { consultationId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), clientId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), serviceId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), ruleCode: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), ruleVersion: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), severity: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), sourceEvidence: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.JSON) }), idempotencyKey: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }) });
+var decideContraindication = field(decideContraindicationTransaction, { findingId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), providerId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), disposition: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), rationale: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), expiresAt: import_core123.graphql.arg({ type: import_core123.graphql.String }), idempotencyKey: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }) });
+var issueClinicalOrder = field(createClinicalOrderTransaction, { consultationId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), planId: import_core123.graphql.arg({ type: import_core123.graphql.ID }), clientId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), locationId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), serviceId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), orderedById: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), authorizedPerformerId: import_core123.graphql.arg({ type: import_core123.graphql.ID }), supervisorId: import_core123.graphql.arg({ type: import_core123.graphql.ID }), indication: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), protocolVersion: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), instruction: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.JSON) }), anatomicSite: import_core123.graphql.arg({ type: import_core123.graphql.String }), doseRange: import_core123.graphql.arg({ type: import_core123.graphql.String }), performerConstraints: import_core123.graphql.arg({ type: import_core123.graphql.String }), validUntil: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), supersedesId: import_core123.graphql.arg({ type: import_core123.graphql.ID }), idempotencyKey: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }) });
+var signTreatmentConsent = field(signConsentTransaction, { clientId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), appointmentId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), serviceId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), templateVersionId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), presentedById: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), signerName: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), signerRole: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), representativeAuthority: import_core123.graphql.arg({ type: import_core123.graphql.String }), interpreter: import_core123.graphql.arg({ type: import_core123.graphql.String }), witness: import_core123.graphql.arg({ type: import_core123.graphql.String }), discussionEvidence: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.JSON) }), signatureEvidence: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), effectiveUntil: import_core123.graphql.arg({ type: import_core123.graphql.String }), supersedesId: import_core123.graphql.arg({ type: import_core123.graphql.ID }), idempotencyKey: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }) });
+var approveTreatmentPlan = field(approveTreatmentPlanTransaction, { expectedConsultationHash: import_core123.graphql.arg({ type: import_core123.graphql.String }), clientId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), consultationId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), providerId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), title: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), goals: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), startsAt: import_core123.graphql.arg({ type: import_core123.graphql.String }), endsAt: import_core123.graphql.arg({ type: import_core123.graphql.String }), items: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.JSON) }), supersedesId: import_core123.graphql.arg({ type: import_core123.graphql.ID }), idempotencyKey: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }) });
+var prepareTreatmentSession = field(prepareTreatmentSessionTransaction, { planId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), appointmentId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), orderId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), consentId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), providerId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), supervisorId: import_core123.graphql.arg({ type: import_core123.graphql.ID }), serviceId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), roomId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), deviceId: import_core123.graphql.arg({ type: import_core123.graphql.ID }), durationMinutes: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.Int) }), idempotencyKey: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }) });
+var startTreatmentSession = field(startTreatmentSessionTransaction, { treatmentSessionId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), protocolVersion: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), timeOutEvidence: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.JSON) }), idempotencyKey: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }) });
+var recordTreatmentAdministration = field(recordTreatmentAdministrationTransaction, { treatmentSessionId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), orderId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), consentId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), performerId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), supervisorId: import_core123.graphql.arg({ type: import_core123.graphql.ID }), roomId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), deviceId: import_core123.graphql.arg({ type: import_core123.graphql.ID }), protocolVersion: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), timeOutEvidence: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.JSON) }), anatomicMap: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.JSON) }), deviceSettings: import_core123.graphql.arg({ type: import_core123.graphql.JSON }), technique: import_core123.graphql.arg({ type: import_core123.graphql.String }), immediateOutcome: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), aftercare: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.JSON) }), startedAt: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), completedAt: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), lots: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.JSON) }), status: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), idempotencyKey: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }) });
 
 // features/keystone/mutations/clinicalRecordActions.ts
-var import_core121 = require("@keystone-6/core");
+var import_core124 = require("@keystone-6/core");
 var denied9 = { success: false, recordId: null, evidenceHash: null };
 var fail2 = (error) => ({ ...denied9, error: error instanceof Error ? error.message : "Clinical record action failed" });
 async function transitionClinicalOrderTransaction(context, args) {
@@ -12688,15 +14060,15 @@ async function appendSignedClinicalNoteTransaction(context, args) {
     return fail2(error);
   }
 }
-var resultType12 = import_core121.graphql.object()({ name: "ClinicalRecordActionResult", fields: { success: import_core121.graphql.field({ type: import_core121.graphql.nonNull(import_core121.graphql.Boolean) }), recordId: import_core121.graphql.field({ type: import_core121.graphql.ID }), evidenceHash: import_core121.graphql.field({ type: import_core121.graphql.String }), error: import_core121.graphql.field({ type: import_core121.graphql.String }) } });
-var wrap2 = (fn, args) => import_core121.graphql.field({ type: resultType12, args, resolve: (_s, values, context) => fn(context, values) });
-var transitionClinicalOrder = wrap2(transitionClinicalOrderTransaction, { orderId: import_core121.graphql.arg({ type: import_core121.graphql.nonNull(import_core121.graphql.ID) }), providerId: import_core121.graphql.arg({ type: import_core121.graphql.nonNull(import_core121.graphql.ID) }), action: import_core121.graphql.arg({ type: import_core121.graphql.nonNull(import_core121.graphql.String) }), reason: import_core121.graphql.arg({ type: import_core121.graphql.nonNull(import_core121.graphql.String) }), evidence: import_core121.graphql.arg({ type: import_core121.graphql.nonNull(import_core121.graphql.JSON) }), idempotencyKey: import_core121.graphql.arg({ type: import_core121.graphql.nonNull(import_core121.graphql.String) }) });
-var withdrawTreatmentConsent = wrap2(withdrawTreatmentConsentTransaction, { consentId: import_core121.graphql.arg({ type: import_core121.graphql.nonNull(import_core121.graphql.ID) }), reason: import_core121.graphql.arg({ type: import_core121.graphql.nonNull(import_core121.graphql.String) }), idempotencyKey: import_core121.graphql.arg({ type: import_core121.graphql.nonNull(import_core121.graphql.String) }) });
-var appendSignedClinicalNote = wrap2(appendSignedClinicalNoteTransaction, { clientId: import_core121.graphql.arg({ type: import_core121.graphql.nonNull(import_core121.graphql.ID) }), appointmentId: import_core121.graphql.arg({ type: import_core121.graphql.ID }), providerId: import_core121.graphql.arg({ type: import_core121.graphql.nonNull(import_core121.graphql.ID) }), type: import_core121.graphql.arg({ type: import_core121.graphql.nonNull(import_core121.graphql.String) }), content: import_core121.graphql.arg({ type: import_core121.graphql.nonNull(import_core121.graphql.String) }), supersedesId: import_core121.graphql.arg({ type: import_core121.graphql.ID }), reason: import_core121.graphql.arg({ type: import_core121.graphql.String }), idempotencyKey: import_core121.graphql.arg({ type: import_core121.graphql.nonNull(import_core121.graphql.String) }) });
+var resultType12 = import_core124.graphql.object()({ name: "ClinicalRecordActionResult", fields: { success: import_core124.graphql.field({ type: import_core124.graphql.nonNull(import_core124.graphql.Boolean) }), recordId: import_core124.graphql.field({ type: import_core124.graphql.ID }), evidenceHash: import_core124.graphql.field({ type: import_core124.graphql.String }), error: import_core124.graphql.field({ type: import_core124.graphql.String }) } });
+var wrap2 = (fn, args) => import_core124.graphql.field({ type: resultType12, args, resolve: (_s, values, context) => fn(context, values) });
+var transitionClinicalOrder = wrap2(transitionClinicalOrderTransaction, { orderId: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.ID) }), providerId: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.ID) }), action: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.String) }), reason: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.String) }), evidence: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.JSON) }), idempotencyKey: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.String) }) });
+var withdrawTreatmentConsent = wrap2(withdrawTreatmentConsentTransaction, { consentId: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.ID) }), reason: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.String) }), idempotencyKey: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.String) }) });
+var appendSignedClinicalNote = wrap2(appendSignedClinicalNoteTransaction, { clientId: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.ID) }), appointmentId: import_core124.graphql.arg({ type: import_core124.graphql.ID }), providerId: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.ID) }), type: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.String) }), content: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.String) }), supersedesId: import_core124.graphql.arg({ type: import_core124.graphql.ID }), reason: import_core124.graphql.arg({ type: import_core124.graphql.String }), idempotencyKey: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.String) }) });
 
 // features/keystone/mutations/clinicalAssetWorkflows.ts
-var import_node_crypto5 = require("node:crypto");
-var import_core122 = require("@keystone-6/core");
+var import_node_crypto7 = require("node:crypto");
+var import_core125 = require("@keystone-6/core");
 
 // features/keystone/legalHoldPolicy.ts
 var LEGAL_HOLD_LOCK_NAMESPACE = "medspa-effective-legal-hold";
@@ -12724,10 +14096,10 @@ var denied10 = { success: false, recordId: null, status: null };
 function fail3(error) {
   return { ...denied10, error: error instanceof Error ? error.message : "Clinical asset workflow failed" };
 }
-async function resolveEffectiveHoldsForAsset(sudo, practiceId5, asset, at = /* @__PURE__ */ new Date()) {
-  if (!practiceId5 || !asset?.id || asset.practice?.id !== practiceId5) throw new Error("Asset practice scope is required to resolve legal holds");
+async function resolveEffectiveHoldsForAsset(sudo, practiceId4, asset, at = /* @__PURE__ */ new Date()) {
+  if (!practiceId4 || !asset?.id || asset.practice?.id !== practiceId4) throw new Error("Asset practice scope is required to resolve legal holds");
   const query = (where) => sudo.query.LegalHold.findMany({
-    where: { practice: { id: { equals: practiceId5 } }, ...where },
+    where: { practice: { id: { equals: practiceId4 } }, ...where },
     take: 101,
     query: "id status placedAt releasedAt releaseEvidenceHash releaseReason releaseAuthorityReference releasedBy { id } practice { id } client { id } asset { id } incident { id }"
   });
@@ -12799,7 +14171,7 @@ async function createClinicalAssetIntentTransaction(context, args) {
   try {
     const links = await Promise.all([assertPracticeRecord(context, "Client", args.clientId), args.appointmentId ? assertPracticeRecord(context, "Appointment", args.appointmentId, "id practice { id } client { id }") : null, args.treatmentSessionId ? assertPracticeRecord(context, "TreatmentSession", args.treatmentSessionId, "id practice { id } client { id }") : null, args.incidentId ? assertPracticeRecord(context, "Incident", args.incidentId, "id practice { id } client { id }") : null, args.noteId ? assertPracticeRecord(context, "ClientNote", args.noteId, "id practice { id } client { id }") : null, args.photoConsentId ? assertPracticeRecord(context, "PhotoConsent", args.photoConsentId, "id practice { id } client { id }") : null]);
     if (links.slice(1).some((record) => record && record.client?.id !== args.clientId)) throw new Error("Clinical asset links do not identify the same client");
-    const objectId = (0, import_node_crypto5.randomUUID)();
+    const objectId = (0, import_node_crypto7.randomUUID)();
     const storageKey = `clinical/${actor.practiceId}/${args.clientId}/${objectId}`;
     const encryptionKeyReference = process.env.CLINICAL_ASSET_KMS_KEY_ID || "UNCONFIGURED_FAIL_CLOSED";
     if (encryptionKeyReference === "UNCONFIGURED_FAIL_CLOSED") throw new Error("Private clinical object encryption is not configured");
@@ -12959,20 +14331,20 @@ async function tombstoneClinicalAssetTransaction(context, args) {
     return fail3(error);
   }
 }
-var resultType13 = import_core122.graphql.object()({ name: "ClinicalAssetWorkflowResult", fields: { success: import_core122.graphql.field({ type: import_core122.graphql.nonNull(import_core122.graphql.Boolean) }), recordId: import_core122.graphql.field({ type: import_core122.graphql.ID }), status: import_core122.graphql.field({ type: import_core122.graphql.String }), error: import_core122.graphql.field({ type: import_core122.graphql.String }) } });
-var wrap3 = (fn, args) => import_core122.graphql.field({ type: resultType13, args, resolve(_s, values, context) {
+var resultType13 = import_core125.graphql.object()({ name: "ClinicalAssetWorkflowResult", fields: { success: import_core125.graphql.field({ type: import_core125.graphql.nonNull(import_core125.graphql.Boolean) }), recordId: import_core125.graphql.field({ type: import_core125.graphql.ID }), status: import_core125.graphql.field({ type: import_core125.graphql.String }), error: import_core125.graphql.field({ type: import_core125.graphql.String }) } });
+var wrap3 = (fn, args) => import_core125.graphql.field({ type: resultType13, args, resolve(_s, values, context) {
   return fn(context, values);
 } });
-var grantPhotoConsent = wrap3(grantPhotoConsentTransaction, { clientId: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.ID) }), appointmentId: import_core122.graphql.arg({ type: import_core122.graphql.ID }), purpose: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), mediaScope: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.JSON) }), audienceScope: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.JSON) }), signerName: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), signerRole: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), signatureEvidence: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), effectiveUntil: import_core122.graphql.arg({ type: import_core122.graphql.String }), idempotencyKey: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }) });
-var withdrawPhotoConsent = wrap3(withdrawPhotoConsentTransaction, { consentId: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.ID) }), scope: import_core122.graphql.arg({ type: import_core122.graphql.JSON }), reason: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), idempotencyKey: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }) });
-var createClinicalAssetIntent = wrap3(createClinicalAssetIntentTransaction, { clientId: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.ID) }), appointmentId: import_core122.graphql.arg({ type: import_core122.graphql.ID }), treatmentSessionId: import_core122.graphql.arg({ type: import_core122.graphql.ID }), incidentId: import_core122.graphql.arg({ type: import_core122.graphql.ID }), noteId: import_core122.graphql.arg({ type: import_core122.graphql.ID }), photoConsentId: import_core122.graphql.arg({ type: import_core122.graphql.ID }), category: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), purpose: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), originalFilename: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), contentType: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), byteSize: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.Int) }), retentionClass: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), retainUntil: import_core122.graphql.arg({ type: import_core122.graphql.String }), idempotencyKey: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }) });
-var markClinicalAssetReady = wrap3(markClinicalAssetReadyTransaction, { assetId: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.ID) }), checksum: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), validationEvidence: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.JSON) }), idempotencyKey: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }) });
-var authorizeClinicalAssetAccess = wrap3(authorizeClinicalAssetAccessTransaction, { assetId: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.ID) }), action: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), purpose: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), reason: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), idempotencyKey: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }) });
-var releaseClinicalAsset = wrap3(releaseClinicalAssetTransaction, { assetId: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.ID) }), audience: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), photoConsentId: import_core122.graphql.arg({ type: import_core122.graphql.ID }), reason: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), idempotencyKey: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }) });
-var tombstoneClinicalAsset = wrap3(tombstoneClinicalAssetTransaction, { assetId: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.ID) }), reason: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }), idempotencyKey: import_core122.graphql.arg({ type: import_core122.graphql.nonNull(import_core122.graphql.String) }) });
+var grantPhotoConsent = wrap3(grantPhotoConsentTransaction, { clientId: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.ID) }), appointmentId: import_core125.graphql.arg({ type: import_core125.graphql.ID }), purpose: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }), mediaScope: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.JSON) }), audienceScope: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.JSON) }), signerName: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }), signerRole: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }), signatureEvidence: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }), effectiveUntil: import_core125.graphql.arg({ type: import_core125.graphql.String }), idempotencyKey: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }) });
+var withdrawPhotoConsent = wrap3(withdrawPhotoConsentTransaction, { consentId: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.ID) }), scope: import_core125.graphql.arg({ type: import_core125.graphql.JSON }), reason: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }), idempotencyKey: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }) });
+var createClinicalAssetIntent = wrap3(createClinicalAssetIntentTransaction, { clientId: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.ID) }), appointmentId: import_core125.graphql.arg({ type: import_core125.graphql.ID }), treatmentSessionId: import_core125.graphql.arg({ type: import_core125.graphql.ID }), incidentId: import_core125.graphql.arg({ type: import_core125.graphql.ID }), noteId: import_core125.graphql.arg({ type: import_core125.graphql.ID }), photoConsentId: import_core125.graphql.arg({ type: import_core125.graphql.ID }), category: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }), purpose: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }), originalFilename: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }), contentType: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }), byteSize: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.Int) }), retentionClass: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }), retainUntil: import_core125.graphql.arg({ type: import_core125.graphql.String }), idempotencyKey: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }) });
+var markClinicalAssetReady = wrap3(markClinicalAssetReadyTransaction, { assetId: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.ID) }), checksum: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }), validationEvidence: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.JSON) }), idempotencyKey: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }) });
+var authorizeClinicalAssetAccess = wrap3(authorizeClinicalAssetAccessTransaction, { assetId: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.ID) }), action: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }), purpose: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }), reason: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }), idempotencyKey: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }) });
+var releaseClinicalAsset = wrap3(releaseClinicalAssetTransaction, { assetId: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.ID) }), audience: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }), photoConsentId: import_core125.graphql.arg({ type: import_core125.graphql.ID }), reason: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }), idempotencyKey: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }) });
+var tombstoneClinicalAsset = wrap3(tombstoneClinicalAssetTransaction, { assetId: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.ID) }), reason: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }), idempotencyKey: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }) });
 
 // features/keystone/mutations/followUpWorkflows.ts
-var import_core123 = require("@keystone-6/core");
+var import_core126 = require("@keystone-6/core");
 var denied11 = { success: false, recordId: null, status: null };
 var fail4 = (error) => ({ ...denied11, error: error instanceof Error ? error.message : "Follow-up workflow failed" });
 async function scheduleFollowUpTransaction(context, args) {
@@ -13049,14 +14421,14 @@ async function submitFollowUpResponseTransaction(context, args) {
     return fail4(error);
   }
 }
-var resultType14 = import_core123.graphql.object()({ name: "FollowUpWorkflowResult", fields: { success: import_core123.graphql.field({ type: import_core123.graphql.nonNull(import_core123.graphql.Boolean) }), recordId: import_core123.graphql.field({ type: import_core123.graphql.ID }), status: import_core123.graphql.field({ type: import_core123.graphql.String }), error: import_core123.graphql.field({ type: import_core123.graphql.String }) } });
-var wrap4 = (fn, args) => import_core123.graphql.field({ type: resultType14, args, resolve: (_s, values, context) => fn(context, values) });
-var scheduleFollowUp = wrap4(scheduleFollowUpTransaction, { treatmentSessionId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), assignedToId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), dueAt: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), title: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), instructions: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), idempotencyKey: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }) });
-var submitFollowUpResponse = wrap4(submitFollowUpResponseTransaction, { taskId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), response: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.JSON) }), redFlag: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), idempotencyKey: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }) });
-var appendFollowUpAction = wrap4(appendFollowUpActionTransaction, { taskId: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.ID) }), action: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), reason: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), evidence: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.JSON) }), redFlag: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }), idempotencyKey: import_core123.graphql.arg({ type: import_core123.graphql.nonNull(import_core123.graphql.String) }) });
+var resultType14 = import_core126.graphql.object()({ name: "FollowUpWorkflowResult", fields: { success: import_core126.graphql.field({ type: import_core126.graphql.nonNull(import_core126.graphql.Boolean) }), recordId: import_core126.graphql.field({ type: import_core126.graphql.ID }), status: import_core126.graphql.field({ type: import_core126.graphql.String }), error: import_core126.graphql.field({ type: import_core126.graphql.String }) } });
+var wrap4 = (fn, args) => import_core126.graphql.field({ type: resultType14, args, resolve: (_s, values, context) => fn(context, values) });
+var scheduleFollowUp = wrap4(scheduleFollowUpTransaction, { treatmentSessionId: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.ID) }), assignedToId: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.ID) }), dueAt: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), title: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), instructions: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), idempotencyKey: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }) });
+var submitFollowUpResponse = wrap4(submitFollowUpResponseTransaction, { taskId: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.ID) }), response: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.JSON) }), redFlag: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), idempotencyKey: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }) });
+var appendFollowUpAction = wrap4(appendFollowUpActionTransaction, { taskId: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.ID) }), action: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), reason: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), evidence: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.JSON) }), redFlag: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), idempotencyKey: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }) });
 
 // features/keystone/mutations/intakeWorkflows.ts
-var import_core124 = require("@keystone-6/core");
+var import_core127 = require("@keystone-6/core");
 var denied12 = { success: false, recordId: null, evidenceHash: null };
 var reviewDispositions = ["reviewed", "needs_clarification", "escalated"];
 var isReviewDisposition = (value) => reviewDispositions.some((disposition) => disposition === value);
@@ -13113,15 +14485,15 @@ async function reviewIntakeTransaction(context, args) {
     return fail5(error);
   }
 }
-var resultType15 = import_core124.graphql.object()({ name: "IntakeWorkflowResult", fields: { success: import_core124.graphql.field({ type: import_core124.graphql.nonNull(import_core124.graphql.Boolean) }), recordId: import_core124.graphql.field({ type: import_core124.graphql.ID }), evidenceHash: import_core124.graphql.field({ type: import_core124.graphql.String }), error: import_core124.graphql.field({ type: import_core124.graphql.String }) } });
-var submitIntake = import_core124.graphql.field({ type: resultType15, args: { templateId: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.ID) }), appointmentId: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.ID) }), responses: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.JSON) }), acknowledgement: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.String) }), supersedesId: import_core124.graphql.arg({ type: import_core124.graphql.ID }), idempotencyKey: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.String) }) }, resolve: (_s, args, context) => submitIntakeTransaction(context, args) });
-var reviewIntake = import_core124.graphql.field({ type: resultType15, args: { submissionId: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.ID) }), disposition: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.String) }), rationale: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.String) }), findings: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.JSON) }), idempotencyKey: import_core124.graphql.arg({ type: import_core124.graphql.nonNull(import_core124.graphql.String) }) }, resolve: (_s, args, context) => {
+var resultType15 = import_core127.graphql.object()({ name: "IntakeWorkflowResult", fields: { success: import_core127.graphql.field({ type: import_core127.graphql.nonNull(import_core127.graphql.Boolean) }), recordId: import_core127.graphql.field({ type: import_core127.graphql.ID }), evidenceHash: import_core127.graphql.field({ type: import_core127.graphql.String }), error: import_core127.graphql.field({ type: import_core127.graphql.String }) } });
+var submitIntake = import_core127.graphql.field({ type: resultType15, args: { templateId: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.ID) }), appointmentId: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.ID) }), responses: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.JSON) }), acknowledgement: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.String) }), supersedesId: import_core127.graphql.arg({ type: import_core127.graphql.ID }), idempotencyKey: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.String) }) }, resolve: (_s, args, context) => submitIntakeTransaction(context, args) });
+var reviewIntake = import_core127.graphql.field({ type: resultType15, args: { submissionId: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.ID) }), disposition: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.String) }), rationale: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.String) }), findings: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.JSON) }), idempotencyKey: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.String) }) }, resolve: (_s, args, context) => {
   if (!isReviewDisposition(args.disposition)) return Promise.resolve({ ...denied12, error: "Intake review evidence is invalid" });
   return reviewIntakeTransaction(context, { submissionId: args.submissionId, disposition: args.disposition, rationale: args.rationale, findings: args.findings, idempotencyKey: args.idempotencyKey });
 } });
 
 // features/keystone/mutations/inventoryCustodyWorkflows.ts
-var import_core125 = require("@keystone-6/core");
+var import_core128 = require("@keystone-6/core");
 var denied13 = { success: false, recordId: null, movementCount: 0 };
 var fail6 = (error) => ({ ...denied13, error: error instanceof Error ? error.message : "Inventory custody workflow failed" });
 function parseLines(value) {
@@ -13271,6 +14643,7 @@ async function dispositionInventoryLotTransaction(context, args) {
     const lot = await assertPracticeRecord(context, "InventoryLot", args.lotId, "id practice { id } status remainingQuantity location { id } product { id quantity }");
     if (args.witnessId) await assertPracticeRecord(context, "User", args.witnessId);
     if (["recalled", "destroyed", "returned"].includes(lot.status)) throw new Error("Lot cannot be dispositioned from its current state");
+    if (args.action === "quarantine" && lot.status === "expired") throw new Error("An expired lot cannot be moved to quarantine; destroy or return it");
     return await serializableWorkflow(context, "medspa-lot-disposition", [`lot:${lot.id}`, `idempotency:${args.idempotencyKey}`], async (tx) => {
       const sudo = tx.sudo();
       const removing = ["destroy", "return", "expire"].includes(args.action);
@@ -13356,33 +14729,39 @@ async function returnRetailLotTransaction(context, args) {
     return fail6(error);
   }
 }
-var resultType16 = import_core125.graphql.object()({ name: "InventoryCustodyResult", fields: { success: import_core125.graphql.field({ type: import_core125.graphql.nonNull(import_core125.graphql.Boolean) }), recordId: import_core125.graphql.field({ type: import_core125.graphql.ID }), movementCount: import_core125.graphql.field({ type: import_core125.graphql.nonNull(import_core125.graphql.Int) }), error: import_core125.graphql.field({ type: import_core125.graphql.String }) } });
-var receivePurchaseOrder = import_core125.graphql.field({ type: resultType16, args: { purchaseOrderId: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.ID) }), receiptNumber: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }), receivedAt: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }), lines: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.JSON) }), idempotencyKey: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }) }, resolve(_s, args, context) {
+var resultType16 = import_core128.graphql.object()({ name: "InventoryCustodyResult", fields: { success: import_core128.graphql.field({ type: import_core128.graphql.nonNull(import_core128.graphql.Boolean) }), recordId: import_core128.graphql.field({ type: import_core128.graphql.ID }), movementCount: import_core128.graphql.field({ type: import_core128.graphql.nonNull(import_core128.graphql.Int) }), error: import_core128.graphql.field({ type: import_core128.graphql.String }) } });
+var receivePurchaseOrder = import_core128.graphql.field({ type: resultType16, args: { purchaseOrderId: import_core128.graphql.arg({ type: import_core128.graphql.nonNull(import_core128.graphql.ID) }), receiptNumber: import_core128.graphql.arg({ type: import_core128.graphql.nonNull(import_core128.graphql.String) }), receivedAt: import_core128.graphql.arg({ type: import_core128.graphql.nonNull(import_core128.graphql.String) }), lines: import_core128.graphql.arg({ type: import_core128.graphql.nonNull(import_core128.graphql.JSON) }), idempotencyKey: import_core128.graphql.arg({ type: import_core128.graphql.nonNull(import_core128.graphql.String) }) }, resolve(_s, args, context) {
   return receivePurchaseOrderTransaction(context, args);
 } });
-var returnRetailLot = import_core125.graphql.field({ type: resultType16, args: { transactionLineId: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.ID) }), lotId: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.ID) }), quantity: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.Int) }), disposition: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }), reason: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }), idempotencyKey: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }) }, resolve(_s, args, context) {
+var returnRetailLot = import_core128.graphql.field({ type: resultType16, args: { transactionLineId: import_core128.graphql.arg({ type: import_core128.graphql.nonNull(import_core128.graphql.ID) }), lotId: import_core128.graphql.arg({ type: import_core128.graphql.nonNull(import_core128.graphql.ID) }), quantity: import_core128.graphql.arg({ type: import_core128.graphql.nonNull(import_core128.graphql.Int) }), disposition: import_core128.graphql.arg({ type: import_core128.graphql.nonNull(import_core128.graphql.String) }), reason: import_core128.graphql.arg({ type: import_core128.graphql.nonNull(import_core128.graphql.String) }), idempotencyKey: import_core128.graphql.arg({ type: import_core128.graphql.nonNull(import_core128.graphql.String) }) }, resolve(_s, args, context) {
   return returnRetailLotTransaction(context, args);
 } });
-var dispositionInventoryLot = import_core125.graphql.field({ type: resultType16, args: { lotId: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.ID) }), action: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }), quantity: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.Int) }), reason: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }), witnessId: import_core125.graphql.arg({ type: import_core125.graphql.ID }), idempotencyKey: import_core125.graphql.arg({ type: import_core125.graphql.nonNull(import_core125.graphql.String) }) }, resolve(_s, args, context) {
+var dispositionInventoryLot = import_core128.graphql.field({ type: resultType16, args: { lotId: import_core128.graphql.arg({ type: import_core128.graphql.nonNull(import_core128.graphql.ID) }), action: import_core128.graphql.arg({ type: import_core128.graphql.nonNull(import_core128.graphql.String) }), quantity: import_core128.graphql.arg({ type: import_core128.graphql.nonNull(import_core128.graphql.Int) }), reason: import_core128.graphql.arg({ type: import_core128.graphql.nonNull(import_core128.graphql.String) }), witnessId: import_core128.graphql.arg({ type: import_core128.graphql.ID }), idempotencyKey: import_core128.graphql.arg({ type: import_core128.graphql.nonNull(import_core128.graphql.String) }) }, resolve(_s, args, context) {
   return dispositionInventoryLotTransaction(context, args);
 } });
 
 // features/keystone/mutations/governanceWorkflows.ts
-var import_core126 = require("@keystone-6/core");
+var import_core129 = require("@keystone-6/core");
 var denied14 = { success: false, recordId: null, status: null };
 var fail7 = (error) => ({ ...denied14, error: error instanceof Error ? error.message : "Governance workflow failed" });
 async function acceptMembershipAgreementTransaction(context, args) {
   if (!context.session?.itemId || !validIdempotencyKey(args.idempotencyKey) || !args.termsVersion.trim() || !args.signatureEvidence.trim()) return { ...denied14, error: "Membership agreement evidence is invalid" };
   try {
-    const membership = await assertPracticeRecord(context, "ClientMembership", args.clientMembershipId, "id practice { id } status client { id } membership { id monthlyPrice } agreements(orderBy: { acceptedAt: desc }, take: 1) { id effectiveUntil } ");
+    const membership = await assertPracticeRecord(context, "ClientMembership", args.clientMembershipId, "id practice { id } status client { id } membership { id monthlyPrice discountPercent isActive practice { id } includedServices { id } } agreements(orderBy: { acceptedAt: desc }, take: 1) { id effectiveUntil } ");
     const finance = permissions.canManageFinance({ session: context.session });
     if (!finance && membership.client?.id !== context.session.itemId) throw new Error("Membership agreement ownership could not be verified");
+    const plan = membership.membership;
+    if (!plan?.isActive || plan.practice?.id && plan.practice.id !== membership.practice.id) throw new Error("Membership offer is not currently published");
+    const benefitSnapshot = { membershipId: plan.id, discountPercent: Number(plan.discountPercent || 0), includedServiceIds: (plan.includedServices || []).map((service) => service.id).sort() };
+    const supplied = args.benefitSnapshot && typeof args.benefitSnapshot === "object" ? args.benefitSnapshot : {};
+    const suppliedIds = Array.isArray(supplied.includedServiceIds) ? supplied.includedServiceIds.filter((id2) => typeof id2 === "string").sort() : [];
+    if (Number(supplied.discountPercent) !== benefitSnapshot.discountPercent || suppliedIds.join(",") !== benefitSnapshot.includedServiceIds.join(",")) throw new Error("Membership benefits do not match the published offer");
     const acceptedAt = (/* @__PURE__ */ new Date()).toISOString();
     const termsHash = evidenceHash(args.terms);
-    const evidence = { membershipId: membership.id, termsVersion: args.termsVersion, termsHash, benefitSnapshot: args.benefitSnapshot, renewalDisclosure: args.renewalDisclosure, cancellationDisclosure: args.cancellationDisclosure, affirmativeConsentHash: evidenceHash(args.signatureEvidence), actorId: context.session.itemId, acceptedAt };
+    const evidence = { membershipId: membership.id, termsVersion: args.termsVersion, termsHash, benefitSnapshot, renewalDisclosure: args.renewalDisclosure, cancellationDisclosure: args.cancellationDisclosure, affirmativeConsentHash: evidenceHash(args.signatureEvidence), actorId: context.session.itemId, acceptedAt };
     const hash = evidenceHash(evidence);
     return await serializableWorkflow(context, "medspa-membership-agreement", [`membership:${membership.id}`, `idempotency:${args.idempotencyKey}`], async (tx) => {
-      const agreement = await tx.sudo().query.MembershipAgreement.createOne({ data: { practice: { connect: { id: membership.practice.id } }, clientMembership: { connect: { id: membership.id } }, client: { connect: { id: membership.client.id } }, membership: { connect: { id: membership.membership.id } }, termsVersion: args.termsVersion.trim(), termsHash, priceMinorSnapshot: membership.membership.monthlyPrice || 0, currencyCode: "USD", benefitSnapshot: bounded(args.benefitSnapshot), renewalDisclosure: bounded(args.renewalDisclosure), cancellationDisclosure: bounded(args.cancellationDisclosure), affirmativeConsentHash: evidence.affirmativeConsentHash, acceptedAt, evidenceHash: hash, idempotencyKey: args.idempotencyKey }, query: "id" });
+      const agreement = await tx.sudo().query.MembershipAgreement.createOne({ data: { practice: { connect: { id: membership.practice.id } }, clientMembership: { connect: { id: membership.id } }, client: { connect: { id: membership.client.id } }, membership: { connect: { id: membership.membership.id } }, termsVersion: args.termsVersion.trim(), termsHash, priceMinorSnapshot: membership.membership.monthlyPrice || 0, currencyCode: "USD", benefitSnapshot, renewalDisclosure: bounded(args.renewalDisclosure), cancellationDisclosure: bounded(args.cancellationDisclosure), affirmativeConsentHash: evidence.affirmativeConsentHash, acceptedAt, evidenceHash: hash, idempotencyKey: args.idempotencyKey }, query: "id" });
       await tx.sudo().query.ClientMembership.updateOne({ where: { id: membership.id }, data: { status: "active" }, query: "id" });
       await tx.sudo().query.MembershipLedgerEntry.createOne({ data: { practice: { connect: { id: membership.practice.id } }, clientMembership: { connect: { id: membership.id } }, agreement: { connect: { id: agreement.id } }, actor: { connect: { id: context.session.itemId } }, type: "activate", amountMinor: 0, benefitDelta: 0, reason: "Versioned membership agreement accepted", evidence: { agreementEvidenceHash: hash }, occurredAt: acceptedAt, evidenceHash: hash, idempotencyKey: `${args.idempotencyKey}:activate` }, query: "id" });
       return { success: true, recordId: agreement.id, status: "active", error: null };
@@ -13423,8 +14802,8 @@ async function requestPatientRightsTransaction(context, args) {
     const client = await assertPracticeRecord(context, "Client", args.clientId, "id practice { id } user { id }");
     const privileged = permissions.canManageSensitiveRecords({ session: context.session });
     if (!privileged && client.user?.id !== context.session.itemId) throw new Error("Patient-rights ownership could not be verified");
-    const responseDays = Number(process.env.PATIENT_RIGHTS_RESPONSE_DAYS);
-    if (!Number.isInteger(responseDays) || responseDays < 1) throw new Error("Patient-rights response policy is not configured");
+    const configuredDays = Number(process.env.PATIENT_RIGHTS_RESPONSE_DAYS);
+    const responseDays = Number.isInteger(configuredDays) && configuredDays >= 1 ? configuredDays : 30;
     const requestedAt = (/* @__PURE__ */ new Date()).toISOString();
     const dueAt = new Date(Date.now() + responseDays * 864e5);
     const hash = evidenceHash({ ...args, actorId: context.session.itemId, requestedAt });
@@ -13589,21 +14968,40 @@ async function releaseLegalHoldTransaction(context, args) {
     return fail7(error);
   }
 }
-var resultType17 = import_core126.graphql.object()({ name: "GovernanceWorkflowResult", fields: { success: import_core126.graphql.field({ type: import_core126.graphql.nonNull(import_core126.graphql.Boolean) }), recordId: import_core126.graphql.field({ type: import_core126.graphql.ID }), status: import_core126.graphql.field({ type: import_core126.graphql.String }), error: import_core126.graphql.field({ type: import_core126.graphql.String }) } });
-var wrap5 = (fn, args) => import_core126.graphql.field({ type: resultType17, args, resolve(_s, values, context) {
+var resultType17 = import_core129.graphql.object()({ name: "GovernanceWorkflowResult", fields: { success: import_core129.graphql.field({ type: import_core129.graphql.nonNull(import_core129.graphql.Boolean) }), recordId: import_core129.graphql.field({ type: import_core129.graphql.ID }), status: import_core129.graphql.field({ type: import_core129.graphql.String }), error: import_core129.graphql.field({ type: import_core129.graphql.String }) } });
+var wrap5 = (fn, args) => import_core129.graphql.field({ type: resultType17, args, resolve(_s, values, context) {
   return fn(context, values);
 } });
-var acceptMembershipAgreement = wrap5(acceptMembershipAgreementTransaction, { clientMembershipId: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.ID) }), termsVersion: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), terms: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.JSON) }), benefitSnapshot: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.JSON) }), renewalDisclosure: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.JSON) }), cancellationDisclosure: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.JSON) }), signatureEvidence: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), idempotencyKey: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }) });
-var transitionMembership = wrap5(transitionMembershipTransaction, { clientMembershipId: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.ID) }), action: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), reason: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), amountMinor: import_core126.graphql.arg({ type: import_core126.graphql.Int }), benefitDelta: import_core126.graphql.arg({ type: import_core126.graphql.Int }), idempotencyKey: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }) });
-var requestPatientRights = wrap5(requestPatientRightsTransaction, { clientId: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.ID) }), type: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), scope: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.JSON) }), idempotencyKey: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }) });
-var appendPatientRightsAction = wrap5(appendPatientRightsActionTransaction, { requestId: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.ID) }), action: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), reason: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), evidence: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.JSON) }), legalBasis: import_core126.graphql.arg({ type: import_core126.graphql.String }), idempotencyKey: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }) });
-var openBreakGlass = wrap5(openBreakGlassTransaction, { clientId: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.ID) }), emergencyReason: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), requestedScope: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.JSON) }), minutes: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.Int) }), idempotencyKey: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }) });
-var placeLegalHold = wrap5(placeLegalHoldTransaction, { clientId: import_core126.graphql.arg({ type: import_core126.graphql.ID }), assetId: import_core126.graphql.arg({ type: import_core126.graphql.ID }), incidentId: import_core126.graphql.arg({ type: import_core126.graphql.ID }), reason: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), authorityReference: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), idempotencyKey: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }) });
-var releaseLegalHold = wrap5(releaseLegalHoldTransaction, { legalHoldId: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.ID) }), reason: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), authorityReference: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), idempotencyKey: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }) });
-var publishRetentionPolicy = wrap5(publishRetentionPolicyTransaction, { jurisdiction: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), recordClass: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), version: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), retainMonths: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.Int) }), minorsRule: import_core126.graphql.arg({ type: import_core126.graphql.String }), dispositionRule: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), sourceCitations: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), effectiveFrom: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }), effectiveUntil: import_core126.graphql.arg({ type: import_core126.graphql.String }), idempotencyKey: import_core126.graphql.arg({ type: import_core126.graphql.nonNull(import_core126.graphql.String) }) });
+var acceptMembershipAgreement = wrap5(acceptMembershipAgreementTransaction, { clientMembershipId: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.ID) }), termsVersion: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }), terms: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.JSON) }), benefitSnapshot: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.JSON) }), renewalDisclosure: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.JSON) }), cancellationDisclosure: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.JSON) }), signatureEvidence: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }), idempotencyKey: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }) });
+var transitionMembership = wrap5(transitionMembershipTransaction, { clientMembershipId: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.ID) }), action: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }), reason: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }), amountMinor: import_core129.graphql.arg({ type: import_core129.graphql.Int }), benefitDelta: import_core129.graphql.arg({ type: import_core129.graphql.Int }), idempotencyKey: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }) });
+var requestPatientRights = wrap5(requestPatientRightsTransaction, { clientId: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.ID) }), type: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }), scope: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.JSON) }), idempotencyKey: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }) });
+var appendPatientRightsAction = wrap5(appendPatientRightsActionTransaction, { requestId: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.ID) }), action: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }), reason: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }), evidence: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.JSON) }), legalBasis: import_core129.graphql.arg({ type: import_core129.graphql.String }), idempotencyKey: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }) });
+var openBreakGlass = wrap5(openBreakGlassTransaction, { clientId: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.ID) }), emergencyReason: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }), requestedScope: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.JSON) }), minutes: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.Int) }), idempotencyKey: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }) });
+var placeLegalHold = wrap5(placeLegalHoldTransaction, { clientId: import_core129.graphql.arg({ type: import_core129.graphql.ID }), assetId: import_core129.graphql.arg({ type: import_core129.graphql.ID }), incidentId: import_core129.graphql.arg({ type: import_core129.graphql.ID }), reason: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }), authorityReference: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }), idempotencyKey: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }) });
+var releaseLegalHold = wrap5(releaseLegalHoldTransaction, { legalHoldId: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.ID) }), reason: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }), authorityReference: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }), idempotencyKey: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }) });
+var publishRetentionPolicy = wrap5(publishRetentionPolicyTransaction, { jurisdiction: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }), recordClass: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }), version: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }), retainMonths: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.Int) }), minorsRule: import_core129.graphql.arg({ type: import_core129.graphql.String }), dispositionRule: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }), sourceCitations: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }), effectiveFrom: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }), effectiveUntil: import_core129.graphql.arg({ type: import_core129.graphql.String }), idempotencyKey: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }) });
 
 // features/keystone/mutations/safetyWorkflows.ts
-var import_core127 = require("@keystone-6/core");
+var import_core130 = require("@keystone-6/core");
+
+// features/keystone/lotLifecycle.ts
+var LOT_GONE_STATUSES = ["destroyed", "returned"];
+function canQuarantineLot(status) {
+  return status === "available" || status === "depleted";
+}
+function recallChangesLotStatus(status) {
+  return !LOT_GONE_STATUSES.includes(String(status));
+}
+var RECALL_STATUS_ORDER = ["open", "applicability_review", "quarantined", "patients_identified", "notifications_in_progress", "disposition_complete", "closed"];
+function recallStepOutcome(current, action, target) {
+  if (current === "closed") return { error: "This recall is closed and can't be reopened; open a new recall case" };
+  const from = RECALL_STATUS_ORDER.indexOf(current);
+  const to = RECALL_STATUS_ORDER.indexOf(target);
+  if (from < 0 || to < 0) return { error: "Recall step is invalid" };
+  if (to >= from) return { status: target };
+  if (action === "notify" || action === "clinical_assessment") return { status: current };
+  return { error: `A recall at ${current.replace(/_/g, " ")} can't go back to ${target.replace(/_/g, " ")}` };
+}
 
 // features/keystone/deviceSafetyReleasePolicy.ts
 function hasBlockingDeviceSafetyCase(recallStatuses, incidentStatuses) {
@@ -13634,7 +15032,10 @@ async function reportIncidentTransaction(context, args) {
       const incident = await tx.sudo().query.Incident.createOne({ data: { practice: { connect: { id: actor.practiceId } }, location: { connect: { id: args.locationId } }, client: { connect: { id: args.clientId } }, appointment: args.appointmentId ? { connect: { id: args.appointmentId } } : void 0, treatmentSession: args.treatmentSessionId ? { connect: { id: args.treatmentSessionId } } : void 0, administration: args.administrationId ? { connect: { id: args.administrationId } } : void 0, suspectLot: args.suspectLotId ? { connect: { id: args.suspectLotId } } : void 0, suspectDevice: args.suspectDeviceId ? { connect: { id: args.suspectDeviceId } } : void 0, reportedBy: { connect: { id: actor.actorId } }, occurredAt, summary: args.summary.trim(), severity: args.severity, status: args.severity === "critical" ? "under_review" : "open", triageDisposition: args.severity === "critical" ? "immediate_clinician_and_emergency_escalation_required" : "awaiting_clinical_triage", interventions: { symptoms, immediateActions, onsetAt: args.onsetAt || null }, evidenceHash: hash, idempotencyKey: args.idempotencyKey }, query: "id status" });
       await tx.sudo().query.IncidentAction.createOne({ data: { practice: { connect: { id: actor.practiceId } }, incident: { connect: { id: incident.id } }, actor: { connect: { id: actor.actorId } }, action: "report", toStatus: incident.status, severity: args.severity, rationale: args.summary.trim(), evidence: bounded(evidence), evidenceHash: hash, occurredAt: evidence.reportedAt, idempotencyKey: `${args.idempotencyKey}:report` }, query: "id" });
       if (args.suspectDeviceId && ["high", "critical"].includes(args.severity)) await tx.sudo().query.Resource.updateOne({ where: { id: args.suspectDeviceId }, data: { readinessStatus: "incident_lockout", isActive: false }, query: "id" });
-      if (args.suspectLotId && ["high", "critical"].includes(args.severity)) await tx.sudo().query.InventoryLot.updateOne({ where: { id: args.suspectLotId }, data: { status: "quarantined" }, query: "id" });
+      if (args.suspectLotId && ["high", "critical"].includes(args.severity)) {
+        const suspect = await tx.sudo().query.InventoryLot.findOne({ where: { id: args.suspectLotId }, query: "id status" });
+        if (suspect && canQuarantineLot(suspect.status)) await tx.sudo().query.InventoryLot.updateOne({ where: { id: args.suspectLotId }, data: { status: "quarantined" }, query: "id" });
+      }
       return { success: true, recordId: incident.id, affectedCount: 1, status: incident.status, error: null };
     });
   } catch (error) {
@@ -13699,7 +15100,10 @@ async function openRecallCaseTransaction(context, args) {
       const sudo = tx.sudo();
       const openedAt = (/* @__PURE__ */ new Date()).toISOString();
       const hash = evidenceHash({ ...args, actorId: actor.actorId, openedAt });
-      if (args.lotId) await sudo.query.InventoryLot.updateOne({ where: { id: args.lotId }, data: { status: "recalled" }, query: "id" });
+      if (args.lotId) {
+        const target = await sudo.query.InventoryLot.findOne({ where: { id: args.lotId }, query: "id status" });
+        if (target && recallChangesLotStatus(target.status)) await sudo.query.InventoryLot.updateOne({ where: { id: args.lotId }, data: { status: "recalled" }, query: "id" });
+      }
       if (args.deviceId) await sudo.query.Resource.updateOne({ where: { id: args.deviceId }, data: { readinessStatus: "recall_quarantine", isActive: false }, query: "id" });
       const recall = await sudo.query.RecallCase.createOne({ data: { practice: { connect: { id: actor.practiceId } }, location: { connect: { id: args.locationId } }, lot: args.lotId ? { connect: { id: args.lotId } } : void 0, device: args.deviceId ? { connect: { id: args.deviceId } } : void 0, openedBy: { connect: { id: actor.actorId } }, sourceReference: args.sourceReference.trim(), scopeReason: args.scopeReason.trim(), status: "quarantined", openedAt, evidenceHash: hash, idempotencyKey: args.idempotencyKey }, query: "id status" });
       await sudo.query.RecallAction.createOne({ data: { practice: { connect: { id: actor.practiceId } }, recall: { connect: { id: recall.id } }, actor: { connect: { id: actor.actorId } }, action: "quarantine", reason: args.scopeReason.trim(), evidence: { lotId: args.lotId || null, deviceId: args.deviceId || null }, evidenceHash: hash, occurredAt: openedAt, idempotencyKey: `${args.idempotencyKey}:quarantine` }, query: "id" });
@@ -13730,20 +15134,27 @@ async function appendRecallActionTransaction(context, args) {
   const nextByAction = { assess: "applicability_review", quarantine: "quarantined", identify_exposure: "patients_identified", notify: "notifications_in_progress", clinical_assessment: "notifications_in_progress", dispose: "disposition_complete", close: "closed" };
   if (!nextByAction[args.action] || !validIdempotencyKey(args.idempotencyKey) || !args.reason.trim()) return { ...denied15, error: "Recall action is invalid" };
   try {
-    const recall = await assertPracticeRecord(context, "RecallCase", args.recallId, "id practice { id } status exposures { id status }");
-    const exposure = args.exposureId ? await assertPracticeRecord(context, "RecallExposure", args.exposureId, "id practice { id } recall { id } status") : null;
-    if (exposure && exposure.recall?.id !== recall.id) throw new Error("Recall exposure does not match");
-    if (["clinical_assessment", "close"].includes(args.action) && !permissions.canManageClinical({ session: context.session })) throw new Error("Qualified clinical authority is required");
-    if (args.action === "close" && recall.exposures?.some((item) => !["assessed", "closed"].includes(item.status))) throw new Error("Recall exposures require documented assessment before closure");
-    const occurredAt = (/* @__PURE__ */ new Date()).toISOString();
-    const hash = evidenceHash({ ...args, fromStatus: recall.status, toStatus: nextByAction[args.action], actorId: actor.actorId, occurredAt });
-    await context.sudo().query.RecallAction.createOne({ data: { practice: { connect: { id: actor.practiceId } }, recall: { connect: { id: recall.id } }, exposure: exposure ? { connect: { id: exposure.id } } : void 0, actor: { connect: { id: actor.actorId } }, action: args.action, reason: args.reason.trim(), evidence: bounded(args.evidence), evidenceHash: hash, occurredAt, idempotencyKey: args.idempotencyKey }, query: "id" });
-    await context.sudo().query.RecallCase.updateOne({ where: { id: recall.id }, data: { status: nextByAction[args.action], closedAt: args.action === "close" ? occurredAt : void 0 }, query: "id" });
-    if (exposure) {
-      const exposureStatus = args.action === "notify" ? "notified" : args.action === "clinical_assessment" ? "assessed" : args.action === "close" ? "closed" : exposure.status;
-      await context.sudo().query.RecallExposure.updateOne({ where: { id: exposure.id }, data: { status: exposureStatus }, query: "id" });
-    }
-    return { success: true, recordId: recall.id, affectedCount: exposure ? 1 : 0, status: nextByAction[args.action], error: null };
+    await assertPracticeRecord(context, "RecallCase", args.recallId, "id practice { id }");
+    return await serializableWorkflow(context, "medspa-recall-step", [`recall:${args.recallId}`], async (tx) => {
+      const context2 = tx;
+      const recall = await assertPracticeRecord(context2, "RecallCase", args.recallId, "id practice { id } status exposures { id status }");
+      const exposure = args.exposureId ? await assertPracticeRecord(context2, "RecallExposure", args.exposureId, "id practice { id } recall { id } status") : null;
+      if (exposure && exposure.recall?.id !== recall.id) throw new Error("Recall exposure does not match");
+      if (["clinical_assessment", "close"].includes(args.action) && !permissions.canManageClinical({ session: context2.session })) throw new Error("Qualified clinical authority is required");
+      if (args.action === "close" && recall.exposures?.some((item) => !["assessed", "closed"].includes(item.status))) throw new Error("Recall exposures require documented assessment before closure");
+      const step = recallStepOutcome(recall.status, args.action, nextByAction[args.action]);
+      if ("error" in step) throw new Error(step.error);
+      const nextStatus = step.status;
+      const occurredAt = (/* @__PURE__ */ new Date()).toISOString();
+      const hash = evidenceHash({ ...args, fromStatus: recall.status, toStatus: nextStatus, actorId: actor.actorId, occurredAt });
+      await context2.sudo().query.RecallAction.createOne({ data: { practice: { connect: { id: actor.practiceId } }, recall: { connect: { id: recall.id } }, exposure: exposure ? { connect: { id: exposure.id } } : void 0, actor: { connect: { id: actor.actorId } }, action: args.action, reason: args.reason.trim(), evidence: bounded(args.evidence), evidenceHash: hash, occurredAt, idempotencyKey: args.idempotencyKey }, query: "id" });
+      await context2.sudo().query.RecallCase.updateOne({ where: { id: recall.id }, data: { status: nextStatus, closedAt: args.action === "close" ? occurredAt : void 0 }, query: "id" });
+      if (exposure) {
+        const exposureStatus = args.action === "notify" ? "notified" : args.action === "clinical_assessment" ? "assessed" : args.action === "close" ? "closed" : exposure.status;
+        await context2.sudo().query.RecallExposure.updateOne({ where: { id: exposure.id }, data: { status: exposureStatus }, query: "id" });
+      }
+      return { success: true, recordId: recall.id, affectedCount: exposure ? 1 : 0, status: nextStatus, error: null };
+    });
   } catch (error) {
     return fail8(error);
   }
@@ -13788,18 +15199,18 @@ async function transitionDeviceReadinessTransaction(context, args) {
     return fail8(error);
   }
 }
-var resultType18 = import_core127.graphql.object()({ name: "SafetyWorkflowResult", fields: { success: import_core127.graphql.field({ type: import_core127.graphql.nonNull(import_core127.graphql.Boolean) }), recordId: import_core127.graphql.field({ type: import_core127.graphql.ID }), affectedCount: import_core127.graphql.field({ type: import_core127.graphql.nonNull(import_core127.graphql.Int) }), status: import_core127.graphql.field({ type: import_core127.graphql.String }), error: import_core127.graphql.field({ type: import_core127.graphql.String }) } });
-var wrap6 = (fn, args) => import_core127.graphql.field({ type: resultType18, args, resolve(_s, values, context) {
+var resultType18 = import_core130.graphql.object()({ name: "SafetyWorkflowResult", fields: { success: import_core130.graphql.field({ type: import_core130.graphql.nonNull(import_core130.graphql.Boolean) }), recordId: import_core130.graphql.field({ type: import_core130.graphql.ID }), affectedCount: import_core130.graphql.field({ type: import_core130.graphql.nonNull(import_core130.graphql.Int) }), status: import_core130.graphql.field({ type: import_core130.graphql.String }), error: import_core130.graphql.field({ type: import_core130.graphql.String }) } });
+var wrap6 = (fn, args) => import_core130.graphql.field({ type: resultType18, args, resolve(_s, values, context) {
   return fn(context, values);
 } });
-var reportIncident = wrap6(reportIncidentTransaction, { clientId: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.ID) }), locationId: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.ID) }), appointmentId: import_core127.graphql.arg({ type: import_core127.graphql.ID }), treatmentSessionId: import_core127.graphql.arg({ type: import_core127.graphql.ID }), administrationId: import_core127.graphql.arg({ type: import_core127.graphql.ID }), suspectLotId: import_core127.graphql.arg({ type: import_core127.graphql.ID }), suspectDeviceId: import_core127.graphql.arg({ type: import_core127.graphql.ID }), occurredAt: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.String) }), onsetAt: import_core127.graphql.arg({ type: import_core127.graphql.String }), severity: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.String) }), summary: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.String) }), symptoms: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.JSON) }), immediateActions: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.JSON) }), idempotencyKey: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.String) }) });
-var appendIncidentAction = wrap6(appendIncidentActionTransaction, { incidentId: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.ID) }), clinicianId: import_core127.graphql.arg({ type: import_core127.graphql.ID }), action: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.String) }), toStatus: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.String) }), severity: import_core127.graphql.arg({ type: import_core127.graphql.String }), rationale: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.String) }), evidence: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.JSON) }), idempotencyKey: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.String) }) });
-var openRecallCase = wrap6(openRecallCaseTransaction, { locationId: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.ID) }), lotId: import_core127.graphql.arg({ type: import_core127.graphql.ID }), deviceId: import_core127.graphql.arg({ type: import_core127.graphql.ID }), sourceReference: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.String) }), scopeReason: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.String) }), idempotencyKey: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.String) }) });
-var appendRecallAction = wrap6(appendRecallActionTransaction, { recallId: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.ID) }), exposureId: import_core127.graphql.arg({ type: import_core127.graphql.ID }), action: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.String) }), reason: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.String) }), evidence: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.JSON) }), idempotencyKey: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.String) }) });
-var transitionDeviceReadiness = wrap6(transitionDeviceReadinessTransaction, { resourceId: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.ID) }), action: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.String) }), toStatus: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.String) }), reason: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.String) }), qualifiedReleaseProviderId: import_core127.graphql.arg({ type: import_core127.graphql.ID }), evidence: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.JSON) }), idempotencyKey: import_core127.graphql.arg({ type: import_core127.graphql.nonNull(import_core127.graphql.String) }) });
+var reportIncident = wrap6(reportIncidentTransaction, { clientId: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.ID) }), locationId: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.ID) }), appointmentId: import_core130.graphql.arg({ type: import_core130.graphql.ID }), treatmentSessionId: import_core130.graphql.arg({ type: import_core130.graphql.ID }), administrationId: import_core130.graphql.arg({ type: import_core130.graphql.ID }), suspectLotId: import_core130.graphql.arg({ type: import_core130.graphql.ID }), suspectDeviceId: import_core130.graphql.arg({ type: import_core130.graphql.ID }), occurredAt: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.String) }), onsetAt: import_core130.graphql.arg({ type: import_core130.graphql.String }), severity: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.String) }), summary: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.String) }), symptoms: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.JSON) }), immediateActions: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.JSON) }), idempotencyKey: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.String) }) });
+var appendIncidentAction = wrap6(appendIncidentActionTransaction, { incidentId: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.ID) }), clinicianId: import_core130.graphql.arg({ type: import_core130.graphql.ID }), action: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.String) }), toStatus: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.String) }), severity: import_core130.graphql.arg({ type: import_core130.graphql.String }), rationale: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.String) }), evidence: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.JSON) }), idempotencyKey: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.String) }) });
+var openRecallCase = wrap6(openRecallCaseTransaction, { locationId: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.ID) }), lotId: import_core130.graphql.arg({ type: import_core130.graphql.ID }), deviceId: import_core130.graphql.arg({ type: import_core130.graphql.ID }), sourceReference: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.String) }), scopeReason: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.String) }), idempotencyKey: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.String) }) });
+var appendRecallAction = wrap6(appendRecallActionTransaction, { recallId: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.ID) }), exposureId: import_core130.graphql.arg({ type: import_core130.graphql.ID }), action: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.String) }), reason: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.String) }), evidence: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.JSON) }), idempotencyKey: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.String) }) });
+var transitionDeviceReadiness = wrap6(transitionDeviceReadinessTransaction, { resourceId: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.ID) }), action: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.String) }), toStatus: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.String) }), reason: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.String) }), qualifiedReleaseProviderId: import_core130.graphql.arg({ type: import_core130.graphql.ID }), evidence: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.JSON) }), idempotencyKey: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.String) }) });
 
 // features/keystone/mutations/resourceReservationWorkflows.ts
-var import_core128 = require("@keystone-6/core");
+var import_core131 = require("@keystone-6/core");
 var denied16 = { success: false, appointmentId: null, reservationCount: 0, revision: null };
 var resourcePurposes = ["room", "device", "equipment", "recovery"];
 var isResourcePurpose = (value) => resourcePurposes.some((purpose) => purpose === value);
@@ -13880,18 +15291,18 @@ async function scheduleAppointmentResourcesTransaction(context, args) {
     return { ...denied16, error: error instanceof Error ? error.message : "Resource scheduling failed" };
   }
 }
-var resultType19 = import_core128.graphql.object()({ name: "ResourceReservationWorkflowResult", fields: { success: import_core128.graphql.field({ type: import_core128.graphql.nonNull(import_core128.graphql.Boolean) }), appointmentId: import_core128.graphql.field({ type: import_core128.graphql.ID }), reservationCount: import_core128.graphql.field({ type: import_core128.graphql.nonNull(import_core128.graphql.Int) }), revision: import_core128.graphql.field({ type: import_core128.graphql.Int }), error: import_core128.graphql.field({ type: import_core128.graphql.String }) } });
-var scheduleAppointmentResources = import_core128.graphql.field({ type: resultType19, args: { appointmentId: import_core128.graphql.arg({ type: import_core128.graphql.nonNull(import_core128.graphql.ID) }), segments: import_core128.graphql.arg({ type: import_core128.graphql.nonNull(import_core128.graphql.JSON) }), reason: import_core128.graphql.arg({ type: import_core128.graphql.nonNull(import_core128.graphql.String) }), idempotencyKey: import_core128.graphql.arg({ type: import_core128.graphql.nonNull(import_core128.graphql.String) }) }, resolve(_s, args, context) {
+var resultType19 = import_core131.graphql.object()({ name: "ResourceReservationWorkflowResult", fields: { success: import_core131.graphql.field({ type: import_core131.graphql.nonNull(import_core131.graphql.Boolean) }), appointmentId: import_core131.graphql.field({ type: import_core131.graphql.ID }), reservationCount: import_core131.graphql.field({ type: import_core131.graphql.nonNull(import_core131.graphql.Int) }), revision: import_core131.graphql.field({ type: import_core131.graphql.Int }), error: import_core131.graphql.field({ type: import_core131.graphql.String }) } });
+var scheduleAppointmentResources = import_core131.graphql.field({ type: resultType19, args: { appointmentId: import_core131.graphql.arg({ type: import_core131.graphql.nonNull(import_core131.graphql.ID) }), segments: import_core131.graphql.arg({ type: import_core131.graphql.nonNull(import_core131.graphql.JSON) }), reason: import_core131.graphql.arg({ type: import_core131.graphql.nonNull(import_core131.graphql.String) }), idempotencyKey: import_core131.graphql.arg({ type: import_core131.graphql.nonNull(import_core131.graphql.String) }) }, resolve(_s, args, context) {
   return scheduleAppointmentResourcesTransaction(context, args);
 } });
 
 // features/keystone/mutations/staffAccessWorkflows.ts
-var import_node_crypto6 = require("node:crypto");
-var import_core129 = require("@keystone-6/core");
+var import_node_crypto8 = require("node:crypto");
+var import_core132 = require("@keystone-6/core");
 var isCapabilityKey = (key) => capabilityKeys.some((capability) => capability === key);
 var providerRoles = ["provider", "esthetician", "nurse", "physician", "assistant"];
 var isProviderRole = (value) => providerRoles.some((role) => role === value);
-var tokenHash = (token) => (0, import_node_crypto6.createHash)("sha256").update(token).digest("hex");
+var tokenHash = (token) => (0, import_node_crypto8.createHash)("sha256").update(token).digest("hex");
 var denied17 = (error) => ({ success: false, recordId: null, token: null, error });
 async function upsertAccessRoleTransaction(context, args) {
   let actor;
@@ -13945,7 +15356,7 @@ async function inviteStaffTransaction(context, args) {
   let actor;
   try {
     actor = { ...requireActorPractice(context, permissions.canManageRoles), role: (await assertActiveActor(context)).role };
-    await Promise.all([assertPracticeRecord(context, "Role", args.roleId), ...(args.locationIds || []).map((id) => assertPracticeRecord(context, "Location", id))]);
+    await Promise.all([assertPracticeRecord(context, "Role", args.roleId), ...(args.locationIds || []).map((id2) => assertPracticeRecord(context, "Location", id2))]);
   } catch (error) {
     return denied17(error instanceof Error ? error.message : "Role authority is required");
   }
@@ -13953,7 +15364,7 @@ async function inviteStaffTransaction(context, args) {
   if (!validIdempotencyKey(args.idempotencyKey) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !Number.isInteger(args.expiresInHours) || args.expiresInHours < 1 || args.expiresInHours > 168 || (args.locationIds?.length || 0) > 100) return denied17("Staff invitation is invalid");
   const invitedRole = await context.sudo().query.Role.findOne({ where: { id: args.roleId }, query: "id practice { id } canManagePeople canManageRoles canAccessDashboard canManageOnboarding canManagePractice canSchedule canReadClients canManageClinical canManageSensitiveRecords canManageInventory canManageFinance canManageCommunications canViewReports canManageIntegrations" });
   if (!invitedRole || invitedRole.practice?.id !== actor.practiceId || !capabilitiesWithinGrantAuthority(invitedRole, actor.role)) return denied17("You cannot assign a role with capabilities you do not hold");
-  const token = (0, import_node_crypto6.randomBytes)(32).toString("base64url"), hash = tokenHash(token), expiresAt = new Date(Date.now() + args.expiresInHours * 36e5).toISOString();
+  const token = (0, import_node_crypto8.randomBytes)(32).toString("base64url"), hash = tokenHash(token), expiresAt = new Date(Date.now() + args.expiresInHours * 36e5).toISOString();
   try {
     return await serializableWorkflow(context, "medspa-staff-invitation", [`email:${email}`, `idempotency:${args.idempotencyKey}`], async (tx) => {
       const sudo = tx.sudo();
@@ -13961,7 +15372,7 @@ async function inviteStaffTransaction(context, args) {
       if (existing) return { success: true, recordId: existing.id, token: null, error: null };
       const users = await sudo.query.User.findMany({ where: { email: { equals: email } }, take: 1, query: "id" });
       if (users.length) throw new Error("A user with this email already exists");
-      const invitation = await sudo.query.StaffInvitation.createOne({ data: { practice: { connect: { id: actor.practiceId } }, email, role: { connect: { id: args.roleId } }, locations: args.locationIds?.length ? { connect: args.locationIds.map((id) => ({ id })) } : void 0, invitedBy: { connect: { id: actor.actorId } }, tokenHash: hash, status: "pending", expiresAt, idempotencyKey: args.idempotencyKey }, query: "id" });
+      const invitation = await sudo.query.StaffInvitation.createOne({ data: { practice: { connect: { id: actor.practiceId } }, email, role: { connect: { id: args.roleId } }, locations: args.locationIds?.length ? { connect: args.locationIds.map((id2) => ({ id: id2 })) } : void 0, invitedBy: { connect: { id: actor.actorId } }, tokenHash: hash, status: "pending", expiresAt, idempotencyKey: args.idempotencyKey }, query: "id" });
       return { success: true, recordId: invitation.id, token, error: null };
     });
   } catch (error) {
@@ -13982,7 +15393,7 @@ async function acceptStaffInvitationTransaction(context, args) {
       const syntheticSession = { itemId: inviter.id, listKey: "User", data: { name: inviter.name, email: inviter.email, status: inviter.status, practice: { id: inviter.practice.id }, locations: inviter.locations || [], role: inviter.role } };
       const scoped2 = tx.withSession(syntheticSession).sudo();
       const user = await scoped2.query.User.createOne({ data: { name: args.name.trim(), email: invitation.email, password: args.password, status: "active", practice: { connect: { id: invitation.practice.id } }, role: { connect: { id: invitation.role.id } }, locations: invitation.locations.length ? { connect: invitation.locations.map((location) => ({ id: location.id })) } : void 0 }, query: "id" });
-      await scoped2.query.StaffInvitation.updateOne({ where: { id: invitation.id }, data: { status: "accepted", acceptedUser: { connect: { id: user.id } }, acceptedAt: (/* @__PURE__ */ new Date()).toISOString(), tokenHash: tokenHash((0, import_node_crypto6.randomBytes)(32).toString("base64url")) }, query: "id" });
+      await scoped2.query.StaffInvitation.updateOne({ where: { id: invitation.id }, data: { status: "accepted", acceptedUser: { connect: { id: user.id } }, acceptedAt: (/* @__PURE__ */ new Date()).toISOString(), tokenHash: tokenHash((0, import_node_crypto8.randomBytes)(32).toString("base64url")) }, query: "id" });
       return { success: true, recordId: user.id, token: null, error: null };
     });
   } catch {
@@ -13993,7 +15404,7 @@ async function createProviderProfileTransaction(context, args) {
   let actor;
   try {
     actor = requireActorPractice(context, permissions.canManagePeople);
-    const records = await Promise.all([assertPracticeRecord(context, "User", args.userId, "id status practice { id } providerProfile { id }"), ...args.locationIds.map((id) => assertPracticeRecord(context, "Location", id))]);
+    const records = await Promise.all([assertPracticeRecord(context, "User", args.userId, "id status practice { id } providerProfile { id }"), ...args.locationIds.map((id2) => assertPracticeRecord(context, "Location", id2))]);
     if (records[0].status !== "active" || records[0].providerProfile?.id) throw new Error("Provider profile is unavailable");
   } catch (error) {
     return denied17(error instanceof Error ? error.message : "People authority is required");
@@ -14004,7 +15415,7 @@ async function createProviderProfileTransaction(context, args) {
       const sudo = tx.sudo();
       const prior = (await sudo.query.AuditEvent.findMany({ where: { practice: { id: { equals: actor.practiceId } }, correlationId: { equals: args.idempotencyKey }, action: { equals: "provider_profile.created" } }, take: 1, query: "resourceId" }))[0];
       if (prior) return { success: true, recordId: prior.resourceId, token: null, error: null };
-      const provider = await sudo.query.Provider.createOne({ data: { practice: { connect: { id: actor.practiceId } }, user: { connect: { id: args.userId } }, role: args.role, title: args.title?.trim() || "", status: "inactive", isActive: false, isPublic: false, locations: { connect: args.locationIds.map((id) => ({ id })) } }, query: "id" });
+      const provider = await sudo.query.Provider.createOne({ data: { practice: { connect: { id: actor.practiceId } }, user: { connect: { id: args.userId } }, role: args.role, title: args.title?.trim() || "", status: "inactive", isActive: false, isPublic: false, locations: { connect: args.locationIds.map((id2) => ({ id: id2 })) } }, query: "id" });
       const occurredAt = (/* @__PURE__ */ new Date()).toISOString(), hash = tokenHash(JSON.stringify({ providerId: provider.id, userId: args.userId, role: args.role, actorId: actor.actorId, occurredAt }));
       await sudo.query.AuditEvent.createOne({ data: { practice: { connect: { id: actor.practiceId } }, actor: { connect: { id: actor.actorId } }, action: "provider_profile.created", resourceType: "Provider", resourceId: provider.id, correlationId: args.idempotencyKey, evidence: { userId: args.userId, role: args.role, locationIds: args.locationIds, initialStatus: "inactive" }, evidenceHash: hash, occurredAt }, query: "id" });
       return { success: true, recordId: provider.id, token: null, error: null };
@@ -14013,34 +15424,34 @@ async function createProviderProfileTransaction(context, args) {
     return denied17(error instanceof Error ? error.message : "Provider profile failed");
   }
 }
-var resultType20 = import_core129.graphql.object()({ name: "StaffAccessWorkflowResult", fields: { success: import_core129.graphql.field({ type: import_core129.graphql.nonNull(import_core129.graphql.Boolean) }), recordId: import_core129.graphql.field({ type: import_core129.graphql.ID }), token: import_core129.graphql.field({ type: import_core129.graphql.String }), error: import_core129.graphql.field({ type: import_core129.graphql.String }) } });
-var upsertAccessRole = import_core129.graphql.field({ type: resultType20, args: { roleId: import_core129.graphql.arg({ type: import_core129.graphql.ID }), name: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }), capabilities: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.JSON) }), idempotencyKey: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }) }, resolve: (_s, args, context) => upsertAccessRoleTransaction(context, args) });
-var inviteStaff = import_core129.graphql.field({ type: resultType20, args: { email: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }), roleId: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.ID) }), locationIds: import_core129.graphql.arg({ type: import_core129.graphql.list(import_core129.graphql.nonNull(import_core129.graphql.ID)) }), expiresInHours: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.Int) }), idempotencyKey: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }) }, resolve: (_s, args, context) => inviteStaffTransaction(context, args) });
-var acceptStaffInvitation = import_core129.graphql.field({ type: resultType20, args: { token: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }), name: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }), password: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }) }, resolve: (_s, args, context) => acceptStaffInvitationTransaction(context, args) });
-var createProviderProfile = import_core129.graphql.field({ type: resultType20, args: { userId: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.ID) }), role: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }), title: import_core129.graphql.arg({ type: import_core129.graphql.String }), locationIds: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.list(import_core129.graphql.nonNull(import_core129.graphql.ID))) }), idempotencyKey: import_core129.graphql.arg({ type: import_core129.graphql.nonNull(import_core129.graphql.String) }) }, resolve: (_s, args, context) => {
+var resultType20 = import_core132.graphql.object()({ name: "StaffAccessWorkflowResult", fields: { success: import_core132.graphql.field({ type: import_core132.graphql.nonNull(import_core132.graphql.Boolean) }), recordId: import_core132.graphql.field({ type: import_core132.graphql.ID }), token: import_core132.graphql.field({ type: import_core132.graphql.String }), error: import_core132.graphql.field({ type: import_core132.graphql.String }) } });
+var upsertAccessRole = import_core132.graphql.field({ type: resultType20, args: { roleId: import_core132.graphql.arg({ type: import_core132.graphql.ID }), name: import_core132.graphql.arg({ type: import_core132.graphql.nonNull(import_core132.graphql.String) }), capabilities: import_core132.graphql.arg({ type: import_core132.graphql.nonNull(import_core132.graphql.JSON) }), idempotencyKey: import_core132.graphql.arg({ type: import_core132.graphql.nonNull(import_core132.graphql.String) }) }, resolve: (_s, args, context) => upsertAccessRoleTransaction(context, args) });
+var inviteStaff = import_core132.graphql.field({ type: resultType20, args: { email: import_core132.graphql.arg({ type: import_core132.graphql.nonNull(import_core132.graphql.String) }), roleId: import_core132.graphql.arg({ type: import_core132.graphql.nonNull(import_core132.graphql.ID) }), locationIds: import_core132.graphql.arg({ type: import_core132.graphql.list(import_core132.graphql.nonNull(import_core132.graphql.ID)) }), expiresInHours: import_core132.graphql.arg({ type: import_core132.graphql.nonNull(import_core132.graphql.Int) }), idempotencyKey: import_core132.graphql.arg({ type: import_core132.graphql.nonNull(import_core132.graphql.String) }) }, resolve: (_s, args, context) => inviteStaffTransaction(context, args) });
+var acceptStaffInvitation = import_core132.graphql.field({ type: resultType20, args: { token: import_core132.graphql.arg({ type: import_core132.graphql.nonNull(import_core132.graphql.String) }), name: import_core132.graphql.arg({ type: import_core132.graphql.nonNull(import_core132.graphql.String) }), password: import_core132.graphql.arg({ type: import_core132.graphql.nonNull(import_core132.graphql.String) }) }, resolve: (_s, args, context) => acceptStaffInvitationTransaction(context, args) });
+var createProviderProfile = import_core132.graphql.field({ type: resultType20, args: { userId: import_core132.graphql.arg({ type: import_core132.graphql.nonNull(import_core132.graphql.ID) }), role: import_core132.graphql.arg({ type: import_core132.graphql.nonNull(import_core132.graphql.String) }), title: import_core132.graphql.arg({ type: import_core132.graphql.String }), locationIds: import_core132.graphql.arg({ type: import_core132.graphql.nonNull(import_core132.graphql.list(import_core132.graphql.nonNull(import_core132.graphql.ID))) }), idempotencyKey: import_core132.graphql.arg({ type: import_core132.graphql.nonNull(import_core132.graphql.String) }) }, resolve: (_s, args, context) => {
   if (!isProviderRole(args.role)) return Promise.resolve(denied17("Provider profile input is invalid"));
   return createProviderProfileTransaction(context, { userId: args.userId, role: args.role, title: args.title, locationIds: args.locationIds, idempotencyKey: args.idempotencyKey });
 } });
 
 // features/keystone/mutations/storefrontSettings.ts
-var import_core130 = require("@keystone-6/core");
-var StorefrontSettingsResult = import_core130.graphql.object()({
+var import_core133 = require("@keystone-6/core");
+var StorefrontSettingsResult = import_core133.graphql.object()({
   name: "StorefrontSettingsResult",
   fields: {
-    success: import_core130.graphql.field({ type: import_core130.graphql.nonNull(import_core130.graphql.Boolean) }),
-    error: import_core130.graphql.field({ type: import_core130.graphql.String })
+    success: import_core133.graphql.field({ type: import_core133.graphql.nonNull(import_core133.graphql.Boolean) }),
+    error: import_core133.graphql.field({ type: import_core133.graphql.String })
   }
 });
-var publishStorefrontSettings = import_core130.graphql.field({
-  type: import_core130.graphql.nonNull(StorefrontSettingsResult),
+var publishStorefrontSettings = import_core133.graphql.field({
+  type: import_core133.graphql.nonNull(StorefrontSettingsResult),
   args: {
-    displayName: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.String) }),
-    primaryLocationId: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.ID) }),
-    accentHue: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.Int) }),
-    logoSvg: import_core130.graphql.arg({ type: import_core130.graphql.String }),
-    logoHue: import_core130.graphql.arg({ type: import_core130.graphql.Int }),
-    isPublished: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.Boolean) }),
-    expectedRevision: import_core130.graphql.arg({ type: import_core130.graphql.nonNull(import_core130.graphql.Int) })
+    displayName: import_core133.graphql.arg({ type: import_core133.graphql.nonNull(import_core133.graphql.String) }),
+    primaryLocationId: import_core133.graphql.arg({ type: import_core133.graphql.nonNull(import_core133.graphql.ID) }),
+    accentHue: import_core133.graphql.arg({ type: import_core133.graphql.nonNull(import_core133.graphql.Int) }),
+    logoSvg: import_core133.graphql.arg({ type: import_core133.graphql.String }),
+    logoHue: import_core133.graphql.arg({ type: import_core133.graphql.Int }),
+    isPublished: import_core133.graphql.arg({ type: import_core133.graphql.nonNull(import_core133.graphql.Boolean) }),
+    expectedRevision: import_core133.graphql.arg({ type: import_core133.graphql.nonNull(import_core133.graphql.Int) })
   },
   async resolve(_source, args, context) {
     try {
@@ -14085,19 +15496,19 @@ var publishStorefrontSettings = import_core130.graphql.field({
 });
 
 // features/keystone/mutations/registerCustomer.ts
-var import_core131 = require("@keystone-6/core");
-var result = import_core131.graphql.object()({
+var import_core134 = require("@keystone-6/core");
+var result = import_core134.graphql.object()({
   name: "CustomerRegistrationResult",
-  fields: { success: import_core131.graphql.field({ type: import_core131.graphql.nonNull(import_core131.graphql.Boolean) }), error: import_core131.graphql.field({ type: import_core131.graphql.String }) }
+  fields: { success: import_core134.graphql.field({ type: import_core134.graphql.nonNull(import_core134.graphql.Boolean) }), error: import_core134.graphql.field({ type: import_core134.graphql.String }) }
 });
-var registerCustomer = import_core131.graphql.field({
-  type: import_core131.graphql.nonNull(result),
-  args: { name: import_core131.graphql.arg({ type: import_core131.graphql.nonNull(import_core131.graphql.String) }), email: import_core131.graphql.arg({ type: import_core131.graphql.nonNull(import_core131.graphql.String) }), password: import_core131.graphql.arg({ type: import_core131.graphql.nonNull(import_core131.graphql.String) }) },
+var registerCustomer = import_core134.graphql.field({
+  type: import_core134.graphql.nonNull(result),
+  args: { name: import_core134.graphql.arg({ type: import_core134.graphql.nonNull(import_core134.graphql.String) }), email: import_core134.graphql.arg({ type: import_core134.graphql.nonNull(import_core134.graphql.String) }), password: import_core134.graphql.arg({ type: import_core134.graphql.nonNull(import_core134.graphql.String) }) },
   async resolve(_source, args, context) {
     const name = args.name.trim(), email = args.email.trim().toLowerCase();
     if (context.session?.itemId || !name || name.length > 120 || /[\u0000-\u001f\u007f]/.test(name) || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || args.password.length < 12 || args.password.length > 200) return { success: false, error: "Enter a name, email and password of 12\u2013200 characters." };
     try {
-      const slug = process.env.MEDSPA_PRACTICE_SLUG;
+      const slug = await storefrontPracticeSlug(context);
       if (!slug) throw new Error("Storefront is unavailable");
       await serializableWorkflow(context, "medspa-customer-registration", [`identity:${email}`], async (tx) => {
         const sudo = tx.sudo();
@@ -14118,25 +15529,2363 @@ var registerCustomer = import_core131.graphql.field({
   }
 });
 
+// features/keystone/mutations/resourceCatalogWorkflows.ts
+var import_core135 = require("@keystone-6/core");
+var denied18 = { success: false, resourceId: null, revision: null };
+var RESOURCE_TYPES = /* @__PURE__ */ new Set(["room", "device", "equipment", "station", "other"]);
+var READINESS_GATED = /* @__PURE__ */ new Set(["device", "equipment"]);
+function text93(value, max, label) {
+  const trimmed = (value || "").trim();
+  if (trimmed.length > max) throw new Error(`${label} is too long`);
+  return trimmed;
+}
+function timestamp73(value, label) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) throw new Error(`${label} is invalid`);
+  return date.toISOString();
+}
+async function upsertResourceTransaction(context, input) {
+  let actor;
+  try {
+    actor = requireActorPractice(context, permissions.canManagePractice, "Practice management access is required");
+    await assertActiveActor(context);
+  } catch (error) {
+    return { ...denied18, error: error instanceof Error ? error.message : "Practice management access is required" };
+  }
+  let data;
+  try {
+    if (!validIdempotencyKey(input.idempotencyKey)) throw new Error("A valid request key is required");
+    const name = text93(input.name, 120, "Name");
+    if (!name) throw new Error("Enter a name");
+    if (!RESOURCE_TYPES.has(input.type)) throw new Error("Choose room, device, equipment, station or other");
+    if (!Number.isInteger(input.capacity) || input.capacity < 1 || input.capacity > 50) throw new Error("Capacity must be a whole number from 1 to 50");
+    if (!input.locationId) throw new Error("Choose a location");
+    const serviceIds = [...new Set((input.serviceIds || []).filter(Boolean))];
+    if (serviceIds.length > 100) throw new Error("Too many treatments selected");
+    data = {
+      name,
+      type: input.type,
+      capacity: input.capacity,
+      isPublic: input.isPublic === true,
+      notes: text93(input.notes, 2e3, "Notes"),
+      manufacturer: text93(input.manufacturer, 120, "Manufacturer"),
+      model: text93(input.model, 120, "Model"),
+      serialNumber: text93(input.serialNumber, 120, "Serial number"),
+      maintenanceDueAt: timestamp73(input.maintenanceDueAt, "Maintenance date"),
+      calibrationDueAt: timestamp73(input.calibrationDueAt, "Calibration date"),
+      serviceIds
+    };
+  } catch (error) {
+    return { ...denied18, error: error instanceof Error ? error.message : "Resource details are invalid" };
+  }
+  const lockKeys = [`idempotency:${actor.practiceId}:resource:${input.idempotencyKey}`];
+  if (input.resourceId) lockKeys.push(`resource:${input.resourceId}`);
+  try {
+    return await serializableWorkflow(context, "medspa-resource", lockKeys, async (transactionContext) => {
+      const sudo = transactionContext.sudo();
+      const location = await sudo.query.Location.findOne({ where: { id: input.locationId }, query: "id isActive practice { id }" });
+      if (!location || location.practice?.id !== actor.practiceId) throw new Error("Location is outside this practice");
+      if (location.isActive === false) throw new Error("Location is inactive");
+      const serviceIds = data.serviceIds;
+      if (serviceIds.length) {
+        const samePractice = await sudo.query.Service.count({ where: { id: { in: serviceIds }, practice: { id: { equals: actor.practiceId } } } });
+        if (samePractice !== serviceIds.length) throw new Error("A selected treatment is outside this practice");
+      }
+      const { serviceIds: _ids, ...fields } = data;
+      const serviceRefs = serviceIds.map((id2) => ({ id: id2 }));
+      if (!input.resourceId) {
+        const sameName = await sudo.query.Resource.findMany({
+          where: { practice: { id: { equals: actor.practiceId } }, location: { id: { equals: location.id } }, name: { equals: fields.name, mode: "insensitive" } },
+          take: 1,
+          query: "id revision metadata"
+        });
+        if (sameName[0]) {
+          if (sameName[0].metadata?.createdByRequest === input.idempotencyKey) {
+            return { success: true, resourceId: sameName[0].id, revision: sameName[0].revision, error: null };
+          }
+          throw new Error("This location already has a resource with that name");
+        }
+        const gated = READINESS_GATED.has(input.type);
+        const created = await sudo.query.Resource.createOne({
+          data: {
+            ...fields,
+            practice: { connect: { id: actor.practiceId } },
+            location: { connect: { id: location.id } },
+            services: { connect: serviceRefs },
+            isActive: !gated,
+            readinessStatus: gated ? "acceptance_testing" : "available",
+            revision: 1,
+            metadata: { createdByRequest: input.idempotencyKey }
+          },
+          query: "id revision"
+        });
+        return { success: true, resourceId: created.id, revision: created.revision, error: null };
+      }
+      const current = await sudo.query.Resource.findOne({ where: { id: input.resourceId }, query: "id type revision practice { id }" });
+      if (!current || current.practice?.id !== actor.practiceId) throw new Error("Resource not found");
+      if (!Number.isInteger(input.expectedRevision) || current.revision !== input.expectedRevision) throw new Error("Resource was changed by another operator; reload and try again");
+      if (current.type !== input.type && (READINESS_GATED.has(current.type) || READINESS_GATED.has(input.type))) {
+        throw new Error("A device's type can't change; add a new resource instead");
+      }
+      const revision = current.revision + 1;
+      await sudo.query.Resource.updateOne({
+        where: { id: current.id },
+        data: { ...fields, location: { connect: { id: location.id } }, services: { set: serviceRefs }, revision },
+        query: "id"
+      });
+      return { success: true, resourceId: current.id, revision, error: null };
+    });
+  } catch (error) {
+    return { ...denied18, error: error instanceof Error ? error.message : "Resource could not be saved" };
+  }
+}
+var resultType21 = import_core135.graphql.object()({
+  name: "ResourceUpsertResult",
+  fields: {
+    success: import_core135.graphql.field({ type: import_core135.graphql.nonNull(import_core135.graphql.Boolean) }),
+    resourceId: import_core135.graphql.field({ type: import_core135.graphql.ID }),
+    revision: import_core135.graphql.field({ type: import_core135.graphql.Int }),
+    error: import_core135.graphql.field({ type: import_core135.graphql.String })
+  }
+});
+var upsertResource = import_core135.graphql.field({
+  type: resultType21,
+  args: {
+    resourceId: import_core135.graphql.arg({ type: import_core135.graphql.ID }),
+    expectedRevision: import_core135.graphql.arg({ type: import_core135.graphql.Int }),
+    name: import_core135.graphql.arg({ type: import_core135.graphql.nonNull(import_core135.graphql.String) }),
+    type: import_core135.graphql.arg({ type: import_core135.graphql.nonNull(import_core135.graphql.String) }),
+    locationId: import_core135.graphql.arg({ type: import_core135.graphql.nonNull(import_core135.graphql.ID) }),
+    capacity: import_core135.graphql.arg({ type: import_core135.graphql.nonNull(import_core135.graphql.Int) }),
+    isPublic: import_core135.graphql.arg({ type: import_core135.graphql.nonNull(import_core135.graphql.Boolean) }),
+    notes: import_core135.graphql.arg({ type: import_core135.graphql.String }),
+    manufacturer: import_core135.graphql.arg({ type: import_core135.graphql.String }),
+    model: import_core135.graphql.arg({ type: import_core135.graphql.String }),
+    serialNumber: import_core135.graphql.arg({ type: import_core135.graphql.String }),
+    maintenanceDueAt: import_core135.graphql.arg({ type: import_core135.graphql.String }),
+    calibrationDueAt: import_core135.graphql.arg({ type: import_core135.graphql.String }),
+    serviceIds: import_core135.graphql.arg({ type: import_core135.graphql.nonNull(import_core135.graphql.list(import_core135.graphql.nonNull(import_core135.graphql.ID))) }),
+    idempotencyKey: import_core135.graphql.arg({ type: import_core135.graphql.nonNull(import_core135.graphql.String) })
+  },
+  resolve(_source, args, context) {
+    return upsertResourceTransaction(context, args);
+  }
+});
+
+// features/keystone/mutations/practiceAdminWorkflows.ts
+var import_core136 = require("@keystone-6/core");
+var denied19 = (error) => ({ success: false, recordId: null, error });
+var failure3 = (error, fallback) => denied19(error instanceof Error ? error.message : fallback);
+var providerRoles2 = ["provider", "esthetician", "nurse", "physician", "assistant"];
+var providerTiers = ["junior", "senior", "master", "celebrity"];
+var providerStatuses = ["active", "on_leave", "inactive"];
+var WEEK = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+async function auditOnce(sudo, practiceId4, action, idempotencyKey) {
+  return (await sudo.query.AuditEvent.findMany({
+    where: { practice: { id: { equals: practiceId4 } }, correlationId: { equals: idempotencyKey }, action: { equals: action } },
+    take: 1,
+    query: "resourceId"
+  }))[0] || null;
+}
+async function audit(sudo, practiceId4, actorId, action, resourceType, resourceId, idempotencyKey, evidence) {
+  const occurredAt = (/* @__PURE__ */ new Date()).toISOString();
+  await sudo.query.AuditEvent.createOne({
+    data: {
+      practice: { connect: { id: practiceId4 } },
+      actor: { connect: { id: actorId } },
+      action,
+      resourceType,
+      resourceId,
+      correlationId: idempotencyKey,
+      evidence: jsonValue(evidence),
+      evidenceHash: evidenceHash({ ...evidence, resourceId, actorId, occurredAt }),
+      occurredAt
+    },
+    query: "id"
+  });
+}
+var uniqueIds = (ids) => [...new Set((ids || []).filter(Boolean))];
+async function updateProviderProfileTransaction(context, args) {
+  let actor;
+  try {
+    actor = requireActorPractice(context, permissions.canManagePeople, "People-management access is required");
+    await assertActiveActor(context);
+  } catch (error) {
+    return failure3(error, "People-management access is required");
+  }
+  const specializationIds = uniqueIds(args.specializationIds);
+  const locationIds = uniqueIds(args.locationIds);
+  const title = args.title?.trim() || "";
+  const bio = args.bio?.trim() || "";
+  if (!validIdempotencyKey(args.idempotencyKey)) return denied19("A valid request key is required");
+  if (!providerRoles2.includes(args.role)) return denied19("Choose a valid role");
+  if (!providerTiers.includes(args.tier)) return denied19("Choose a valid tier");
+  if (!providerStatuses.includes(args.status)) return denied19("Choose a valid status");
+  if (title.length > 120 || bio.length > 4e3) return denied19("Title or bio is too long");
+  if (!locationIds.length || locationIds.length > 100 || specializationIds.length > 200) return denied19("Choose at least one location");
+  if (args.isPublic && (args.status !== "active" || !args.isActive)) return denied19("Only an active provider can be bookable online");
+  const active = args.status === "active" && args.isActive;
+  try {
+    await Promise.all([
+      assertPracticeRecord(context, "Provider", args.providerId),
+      ...locationIds.map((id2) => assertPracticeRecord(context, "Location", id2)),
+      ...specializationIds.map((id2) => assertPracticeRecord(context, "Service", id2))
+    ]);
+    return await serializableWorkflow(context, "medspa-provider-profile-update", [`provider:${args.providerId}`, `idempotency:${args.idempotencyKey}`], async (tx) => {
+      const sudo = tx.sudo();
+      const prior = await auditOnce(sudo, actor.practiceId, "provider_profile.updated", args.idempotencyKey);
+      if (prior) return { success: true, recordId: prior.resourceId, error: null };
+      const provider = await sudo.query.Provider.findOne({
+        where: { id: args.providerId },
+        query: "id status isActive user { id } specializations { id } locations { id } credentials { status effectiveFrom expiresAt primarySourceVerified } authorizations { status effectiveFrom effectiveTo service { id } }"
+      });
+      if (!provider) throw new Error("Provider not found");
+      const activating = active && !(provider.status === "active" && provider.isActive === true);
+      if (activating) {
+        if (provider.user?.id === actor.actorId) throw new Error("You cannot activate your own provider profile");
+        const services = specializationIds.length ? await sudo.query.Service.findMany({ where: { id: { in: specializationIds } }, take: 200, query: "id staffAuthorizationRequired requiresConsultation requiresIntakeReview requiresLotTraceability" }) : [];
+        const restricted = services.filter((service) => service.staffAuthorizationRequired !== false || service.requiresConsultation || service.requiresIntakeReview || service.requiresLotTraceability);
+        if (restricted.length) {
+          const now2 = /* @__PURE__ */ new Date();
+          const credentialed = provider.credentials.some((item) => item.status === "verified" && item.primarySourceVerified === true && new Date(item.effectiveFrom) <= now2 && new Date(item.expiresAt) > now2);
+          const authorizedServices = new Set(provider.authorizations.filter((item) => item.status === "active" && new Date(item.effectiveFrom) <= now2 && (!item.effectiveTo || new Date(item.effectiveTo) > now2)).map((item) => item.service?.id));
+          if (!credentialed || restricted.some((service) => !authorizedServices.has(service.id))) {
+            throw new Error("Treatments that need clinical authority require an effective credential and authorization before activation");
+          }
+        }
+      }
+      const currentSpecializations = new Set(provider.specializations.map((item) => item.id));
+      const currentLocations = new Set(provider.locations.map((item) => item.id));
+      await sudo.query.Provider.updateOne({
+        where: { id: provider.id },
+        data: {
+          title,
+          bio,
+          role: args.role,
+          tier: args.tier,
+          status: args.status,
+          isActive: args.isActive,
+          isPublic: args.isPublic,
+          specializations: {
+            connect: specializationIds.filter((id2) => !currentSpecializations.has(id2)).map((id2) => ({ id: id2 })),
+            disconnect: [...currentSpecializations].filter((id2) => !specializationIds.includes(id2)).map((id2) => ({ id: id2 }))
+          },
+          locations: {
+            connect: locationIds.filter((id2) => !currentLocations.has(id2)).map((id2) => ({ id: id2 })),
+            disconnect: [...currentLocations].filter((id2) => !locationIds.includes(id2)).map((id2) => ({ id: id2 }))
+          }
+        },
+        query: "id"
+      });
+      await audit(sudo, actor.practiceId, actor.actorId, "provider_profile.updated", "Provider", provider.id, args.idempotencyKey, {
+        fromStatus: provider.status,
+        toStatus: args.status,
+        role: args.role,
+        tier: args.tier,
+        isActive: args.isActive,
+        isPublic: args.isPublic,
+        specializationIds,
+        locationIds
+      });
+      return { success: true, recordId: provider.id, error: null };
+    });
+  } catch (error) {
+    return failure3(error, "Provider profile update failed");
+  }
+}
+function validTimezone(value) {
+  const supported = Intl.supportedValuesOf?.("timeZone");
+  if (supported?.length) return supported.includes(value) || value === "UTC";
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
+function minutes(value) {
+  if (typeof value !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return null;
+  const [hour, minute] = value.split(":").map(Number);
+  return hour * 60 + minute;
+}
+function normalizeHours(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Opening hours are invalid");
+  const source = input;
+  if (Object.keys(source).some((key) => !WEEK.includes(key))) throw new Error("Opening hours contain an unknown day");
+  const hours = {};
+  for (const day of WEEK) {
+    const entry = source[day];
+    if (!entry || entry.closed === true) {
+      hours[day] = { closed: true };
+      continue;
+    }
+    const open = minutes(entry.open);
+    const close = minutes(entry.close);
+    const label = day[0].toUpperCase() + day.slice(1);
+    if (open === null || close === null) throw new Error(`${label} hours must be HH:MM`);
+    if (close <= open) throw new Error(`${label} closing time must be after opening`);
+    hours[day] = { open: entry.open, close: entry.close, closed: false };
+  }
+  return hours;
+}
+async function upsertLocationTransaction(context, args) {
+  let actor;
+  try {
+    actor = requireActorPractice(context, permissions.canManagePractice, "Practice-management access is required");
+    await assertActiveActor(context);
+    if (args.locationId) await assertPracticeRecord(context, "Location", args.locationId);
+  } catch (error) {
+    return failure3(error, "Practice-management access is required");
+  }
+  const name = args.name.trim();
+  const email = args.email?.trim() || "";
+  const text96 = (value, max = 200) => (value || "").trim().slice(0, max);
+  if (!validIdempotencyKey(args.idempotencyKey)) return denied19("A valid request key is required");
+  if (!name || name.length > 120) return denied19("Enter a location name");
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return denied19("Enter a valid email");
+  if (!validTimezone(args.timezone)) return denied19("Choose a valid timezone");
+  let hours;
+  try {
+    hours = normalizeHours(args.hours);
+  } catch (error) {
+    return failure3(error, "Opening hours are invalid");
+  }
+  const data = {
+    name,
+    address: text96(args.address),
+    city: text96(args.city, 120),
+    state: text96(args.state, 60),
+    zipCode: text96(args.zipCode, 20),
+    phone: text96(args.phone, 40),
+    email,
+    timezone: args.timezone,
+    hours,
+    isActive: args.isActive
+  };
+  try {
+    return await serializableWorkflow(context, "medspa-location", [args.locationId ? `location:${args.locationId}` : `idempotency:${args.idempotencyKey}`], async (tx) => {
+      const sudo = tx.sudo();
+      const action = args.locationId ? "location.updated" : "location.created";
+      const prior = await auditOnce(sudo, actor.practiceId, action, args.idempotencyKey);
+      if (prior) return { success: true, recordId: prior.resourceId, error: null };
+      if (args.locationId && !args.isActive) {
+        const primary = await sudo.query.StorefrontSetting.count({ where: { practice: { id: { equals: actor.practiceId } }, primaryLocation: { id: { equals: args.locationId } } } });
+        if (primary) throw new Error("Choose another primary storefront location before deactivating this one");
+      }
+      const record = args.locationId ? await sudo.query.Location.updateOne({ where: { id: args.locationId }, data, query: "id" }) : await sudo.query.Location.createOne({ data: { ...data, practice: { connect: { id: actor.practiceId } } }, query: "id" });
+      if (!record) throw new Error("Location not found");
+      await audit(sudo, actor.practiceId, actor.actorId, action, "Location", record.id, args.idempotencyKey, { name, timezone: args.timezone, isActive: args.isActive });
+      return { success: true, recordId: record.id, error: null };
+    });
+  } catch (error) {
+    return failure3(error, "Location could not be saved");
+  }
+}
+var resultType22 = import_core136.graphql.object()({
+  name: "PracticeAdminWorkflowResult",
+  fields: {
+    success: import_core136.graphql.field({ type: import_core136.graphql.nonNull(import_core136.graphql.Boolean) }),
+    recordId: import_core136.graphql.field({ type: import_core136.graphql.ID }),
+    error: import_core136.graphql.field({ type: import_core136.graphql.String })
+  }
+});
+var updateProviderProfile = import_core136.graphql.field({
+  type: resultType22,
+  args: {
+    providerId: import_core136.graphql.arg({ type: import_core136.graphql.nonNull(import_core136.graphql.ID) }),
+    title: import_core136.graphql.arg({ type: import_core136.graphql.String }),
+    bio: import_core136.graphql.arg({ type: import_core136.graphql.String }),
+    role: import_core136.graphql.arg({ type: import_core136.graphql.nonNull(import_core136.graphql.String) }),
+    tier: import_core136.graphql.arg({ type: import_core136.graphql.nonNull(import_core136.graphql.String) }),
+    status: import_core136.graphql.arg({ type: import_core136.graphql.nonNull(import_core136.graphql.String) }),
+    isActive: import_core136.graphql.arg({ type: import_core136.graphql.nonNull(import_core136.graphql.Boolean) }),
+    isPublic: import_core136.graphql.arg({ type: import_core136.graphql.nonNull(import_core136.graphql.Boolean) }),
+    specializationIds: import_core136.graphql.arg({ type: import_core136.graphql.nonNull(import_core136.graphql.list(import_core136.graphql.nonNull(import_core136.graphql.ID))) }),
+    locationIds: import_core136.graphql.arg({ type: import_core136.graphql.nonNull(import_core136.graphql.list(import_core136.graphql.nonNull(import_core136.graphql.ID))) }),
+    idempotencyKey: import_core136.graphql.arg({ type: import_core136.graphql.nonNull(import_core136.graphql.String) })
+  },
+  resolve(_source, args, context) {
+    return updateProviderProfileTransaction(context, args);
+  }
+});
+var upsertLocation = import_core136.graphql.field({
+  type: resultType22,
+  args: {
+    locationId: import_core136.graphql.arg({ type: import_core136.graphql.ID }),
+    name: import_core136.graphql.arg({ type: import_core136.graphql.nonNull(import_core136.graphql.String) }),
+    address: import_core136.graphql.arg({ type: import_core136.graphql.String }),
+    city: import_core136.graphql.arg({ type: import_core136.graphql.String }),
+    state: import_core136.graphql.arg({ type: import_core136.graphql.String }),
+    zipCode: import_core136.graphql.arg({ type: import_core136.graphql.String }),
+    phone: import_core136.graphql.arg({ type: import_core136.graphql.String }),
+    email: import_core136.graphql.arg({ type: import_core136.graphql.String }),
+    timezone: import_core136.graphql.arg({ type: import_core136.graphql.nonNull(import_core136.graphql.String) }),
+    hours: import_core136.graphql.arg({ type: import_core136.graphql.nonNull(import_core136.graphql.JSON) }),
+    isActive: import_core136.graphql.arg({ type: import_core136.graphql.nonNull(import_core136.graphql.Boolean) }),
+    idempotencyKey: import_core136.graphql.arg({ type: import_core136.graphql.nonNull(import_core136.graphql.String) })
+  },
+  resolve(_source, args, context) {
+    return upsertLocationTransaction(context, args);
+  }
+});
+
+// features/keystone/mutations/clientRelationshipWorkflows.ts
+var import_core137 = require("@keystone-6/core");
+var resultType23 = import_core137.graphql.object()({
+  name: "ClientRelationshipWorkflowResult",
+  fields: {
+    success: import_core137.graphql.field({ type: import_core137.graphql.nonNull(import_core137.graphql.Boolean) }),
+    recordId: import_core137.graphql.field({ type: import_core137.graphql.ID }),
+    error: import_core137.graphql.field({ type: import_core137.graphql.String })
+  }
+});
+var failure4 = (error) => ({ success: false, recordId: null, error: error instanceof Error ? error.message : "Request failed" });
+var canReadClientRecords = ({ session }) => permissions.canReadClients({ session }) || permissions.canSchedule({ session }) || permissions.canManageClinical({ session });
+var DIRECTORY_FILTERS = ["all", "upcoming", "followup", "marketing"];
+var PAGE_SIZE = 50;
+function text94(value, max, label) {
+  if (value === null || value === void 0) return null;
+  const trimmed = String(value).trim();
+  if (trimmed.length > max) throw new Error(`${label} is too long`);
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(trimmed)) throw new Error(`${label} contains invalid characters`);
+  return trimmed;
+}
+async function dueFollowUpClientIds(sudo, practiceId4) {
+  const tasks = await sudo.query.FollowUpTask.findMany({
+    where: { practice: { id: { equals: practiceId4 } }, status: { in: ["open", "in_progress"] }, dueAt: { lte: (/* @__PURE__ */ new Date()).toISOString() } },
+    take: 1e3,
+    query: "client { id }"
+  });
+  return [...new Set(tasks.map((task) => task.client?.id).filter(Boolean))];
+}
+var medspaClientDirectory = import_core137.graphql.field({
+  type: import_core137.graphql.JSON,
+  args: {
+    search: import_core137.graphql.arg({ type: import_core137.graphql.String }),
+    filter: import_core137.graphql.arg({ type: import_core137.graphql.String }),
+    page: import_core137.graphql.arg({ type: import_core137.graphql.Int })
+  },
+  async resolve(_source, args, context) {
+    const actor = requireActorPractice(context, canReadClientRecords, "Client access is not authorized");
+    await assertActiveActor(context);
+    const sudo = context.sudo();
+    const filter = DIRECTORY_FILTERS.includes(args.filter) ? args.filter : "all";
+    const page = Math.max(0, Math.min(Math.trunc(args.page || 0), 1e3));
+    const search = (args.search || "").trim().slice(0, 100);
+    const now2 = (/* @__PURE__ */ new Date()).toISOString();
+    const conditions = [{ practice: { id: { equals: actor.practiceId } } }];
+    if (search) {
+      conditions.push({ OR: [
+        { user: { name: { contains: search, mode: "insensitive" } } },
+        { user: { email: { contains: search, mode: "insensitive" } } },
+        { user: { phone: { contains: search } } }
+      ] });
+    }
+    if (filter === "upcoming") conditions.push({ appointments: { some: { startTime: { gte: now2 }, status: { in: ["pending", "confirmed"] } } } });
+    if (filter === "marketing") conditions.push({ marketingConsent: { equals: true } });
+    const dueIds = await dueFollowUpClientIds(sudo, actor.practiceId);
+    if (filter === "followup") conditions.push({ id: { in: dueIds } });
+    const where = { AND: conditions };
+    const [items, total] = await Promise.all([
+      sudo.query.Client.findMany({
+        where,
+        take: PAGE_SIZE,
+        skip: page * PAGE_SIZE,
+        orderBy: [{ updatedAt: "desc" }],
+        query: `id totalVisits lifetimeValue lastVisit marketingConsent
+          user { id name email phone }
+          preferredProvider { user { name } }
+          homeLocation { timezone }
+          appointments(where: { startTime: { gte: "${now2}" }, status: { in: [pending, confirmed] } }, orderBy: { startTime: asc }, take: 1) { id startTime location { timezone } }`
+      }),
+      sudo.query.Client.count({ where })
+    ]);
+    const due = new Set(dueIds);
+    return {
+      total,
+      page,
+      pageSize: PAGE_SIZE,
+      items: items.map((item) => ({
+        id: item.id,
+        userId: item.user?.id || null,
+        name: item.user?.name || null,
+        email: item.user?.email || null,
+        phone: item.user?.phone || null,
+        lastVisit: item.lastVisit || null,
+        totalVisits: item.totalVisits || 0,
+        lifetimeValue: item.lifetimeValue || 0,
+        marketingConsent: item.marketingConsent === true,
+        preferredProvider: item.preferredProvider?.user?.name || null,
+        nextAppointment: item.appointments?.[0] ? { id: item.appointments[0].id, startTime: item.appointments[0].startTime } : null,
+        timezone: item.appointments?.[0]?.location?.timezone || item.homeLocation?.timezone || null,
+        followUpDue: due.has(item.id)
+      }))
+    };
+  }
+});
+var medspaClientRecord = import_core137.graphql.field({
+  type: import_core137.graphql.JSON,
+  args: { clientId: import_core137.graphql.arg({ type: import_core137.graphql.nonNull(import_core137.graphql.ID) }) },
+  async resolve(_source, args, context) {
+    const actor = requireActorPractice(context, canReadClientRecords, "Client access is not authorized");
+    const { role } = await assertActiveActor(context);
+    const sudo = context.sudo();
+    const client = await sudo.query.Client.findOne({
+      where: { id: args.clientId },
+      query: `id practice { id } dateOfBirth contactPreferences operationalNotes firstVisit lastVisit totalVisits lifetimeValue marketingConsent photoMarketingConsent createdAt
+        user { id name email phone }
+        homeLocation { id name }
+        preferredProvider { id user { name } }`
+    });
+    if (!client || client.practice?.id !== actor.practiceId) return null;
+    const userId = client.user?.id || null;
+    const scoped2 = (extra) => ({ AND: [{ practice: { id: { equals: actor.practiceId } } }, extra] });
+    const finance = role.canManageFinance === true || role.canSchedule === true;
+    const giftCards = role.canManageFinance === true;
+    const clinical = role.canManageClinical === true;
+    const [appointments, followUps, waitlist, packages, memberships, cards, notes] = await Promise.all([
+      sudo.query.Appointment.findMany({
+        where: scoped2({ client: { id: { equals: client.id } } }),
+        take: 100,
+        orderBy: { startTime: "desc" },
+        query: "id startTime status duration provider { user { name } } location { name timezone } lineItems { serviceTitle price quantity }"
+      }),
+      sudo.query.FollowUpTask.findMany({
+        where: scoped2({ client: { id: { equals: client.id } } }),
+        take: 50,
+        orderBy: { dueAt: "desc" },
+        query: "id title status dueAt completedAt assignedTo { name }"
+      }),
+      userId ? sudo.query.WaitlistEntry.findMany({
+        where: scoped2({ client: { id: { equals: userId } } }),
+        take: 50,
+        orderBy: { createdAt: "desc" },
+        query: "id status createdAt preferredTimeRange service { name }"
+      }) : Promise.resolve([]),
+      finance && userId ? sudo.query.ClientPackage.findMany({
+        where: scoped2({ client: { id: { equals: userId } } }),
+        take: 50,
+        orderBy: { purchasedAt: "desc" },
+        query: "id status purchasedAt expiresAt totalValue usedValue package { name }"
+      }) : Promise.resolve(null),
+      finance && userId ? sudo.query.ClientMembership.findMany({
+        where: scoped2({ client: { id: { equals: userId } } }),
+        take: 50,
+        query: "id status startDate nextBillingDate pausedUntil membership { name monthlyPrice }"
+      }) : Promise.resolve(null),
+      giftCards && userId ? sudo.query.GiftCard.findMany({
+        where: scoped2({ purchasedBy: { id: { equals: userId } } }),
+        take: 50,
+        query: "id code currentBalance initialValue isActive expiresAt recipientName"
+      }) : Promise.resolve(null),
+      clinical ? sudo.query.ClientNote.findMany({
+        where: scoped2({ client: { id: { equals: client.id } }, supersededBy: null }),
+        take: 50,
+        orderBy: { createdAt: "desc" },
+        query: "id type content signedAt createdAt author { name }"
+      }) : Promise.resolve(null)
+    ]);
+    return {
+      client: {
+        id: client.id,
+        name: client.user?.name || null,
+        email: client.user?.email || null,
+        phone: client.user?.phone || null,
+        dateOfBirth: client.dateOfBirth || null,
+        contactPreferences: client.contactPreferences || "",
+        operationalNotes: client.operationalNotes || "",
+        firstVisit: client.firstVisit || null,
+        lastVisit: client.lastVisit || null,
+        totalVisits: client.totalVisits || 0,
+        lifetimeValue: client.lifetimeValue || 0,
+        marketingConsent: client.marketingConsent === true,
+        createdAt: client.createdAt || null,
+        homeLocation: client.homeLocation || null,
+        preferredProvider: client.preferredProvider ? { id: client.preferredProvider.id, name: client.preferredProvider.user?.name || null } : null
+      },
+      appointments: appointments.map((item) => ({
+        id: item.id,
+        startTime: item.startTime,
+        status: item.status,
+        duration: item.duration,
+        provider: item.provider?.user?.name || null,
+        location: item.location?.name || null,
+        timezone: item.location?.timezone || null,
+        treatments: (item.lineItems || []).map((line) => line.serviceTitle).filter(Boolean),
+        total: (item.lineItems || []).reduce((sum, line) => sum + (line.price || 0) * (line.quantity ?? 1), 0)
+      })),
+      followUps: followUps.map((item) => ({ id: item.id, title: item.title, status: item.status, dueAt: item.dueAt, completedAt: item.completedAt || null, assignedTo: item.assignedTo?.name || null })),
+      waitlist: waitlist.map((item) => ({ id: item.id, status: item.status, createdAt: item.createdAt, preferredTimeRange: item.preferredTimeRange || null, service: item.service?.name || null })),
+      packages: packages ? packages.map((item) => ({ id: item.id, name: item.package?.name || null, status: item.status, purchasedAt: item.purchasedAt || null, expiresAt: item.expiresAt || null, remaining: Math.max(0, (item.totalValue || 0) - (item.usedValue || 0)) })) : null,
+      memberships: memberships ? memberships.map((item) => ({ id: item.id, name: item.membership?.name || null, status: item.status, monthlyPrice: item.membership?.monthlyPrice ?? null, startDate: item.startDate || null, nextBillingDate: item.nextBillingDate || null, pausedUntil: item.pausedUntil || null })) : null,
+      giftCards: cards ? cards.map((item) => ({ id: item.id, code: item.code ? `\u2022\u2022\u2022\u2022 ${String(item.code).slice(-4)}` : null, balance: item.currentBalance || 0, initialValue: item.initialValue || 0, isActive: item.isActive === true, expiresAt: item.expiresAt || null, recipientName: item.recipientName || null })) : null,
+      notes: notes ? notes.map((item) => ({ id: item.id, type: item.type || null, content: item.content || "", signedAt: item.signedAt || null, createdAt: item.createdAt, author: item.author?.name || null })) : null
+    };
+  }
+});
+var updateClientProfile = import_core137.graphql.field({
+  type: import_core137.graphql.nonNull(resultType23),
+  args: {
+    clientId: import_core137.graphql.arg({ type: import_core137.graphql.nonNull(import_core137.graphql.ID) }),
+    name: import_core137.graphql.arg({ type: import_core137.graphql.nonNull(import_core137.graphql.String) }),
+    phone: import_core137.graphql.arg({ type: import_core137.graphql.String }),
+    dateOfBirth: import_core137.graphql.arg({ type: import_core137.graphql.String }),
+    contactPreferences: import_core137.graphql.arg({ type: import_core137.graphql.String }),
+    operationalNotes: import_core137.graphql.arg({ type: import_core137.graphql.String }),
+    preferredProviderId: import_core137.graphql.arg({ type: import_core137.graphql.ID }),
+    homeLocationId: import_core137.graphql.arg({ type: import_core137.graphql.ID }),
+    marketingConsent: import_core137.graphql.arg({ type: import_core137.graphql.nonNull(import_core137.graphql.Boolean) }),
+    idempotencyKey: import_core137.graphql.arg({ type: import_core137.graphql.nonNull(import_core137.graphql.String) })
+  },
+  async resolve(_source, args, context) {
+    try {
+      const actor = requireActorPractice(context, permissions.canReadClients, "Client profile access is not authorized");
+      await assertActiveActor(context);
+      if (!validIdempotencyKey(args.idempotencyKey)) throw new Error("Request key is invalid");
+      const name = text94(args.name, 120, "Name");
+      if (!name) throw new Error("Name is required");
+      const phone = text94(args.phone, 40, "Phone") || "";
+      const contactPreferences = text94(args.contactPreferences, 500, "Contact preferences") || "";
+      const operationalNotes = text94(args.operationalNotes, 2e3, "Notes") || "";
+      let dateOfBirth = null;
+      if (args.dateOfBirth) {
+        const parsed = new Date(args.dateOfBirth);
+        if (Number.isNaN(parsed.getTime()) || parsed.getTime() > Date.now() || parsed.getFullYear() < 1900) throw new Error("Date of birth is invalid");
+        dateOfBirth = parsed.toISOString();
+      }
+      const sudo = context.sudo();
+      const client = await sudo.query.Client.findOne({
+        where: { id: args.clientId },
+        query: "id practice { id } user { id practice { id } providerProfile { id } role { id } }"
+      });
+      if (!client || client.practice?.id !== actor.practiceId) throw new Error("Client not found");
+      const user = client.user;
+      if (user && (user.providerProfile?.id || user.role?.id || user.practice?.id && user.practice.id !== actor.practiceId)) {
+        throw new Error("This client is linked to a staff account; edit it from Staff");
+      }
+      const [provider, location] = await Promise.all([
+        args.preferredProviderId ? sudo.query.Provider.findOne({ where: { id: args.preferredProviderId }, query: "id practice { id }" }) : Promise.resolve(null),
+        args.homeLocationId ? sudo.query.Location.findOne({ where: { id: args.homeLocationId }, query: "id practice { id } isActive" }) : Promise.resolve(null)
+      ]);
+      if (args.preferredProviderId && provider?.practice?.id !== actor.practiceId) throw new Error("Preferred provider not found");
+      if (args.homeLocationId && (location?.practice?.id !== actor.practiceId || location?.isActive !== true)) throw new Error("Home location not found");
+      return await context.transaction(async (tx) => {
+        const txSudo = tx.sudo();
+        await txSudo.query.Client.updateOne({
+          where: { id: client.id },
+          data: {
+            dateOfBirth,
+            contactPreferences,
+            operationalNotes,
+            marketingConsent: args.marketingConsent,
+            preferredProvider: args.preferredProviderId ? { connect: { id: args.preferredProviderId } } : { disconnect: true },
+            homeLocation: args.homeLocationId ? { connect: { id: args.homeLocationId } } : { disconnect: true }
+          },
+          query: "id"
+        });
+        if (user?.id) await txSudo.query.User.updateOne({ where: { id: user.id }, data: { name, phone }, query: "id" });
+        const evidence = { clientId: client.id, fields: ["name", "phone", "dateOfBirth", "contactPreferences", "operationalNotes", "preferredProvider", "homeLocation", "marketingConsent"], marketingConsent: args.marketingConsent };
+        await txSudo.query.AuditEvent.createOne({
+          data: {
+            practice: { connect: { id: actor.practiceId } },
+            actor: { connect: { id: actor.actorId } },
+            action: "client.profile_updated.v1",
+            resourceType: "Client",
+            resourceId: client.id,
+            correlationId: args.idempotencyKey,
+            evidence,
+            evidenceHash: evidenceHash(evidence),
+            occurredAt: (/* @__PURE__ */ new Date()).toISOString()
+          },
+          query: "id"
+        });
+        return { success: true, recordId: client.id, error: null };
+      });
+    } catch (error) {
+      return failure4(error);
+    }
+  }
+});
+var moderateReview = import_core137.graphql.field({
+  type: import_core137.graphql.nonNull(resultType23),
+  args: {
+    reviewId: import_core137.graphql.arg({ type: import_core137.graphql.nonNull(import_core137.graphql.ID) }),
+    isApproved: import_core137.graphql.arg({ type: import_core137.graphql.nonNull(import_core137.graphql.Boolean) }),
+    idempotencyKey: import_core137.graphql.arg({ type: import_core137.graphql.nonNull(import_core137.graphql.String) })
+  },
+  async resolve(_source, args, context) {
+    try {
+      const actor = requireActorPractice(
+        context,
+        ({ session }) => permissions.canManageCommunications({ session }) || permissions.canManagePractice({ session }),
+        "Review moderation is not authorized"
+      );
+      await assertActiveActor(context);
+      if (!validIdempotencyKey(args.idempotencyKey)) throw new Error("Request key is invalid");
+      const sudo = context.sudo();
+      const review = await sudo.query.Review.findOne({ where: { id: args.reviewId }, query: "id isApproved practice { id }" });
+      if (!review || review.practice?.id !== actor.practiceId) throw new Error("Review not found");
+      if (review.isApproved === args.isApproved) return { success: true, recordId: review.id, error: null };
+      return await context.transaction(async (tx) => {
+        const txSudo = tx.sudo();
+        await txSudo.query.Review.updateOne({ where: { id: review.id }, data: { isApproved: args.isApproved }, query: "id" });
+        const evidence = { reviewId: review.id, from: review.isApproved === true, to: args.isApproved };
+        await txSudo.query.AuditEvent.createOne({
+          data: {
+            practice: { connect: { id: actor.practiceId } },
+            actor: { connect: { id: actor.actorId } },
+            action: args.isApproved ? "review.approved.v1" : "review.hidden.v1",
+            resourceType: "Review",
+            resourceId: review.id,
+            correlationId: args.idempotencyKey,
+            evidence,
+            evidenceHash: evidenceHash(evidence),
+            occurredAt: (/* @__PURE__ */ new Date()).toISOString()
+          },
+          query: "id"
+        });
+        return { success: true, recordId: review.id, error: null };
+      });
+    } catch (error) {
+      return failure4(error);
+    }
+  }
+});
+var WAITLIST_STATUSES = ["active", "notified", "converted", "removed"];
+var medspaWaitlistBoard = import_core137.graphql.field({
+  type: import_core137.graphql.JSON,
+  args: { status: import_core137.graphql.arg({ type: import_core137.graphql.String }) },
+  async resolve(_source, args, context) {
+    const actor = requireActorPractice(context, permissions.canSchedule, "Waitlist access is not authorized");
+    await assertActiveActor(context);
+    const sudo = context.sudo();
+    const status = WAITLIST_STATUSES.includes(args.status) ? args.status : "active";
+    const scoped2 = (extra) => ({ AND: [{ practice: { id: { equals: actor.practiceId } } }, ...extra ? [extra] : []] });
+    const [entries, ...counts] = await Promise.all([
+      sudo.query.WaitlistEntry.findMany({
+        where: scoped2({ status: { equals: status } }),
+        take: 200,
+        orderBy: { createdAt: status === "active" ? "asc" : "desc" },
+        query: `id status guestName guestPhone preferredDays preferredTimeRange dateRangeStart dateRangeEnd notes createdAt notifiedAt transitionedAt
+          client { id name email phone clientProfile { id } }
+          service { id name }
+          preferredProviders { id user { name } }
+          convertedAppointment { id startTime }`
+      }),
+      ...WAITLIST_STATUSES.map((value) => sudo.query.WaitlistEntry.count({ where: scoped2({ status: { equals: value } }) }))
+    ]);
+    return {
+      status,
+      counts: Object.fromEntries(WAITLIST_STATUSES.map((value, index) => [value, counts[index]])),
+      entries: entries.map((entry) => ({
+        id: entry.id,
+        status: entry.status,
+        name: entry.client?.name || entry.guestName || null,
+        phone: entry.client?.phone || entry.guestPhone || null,
+        email: entry.client?.email || null,
+        clientRecordId: entry.client?.clientProfile?.id || null,
+        isGuest: !entry.client,
+        service: entry.service ? { id: entry.service.id, name: entry.service.name } : null,
+        providers: (entry.preferredProviders || []).map((provider) => provider.user?.name).filter(Boolean),
+        preferredDays: Array.isArray(entry.preferredDays) ? entry.preferredDays : [],
+        preferredTimeRange: entry.preferredTimeRange || null,
+        dateRangeStart: entry.dateRangeStart || null,
+        dateRangeEnd: entry.dateRangeEnd || null,
+        notes: entry.notes || null,
+        createdAt: entry.createdAt,
+        notifiedAt: entry.notifiedAt || null,
+        convertedAppointment: entry.convertedAppointment || null
+      }))
+    };
+  }
+});
+var MESSAGE_STATUSES = ["all", "sent", "delivered", "failed"];
+var medspaMessageLog = import_core137.graphql.field({
+  type: import_core137.graphql.JSON,
+  args: { status: import_core137.graphql.arg({ type: import_core137.graphql.String }), page: import_core137.graphql.arg({ type: import_core137.graphql.Int }) },
+  async resolve(_source, args, context) {
+    const actor = requireActorPractice(context, permissions.canManageCommunications, "Message log access is not authorized");
+    await assertActiveActor(context);
+    const sudo = context.sudo();
+    const status = MESSAGE_STATUSES.includes(args.status) ? args.status : "all";
+    const page = Math.max(0, Math.min(Math.trunc(args.page || 0), 1e3));
+    const where = { AND: [{ practice: { id: { equals: actor.practiceId } } }, ...status === "all" ? [] : [{ status: { equals: status } }]] };
+    const [items, total, failed2] = await Promise.all([
+      sudo.query.MessageLog.findMany({
+        where,
+        take: PAGE_SIZE,
+        skip: page * PAGE_SIZE,
+        orderBy: { sentAt: "desc" },
+        query: "id channel status sentAt errorMessage recipient { name email clientProfile { id } } template { id name type }"
+      }),
+      sudo.query.MessageLog.count({ where }),
+      sudo.query.MessageLog.count({ where: { AND: [{ practice: { id: { equals: actor.practiceId } } }, { status: { equals: "failed" } }] } })
+    ]);
+    return {
+      status,
+      page,
+      pageSize: PAGE_SIZE,
+      total,
+      failed: failed2,
+      items: items.map((item) => ({
+        id: item.id,
+        channel: item.channel,
+        status: item.status,
+        sentAt: item.sentAt || null,
+        error: item.errorMessage || null,
+        recipient: item.recipient?.name || item.recipient?.email || null,
+        clientRecordId: item.recipient?.clientProfile?.id || null,
+        template: item.template ? { id: item.template.id, name: item.template.name, type: item.template.type } : null
+      }))
+    };
+  }
+});
+var REVIEW_FILTERS = ["pending", "approved", "all"];
+var medspaReviewBoard = import_core137.graphql.field({
+  type: import_core137.graphql.JSON,
+  args: { filter: import_core137.graphql.arg({ type: import_core137.graphql.String }), page: import_core137.graphql.arg({ type: import_core137.graphql.Int }) },
+  async resolve(_source, args, context) {
+    const actor = requireActorPractice(
+      context,
+      ({ session }) => permissions.canManageCommunications({ session }) || permissions.canManagePractice({ session }),
+      "Review access is not authorized"
+    );
+    await assertActiveActor(context);
+    const sudo = context.sudo();
+    const filter = REVIEW_FILTERS.includes(args.filter) ? args.filter : "pending";
+    const page = Math.max(0, Math.min(Math.trunc(args.page || 0), 1e3));
+    const practice = { practice: { id: { equals: actor.practiceId } } };
+    const where = filter === "all" ? practice : { AND: [practice, { isApproved: { equals: filter === "approved" } }] };
+    const [items, total, pending, approved, ratings] = await Promise.all([
+      sudo.query.Review.findMany({
+        where,
+        take: PAGE_SIZE,
+        skip: page * PAGE_SIZE,
+        orderBy: { createdAt: "desc" },
+        query: "id rating comment isApproved createdAt client { id user { name } } service { id name } provider { id user { name } } appointment { id startTime }"
+      }),
+      sudo.query.Review.count({ where }),
+      sudo.query.Review.count({ where: { AND: [practice, { isApproved: { equals: false } }] } }),
+      sudo.query.Review.count({ where: { AND: [practice, { isApproved: { equals: true } }] } }),
+      sudo.query.Review.findMany({ where: { AND: [practice, { isApproved: { equals: true } }] }, take: 1e3, query: "rating" })
+    ]);
+    const average = ratings.length ? ratings.reduce((sum, item) => sum + Number(item.rating || 0), 0) / ratings.length : null;
+    return {
+      filter,
+      page,
+      pageSize: PAGE_SIZE,
+      total,
+      counts: { pending, approved, all: pending + approved },
+      averageRating: average === null ? null : Math.round(average * 10) / 10,
+      items: items.map((item) => ({
+        id: item.id,
+        rating: item.rating,
+        comment: item.comment || "",
+        isApproved: item.isApproved === true,
+        createdAt: item.createdAt,
+        client: item.client ? { id: item.client.id, name: item.client.user?.name || null } : null,
+        service: item.service ? { id: item.service.id, name: item.service.name } : null,
+        provider: item.provider ? { id: item.provider.id, name: item.provider.user?.name || null } : null,
+        appointment: item.appointment ? { id: item.appointment.id, startTime: item.appointment.startTime } : null
+      }))
+    };
+  }
+});
+
+// features/keystone/mutations/benefitCatalogWorkflows.ts
+var import_node_crypto9 = require("node:crypto");
+var import_core138 = require("@keystone-6/core");
+var denied20 = { success: false, recordId: null };
+var fail9 = (error, fallback) => ({ ...denied20, error: error instanceof Error ? error.message : fallback });
+var MAX_MINOR = 1e7;
+var cents = (value) => Number.isInteger(value) && value >= 0 && value <= MAX_MINOR;
+async function financeActor(context) {
+  const actor = requireActorPractice(context, permissions.canManageFinance, "Finance access is required");
+  await assertActiveActor(context);
+  return actor;
+}
+async function priorCommand(sudo, practiceId4, action, key) {
+  const rows = await sudo.query.AuditEvent.findMany({
+    where: { practice: { id: { equals: practiceId4 } }, action: { equals: action }, correlationId: { equals: key } },
+    take: 1,
+    query: "id resourceId evidenceHash"
+  });
+  return rows[0] || null;
+}
+async function audit2(sudo, actor, action, resourceType, resourceId, key, evidence) {
+  const occurredAt = (/* @__PURE__ */ new Date()).toISOString();
+  await sudo.query.AuditEvent.createOne({
+    data: {
+      practice: { connect: { id: actor.practiceId } },
+      actor: { connect: { id: actor.actorId } },
+      action,
+      resourceType,
+      resourceId,
+      correlationId: key,
+      evidence,
+      evidenceHash: evidenceHash({ action, resourceId, evidence }),
+      occurredAt
+    },
+    query: "id"
+  });
+}
+async function practiceServiceIds(sudo, practiceId4, ids) {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (unique.length > 100) throw new Error("Choose at most 100 treatments");
+  if (!unique.length) return [];
+  const found = await sudo.query.Service.findMany({ where: { id: { in: unique }, practice: { id: { equals: practiceId4 } } }, take: 100, query: "id" });
+  if (found.length !== unique.length) throw new Error("A selected treatment was not found");
+  return unique;
+}
+async function recordCashPayment(sudo, actor, key, amount, note, receiptEmail) {
+  if (amount <= 0) return null;
+  const now2 = (/* @__PURE__ */ new Date()).toISOString();
+  return sudo.query.Payment.createOne({
+    data: {
+      practice: { connect: { id: actor.practiceId } },
+      idempotencyKey: aggregateIdempotencyKey(actor.practiceId, `${key}:payment`),
+      subtotal: amount,
+      tax: 0,
+      tip: 0,
+      discount: 0,
+      totalAmount: amount,
+      paymentMethod: "cash",
+      status: "completed",
+      processedBy: { connect: { id: actor.actorId } },
+      processedAt: now2,
+      receiptEmail: receiptEmail || "",
+      notes: note
+    },
+    query: "id"
+  });
+}
+async function upsertMembershipPlanTransaction(context, args) {
+  let actor;
+  try {
+    actor = await financeActor(context);
+    if (args.membershipId) await assertPracticeRecord(context, "Membership", args.membershipId);
+  } catch (error) {
+    return fail9(error, "Membership plan not found");
+  }
+  const name = args.name.trim();
+  if (!name || name.length > 120 || (args.description?.length || 0) > 2e3) return { ...denied20, error: "Enter a name up to 120 characters" };
+  if (!cents(args.monthlyPrice)) return { ...denied20, error: "Monthly price must be whole cents" };
+  if (!Number.isInteger(args.discountPercent) || args.discountPercent < 0 || args.discountPercent > 100) return { ...denied20, error: "Discount must be 0\u2013100%" };
+  if (!validIdempotencyKey(args.idempotencyKey)) return { ...denied20, error: "Request key is invalid" };
+  try {
+    return await serializableWorkflow(context, "medspa-benefit-catalog", [`membership:${args.membershipId || "new"}`, `idempotency:${args.idempotencyKey}`], async (tx) => {
+      const sudo = tx.sudo();
+      const replay2 = await priorCommand(sudo, actor.practiceId, "membership_plan.saved", args.idempotencyKey);
+      if (replay2) return { success: true, recordId: replay2.resourceId, error: null };
+      const serviceIds = await practiceServiceIds(sudo, actor.practiceId, args.includedServiceIds);
+      const data = { name, description: args.description?.trim() || "", monthlyPrice: args.monthlyPrice, discountPercent: args.discountPercent, isActive: args.isActive };
+      const record = args.membershipId ? await sudo.query.Membership.updateOne({ where: { id: args.membershipId }, data: { ...data, includedServices: { set: serviceIds.map((id2) => ({ id: id2 })) } }, query: "id" }) : await sudo.query.Membership.createOne({ data: { ...data, practice: { connect: { id: actor.practiceId } }, includedServices: { connect: serviceIds.map((id2) => ({ id: id2 })) } }, query: "id" });
+      await audit2(sudo, actor, "membership_plan.saved", "Membership", record.id, args.idempotencyKey, { ...data, serviceIds });
+      return { success: true, recordId: record.id, error: null };
+    });
+  } catch (error) {
+    return fail9(error, "Membership plan could not be saved");
+  }
+}
+async function upsertServicePackageTransaction(context, args) {
+  let actor;
+  try {
+    actor = await financeActor(context);
+    if (args.packageId) await assertPracticeRecord(context, "ServicePackage", args.packageId);
+  } catch (error) {
+    return fail9(error, "Package not found");
+  }
+  const name = args.name.trim();
+  if (!name || name.length > 120 || (args.description?.length || 0) > 2e3) return { ...denied20, error: "Enter a name up to 120 characters" };
+  if (!cents(args.totalPrice) || args.totalPrice <= 0) return { ...denied20, error: "Price must be whole cents above zero" };
+  if (!cents(args.savingsAmount)) return { ...denied20, error: "Savings must be whole cents" };
+  if (!Number.isInteger(args.validDays) || args.validDays < 1 || args.validDays > 1825) return { ...denied20, error: "Validity must be 1\u20131825 days" };
+  if (!args.serviceIds.length) return { ...denied20, error: "Choose at least one treatment" };
+  if (!validIdempotencyKey(args.idempotencyKey)) return { ...denied20, error: "Request key is invalid" };
+  try {
+    return await serializableWorkflow(context, "medspa-benefit-catalog", [`package:${args.packageId || "new"}`, `idempotency:${args.idempotencyKey}`], async (tx) => {
+      const sudo = tx.sudo();
+      const replay2 = await priorCommand(sudo, actor.practiceId, "service_package.saved", args.idempotencyKey);
+      if (replay2) return { success: true, recordId: replay2.resourceId, error: null };
+      const serviceIds = await practiceServiceIds(sudo, actor.practiceId, args.serviceIds);
+      const data = { name, description: args.description?.trim() || "", totalPrice: args.totalPrice, savingsAmount: args.savingsAmount, validDays: args.validDays, isActive: args.isActive };
+      const record = args.packageId ? await sudo.query.ServicePackage.updateOne({ where: { id: args.packageId }, data: { ...data, services: { set: serviceIds.map((id2) => ({ id: id2 })) } }, query: "id" }) : await sudo.query.ServicePackage.createOne({ data: { ...data, practice: { connect: { id: actor.practiceId } }, services: { connect: serviceIds.map((id2) => ({ id: id2 })) } }, query: "id" });
+      await audit2(sudo, actor, "service_package.saved", "ServicePackage", record.id, args.idempotencyKey, { ...data, serviceIds });
+      return { success: true, recordId: record.id, error: null };
+    });
+  } catch (error) {
+    return fail9(error, "Package could not be saved");
+  }
+}
+async function clientUser(context, clientId) {
+  const client = await assertPracticeRecord(context, "Client", clientId, "id practice { id } user { id email name }");
+  if (!client.user?.id) throw new Error("Client has no account to hold this benefit");
+  return client.user;
+}
+async function enrollClientMembershipTransaction(context, args) {
+  let actor, user;
+  try {
+    actor = await financeActor(context);
+    user = await clientUser(context, args.clientId);
+    await assertPracticeRecord(context, "Membership", args.membershipId);
+  } catch (error) {
+    return fail9(error, "Client or membership not found");
+  }
+  const start = new Date(args.startDate);
+  if (Number.isNaN(start.getTime())) return { ...denied20, error: "Start date is invalid" };
+  if (!validIdempotencyKey(args.idempotencyKey)) return { ...denied20, error: "Request key is invalid" };
+  try {
+    return await serializableWorkflow(context, "medspa-membership-enrollment", [`client:${user.id}`, `idempotency:${args.idempotencyKey}`], async (tx) => {
+      const sudo = tx.sudo();
+      const replay2 = await priorCommand(sudo, actor.practiceId, "client_membership.enrolled", args.idempotencyKey);
+      if (replay2) return { success: true, recordId: replay2.resourceId, error: null };
+      const plan = await sudo.query.Membership.findOne({ where: { id: args.membershipId }, query: "id isActive" });
+      if (!plan?.isActive) throw new Error("This membership plan is not active");
+      const open = await sudo.query.ClientMembership.count({ where: { practice: { id: { equals: actor.practiceId } }, client: { id: { equals: user.id } }, membership: { id: { equals: args.membershipId } }, status: { in: ["active", "paused"] } } });
+      if (open) throw new Error("Client already holds this membership");
+      const nextBilling = new Date(start);
+      nextBilling.setMonth(nextBilling.getMonth() + 1);
+      const record = await sudo.query.ClientMembership.createOne({
+        data: {
+          practice: { connect: { id: actor.practiceId } },
+          client: { connect: { id: user.id } },
+          membership: { connect: { id: args.membershipId } },
+          startDate: start.toISOString(),
+          nextBillingDate: nextBilling.toISOString(),
+          status: "active"
+        },
+        query: "id"
+      });
+      await audit2(sudo, actor, "client_membership.enrolled", "ClientMembership", record.id, args.idempotencyKey, { clientUserId: user.id, membershipId: args.membershipId, startDate: start.toISOString() });
+      return { success: true, recordId: record.id, error: null };
+    });
+  } catch (error) {
+    return fail9(error, "Membership enrollment failed");
+  }
+}
+async function sellClientPackageTransaction(context, args) {
+  let actor, user;
+  try {
+    actor = await financeActor(context);
+    user = await clientUser(context, args.clientId);
+    await assertPracticeRecord(context, "ServicePackage", args.packageId);
+  } catch (error) {
+    return fail9(error, "Client or package not found");
+  }
+  if (!cents(args.paidAmount)) return { ...denied20, error: "Amount paid must be whole cents" };
+  if (!validIdempotencyKey(args.idempotencyKey)) return { ...denied20, error: "Request key is invalid" };
+  try {
+    return await serializableWorkflow(context, "medspa-package-sale", [`client:${user.id}`, `idempotency:${args.idempotencyKey}`], async (tx) => {
+      const sudo = tx.sudo();
+      const replay2 = await priorCommand(sudo, actor.practiceId, "client_package.sold", args.idempotencyKey);
+      if (replay2) return { success: true, recordId: replay2.resourceId, error: null };
+      const plan = await sudo.query.ServicePackage.findOne({ where: { id: args.packageId }, query: "id name isActive totalPrice savingsAmount validDays services { id }" });
+      if (!plan?.isActive) throw new Error("This package is not active");
+      const serviceIds = (plan.services || []).map((service) => service.id).sort();
+      if (!serviceIds.length) throw new Error("This package covers no treatments");
+      if (args.paidAmount > Number(plan.totalPrice || 0)) throw new Error("Amount paid exceeds the package price");
+      const purchasedAt = /* @__PURE__ */ new Date();
+      const expiresAt = new Date(purchasedAt.getTime() + Number(plan.validDays || 30) * 864e5);
+      const totalValue = Number(plan.totalPrice || 0) + Number(plan.savingsAmount || 0);
+      const entitlementSnapshot = { snapshotVersion: 1, packageId: plan.id, packageName: plan.name, serviceIds, totalValue, validDays: plan.validDays };
+      const record = await sudo.query.ClientPackage.createOne({
+        data: {
+          practice: { connect: { id: actor.practiceId } },
+          client: { connect: { id: user.id } },
+          package: { connect: { id: plan.id } },
+          purchasedAt: purchasedAt.toISOString(),
+          expiresAt: expiresAt.toISOString(),
+          status: "active",
+          totalValue,
+          paidAmount: args.paidAmount,
+          usedValue: 0,
+          metadata: { entitlementSnapshot, source: "platform_sale" }
+        },
+        query: "id"
+      });
+      const payment = await recordCashPayment(sudo, actor, args.idempotencyKey, args.paidAmount, `Package sale ${record.id}`, user.email);
+      await audit2(sudo, actor, "client_package.sold", "ClientPackage", record.id, args.idempotencyKey, { clientUserId: user.id, packageId: plan.id, paidAmount: args.paidAmount, paymentId: payment?.id || null, entitlementSnapshot });
+      return { success: true, recordId: record.id, error: null };
+    });
+  } catch (error) {
+    return fail9(error, "Package sale failed");
+  }
+}
+function giftCardCode2(seed) {
+  return (0, import_node_crypto9.createHash)("sha256").update(seed).digest("hex").slice(0, 12).toUpperCase().match(/.{1,4}/g).join("-");
+}
+async function issueGiftCardTransaction(context, args) {
+  let actor;
+  try {
+    actor = await financeActor(context);
+  } catch (error) {
+    return fail9(error, "Finance access is required");
+  }
+  if (args.paymentMethod !== "cash") return { ...denied20, error: "In-store gift cards are recorded as cash" };
+  if (!Number.isInteger(args.amount) || args.amount < 500 || args.amount > 2e5) return { ...denied20, error: "Amount must be $5\u2013$2,000" };
+  const recipientEmail = args.recipientEmail?.trim().toLowerCase() || "";
+  if (recipientEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) return { ...denied20, error: "Recipient email is invalid" };
+  if ((args.recipientName?.length || 0) > 120 || (args.message?.length || 0) > 1e3) return { ...denied20, error: "Recipient details are too long" };
+  if (!validIdempotencyKey(args.idempotencyKey)) return { ...denied20, error: "Request key is invalid" };
+  const scopedKey = aggregateIdempotencyKey(actor.practiceId, `gift-card-issue:${args.idempotencyKey}`);
+  try {
+    return await serializableWorkflow(context, "medspa-gift-card", [`issue:${scopedKey}`], async (tx) => {
+      const sudo = tx.sudo();
+      const existing = (await sudo.query.GiftCardTransaction.findMany({ where: { practice: { id: { equals: actor.practiceId } }, idempotencyKey: { equals: `${scopedKey}:purchase` } }, take: 1, query: "id amount giftCard { id }" }))[0];
+      if (existing) {
+        if (existing.amount !== args.amount) throw new Error("Request key was already used for another gift card");
+        return { success: true, recordId: existing.giftCard?.id || null, error: null };
+      }
+      const giftCard = await sudo.query.GiftCard.createOne({
+        data: {
+          practice: { connect: { id: actor.practiceId } },
+          code: giftCardCode2(scopedKey),
+          initialValue: args.amount,
+          currentBalance: args.amount,
+          recipientEmail,
+          recipientName: args.recipientName?.trim() || "",
+          message: args.message?.trim() || "",
+          isActive: true
+        },
+        query: "id"
+      });
+      const payment = await recordCashPayment(sudo, actor, scopedKey, args.amount, `Gift card ${giftCard.id}`, recipientEmail);
+      await sudo.query.GiftCardTransaction.createOne({
+        data: { practice: { connect: { id: actor.practiceId } }, giftCard: { connect: { id: giftCard.id } }, type: "purchase", amount: args.amount, idempotencyKey: `${scopedKey}:purchase`, notes: `cash \xB7 payment ${payment?.id || ""}` },
+        query: "id"
+      });
+      await audit2(sudo, actor, "gift_card.issued", "GiftCard", giftCard.id, args.idempotencyKey, { amount: args.amount, paymentId: payment?.id || null });
+      return { success: true, recordId: giftCard.id, error: null };
+    });
+  } catch (error) {
+    return fail9(error, "Gift card could not be issued");
+  }
+}
+var resultType24 = import_core138.graphql.object()({
+  name: "BenefitWorkflowResult",
+  fields: {
+    success: import_core138.graphql.field({ type: import_core138.graphql.nonNull(import_core138.graphql.Boolean) }),
+    recordId: import_core138.graphql.field({ type: import_core138.graphql.ID }),
+    error: import_core138.graphql.field({ type: import_core138.graphql.String })
+  }
+});
+var id = () => import_core138.graphql.arg({ type: import_core138.graphql.ID });
+var nonNullId = () => import_core138.graphql.arg({ type: import_core138.graphql.nonNull(import_core138.graphql.ID) });
+var str = () => import_core138.graphql.arg({ type: import_core138.graphql.String });
+var nonNullStr = () => import_core138.graphql.arg({ type: import_core138.graphql.nonNull(import_core138.graphql.String) });
+var nonNullInt = () => import_core138.graphql.arg({ type: import_core138.graphql.nonNull(import_core138.graphql.Int) });
+var idList = () => import_core138.graphql.arg({ type: import_core138.graphql.nonNull(import_core138.graphql.list(import_core138.graphql.nonNull(import_core138.graphql.ID))) });
+var upsertMembershipPlan = import_core138.graphql.field({
+  type: resultType24,
+  args: { membershipId: id(), name: nonNullStr(), description: str(), monthlyPrice: nonNullInt(), discountPercent: nonNullInt(), includedServiceIds: idList(), isActive: import_core138.graphql.arg({ type: import_core138.graphql.nonNull(import_core138.graphql.Boolean) }), idempotencyKey: nonNullStr() },
+  resolve(_source, args, context) {
+    return upsertMembershipPlanTransaction(context, args);
+  }
+});
+var upsertServicePackage = import_core138.graphql.field({
+  type: resultType24,
+  args: { packageId: id(), name: nonNullStr(), description: str(), totalPrice: nonNullInt(), savingsAmount: nonNullInt(), validDays: nonNullInt(), serviceIds: idList(), isActive: import_core138.graphql.arg({ type: import_core138.graphql.nonNull(import_core138.graphql.Boolean) }), idempotencyKey: nonNullStr() },
+  resolve(_source, args, context) {
+    return upsertServicePackageTransaction(context, args);
+  }
+});
+var enrollClientMembership = import_core138.graphql.field({
+  type: resultType24,
+  args: { clientId: nonNullId(), membershipId: nonNullId(), startDate: nonNullStr(), idempotencyKey: nonNullStr() },
+  resolve(_source, args, context) {
+    return enrollClientMembershipTransaction(context, args);
+  }
+});
+var sellClientPackage = import_core138.graphql.field({
+  type: resultType24,
+  args: { clientId: nonNullId(), packageId: nonNullId(), paidAmount: nonNullInt(), idempotencyKey: nonNullStr() },
+  resolve(_source, args, context) {
+    return sellClientPackageTransaction(context, args);
+  }
+});
+var issueGiftCard = import_core138.graphql.field({
+  type: resultType24,
+  args: { amount: nonNullInt(), recipientName: str(), recipientEmail: str(), message: str(), paymentMethod: nonNullStr(), idempotencyKey: nonNullStr() },
+  resolve(_source, args, context) {
+    return issueGiftCardTransaction(context, args);
+  }
+});
+
+// features/keystone/mutations/procurementWorkflows.ts
+var import_core139 = require("@keystone-6/core");
+var fail10 = (error) => ({ success: false, recordId: null, error: error instanceof Error ? error.message : "Procurement workflow failed" });
+var PRODUCT_KINDS = ["retail", "consumable", "both"];
+var MAX_MINOR2 = 1e8;
+function cents2(value, label) {
+  if (!Number.isInteger(value) || value < 0 || value > MAX_MINOR2) throw new Error(`${label} must be whole cents`);
+  return value;
+}
+function text95(value, label, max, required2 = false) {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  if (required2 && !trimmed) throw new Error(`${label} is required`);
+  if (trimmed.length > max) throw new Error(`${label} is too long`);
+  return trimmed;
+}
+async function upsertProductTransaction(context, args) {
+  let actor;
+  try {
+    actor = requireActorPractice(context, permissions.canManageInventory, "Inventory authority is required");
+  } catch (error) {
+    return fail10(error);
+  }
+  try {
+    const name = text95(args.name, "Name", 200, true);
+    const sku = text95(args.sku, "SKU", 80, true);
+    if (!PRODUCT_KINDS.includes(args.kind)) throw new Error("Choose retail, consumable or both");
+    const price = cents2(args.price, "Price");
+    const cost = args.cost == null ? 0 : cents2(args.cost, "Cost");
+    const reorderPoint = args.reorderPoint == null ? 0 : args.reorderPoint;
+    if (!Number.isInteger(reorderPoint) || reorderPoint < 0 || reorderPoint > 1e6) throw new Error("Reorder point must be a whole number");
+    const data = {
+      name,
+      sku,
+      kind: args.kind,
+      trackLots: args.trackLots === true,
+      price,
+      cost,
+      reorderPoint,
+      category: text95(args.category, "Category", 120),
+      description: text95(args.description, "Description", 2e3),
+      isActive: args.isActive === true
+    };
+    return await serializableWorkflow(context, "medspa-product-catalog", [`sku:${sku.toLocaleLowerCase()}`, ...args.productId ? [`product:${args.productId}`] : []], async (tx) => {
+      const sudo = tx.sudo();
+      const clash = await sudo.query.Product.findMany({ where: { sku: { equals: sku } }, take: 2, query: "id" });
+      if (clash.some((row2) => row2.id !== args.productId)) throw new Error("That SKU is already in use");
+      if (args.productId) {
+        const product = await assertPracticeRecord(tx, "Product", args.productId, "id practice { id } trackLots quantity");
+        if (product.trackLots !== data.trackLots && Number(product.quantity || 0) > 0) throw new Error("Lot tracking can't change while stock is on hand");
+        const updated = await sudo.query.Product.updateOne({ where: { id: product.id }, data, query: "id" });
+        return { success: true, recordId: updated.id, error: null };
+      }
+      const created = await sudo.query.Product.createOne({ data: { ...data, quantity: 0, practice: { connect: { id: actor.practiceId } } }, query: "id" });
+      return { success: true, recordId: created.id, error: null };
+    });
+  } catch (error) {
+    return fail10(error);
+  }
+}
+async function createPurchaseOrderTransaction(context, args) {
+  let actor;
+  try {
+    actor = requireActorPractice(context, permissions.canManageInventory, "Inventory authority is required");
+  } catch (error) {
+    return fail10(error);
+  }
+  if (!validIdempotencyKey(args.idempotencyKey)) return fail10(new Error("Purchase order key is invalid"));
+  try {
+    if (!Array.isArray(args.lines) || args.lines.length === 0 || args.lines.length > 100) throw new Error("Add between 1 and 100 lines");
+    const lines = args.lines.map((row2) => ({ productId: String(row2?.productId || ""), quantity: Number(row2?.quantity), unitCostMinor: Number(row2?.unitCostMinor) }));
+    for (const line of lines) {
+      if (!line.productId || !Number.isInteger(line.quantity) || line.quantity < 1 || line.quantity > 1e6) throw new Error("Each line needs a product and a quantity of at least 1");
+      cents2(line.unitCostMinor, "Unit cost");
+    }
+    if (new Set(lines.map((line) => line.productId)).size !== lines.length) throw new Error("A product may only appear once per order");
+    let expectedAt = null;
+    if (args.expectedAt) {
+      const date = new Date(args.expectedAt);
+      if (Number.isNaN(date.getTime())) throw new Error("Expected date is invalid");
+      expectedAt = date.toISOString();
+    }
+    const scopedKey = `${actor.practiceId}:purchase-order:${args.idempotencyKey.trim()}`;
+    return await serializableWorkflow(context, "medspa-purchase-order", [`idempotency:${scopedKey}`], async (tx) => {
+      const sudo = tx.sudo();
+      const prior = (await sudo.query.PurchaseOrder.findMany({ where: { practice: { id: { equals: actor.practiceId } }, number: { startsWith: "PO-" } }, orderBy: { createdAt: "desc" }, take: 1, query: "id number" }))[0];
+      const replay2 = (await sudo.query.AuditEvent.findMany({ where: { practice: { id: { equals: actor.practiceId } }, correlationId: { equals: scopedKey } }, take: 1, query: "resourceId" }))[0];
+      if (replay2?.resourceId) return { success: true, recordId: replay2.resourceId, error: null };
+      const [vendor, location] = await Promise.all([
+        assertPracticeRecord(tx, "Vendor", args.vendorId, "id practice { id } isActive"),
+        assertPracticeRecord(tx, "Location", args.locationId, "id practice { id } isActive")
+      ]);
+      if (vendor.isActive === false) throw new Error("Vendor is inactive");
+      if (location.isActive === false) throw new Error("Location is inactive");
+      const products = await Promise.all(lines.map((line) => assertPracticeRecord(tx, "Product", line.productId, "id practice { id } name")));
+      const sequence = Number(String(prior?.number || "PO-0").replace(/\D/g, "")) + 1;
+      const number = `PO-${String(sequence).padStart(5, "0")}`;
+      const totalMinor = lines.reduce((sum, line) => sum + line.quantity * line.unitCostMinor, 0);
+      const order = await sudo.query.PurchaseOrder.createOne({ data: {
+        practice: { connect: { id: actor.practiceId } },
+        vendor: { connect: { id: vendor.id } },
+        location: { connect: { id: location.id } },
+        number,
+        status: "draft",
+        totalMinor,
+        expectedAt,
+        revision: 1,
+        lines: { create: lines.map((line, index) => ({ product: { connect: { id: line.productId } }, productTitle: products[index].name, orderedQuantity: line.quantity, receivedQuantity: 0, unitCostMinor: line.unitCostMinor })) }
+      }, query: "id" });
+      await sudo.query.AuditEvent.createOne({ data: {
+        practice: { connect: { id: actor.practiceId } },
+        actor: { connect: { id: actor.actorId } },
+        action: "purchase_order.created",
+        resourceType: "PurchaseOrder",
+        resourceId: order.id,
+        correlationId: scopedKey,
+        evidence: { number, totalMinor, lineCount: lines.length },
+        evidenceHash: evidenceHash({ orderId: order.id, number, lines, actorId: actor.actorId }),
+        occurredAt: (/* @__PURE__ */ new Date()).toISOString()
+      }, query: "id" });
+      return { success: true, recordId: order.id, error: null };
+    });
+  } catch (error) {
+    return fail10(error);
+  }
+}
+async function transitionPurchaseOrderTransaction(context, args) {
+  let actor;
+  try {
+    actor = requireActorPractice(context, permissions.canManageInventory, "Inventory authority is required");
+  } catch (error) {
+    return fail10(error);
+  }
+  if (!["submit", "cancel"].includes(args.action)) return fail10(new Error("Choose submit or cancel"));
+  try {
+    return await serializableWorkflow(context, "medspa-purchase-order", [`po:${args.purchaseOrderId}`], async (tx) => {
+      const sudo = tx.sudo();
+      const order = await assertPracticeRecord(tx, "PurchaseOrder", args.purchaseOrderId, "id practice { id } status revision linesCount receiptsCount");
+      if (Number(order.revision || 1) !== args.expectedRevision) throw new Error("This order changed. Reload and try again");
+      if (args.action === "submit" && order.status !== "draft") throw new Error("Only a draft order can be submitted");
+      if (args.action === "submit" && !order.linesCount) throw new Error("Add a line before submitting");
+      if (args.action === "cancel" && (!["draft", "submitted"].includes(order.status) || order.receiptsCount)) throw new Error("Orders with receipts can't be cancelled");
+      const status = args.action === "submit" ? "submitted" : "cancelled";
+      await sudo.query.PurchaseOrder.updateOne({ where: { id: order.id }, data: {
+        status,
+        revision: Number(order.revision || 1) + 1,
+        ...args.action === "submit" ? { orderedAt: (/* @__PURE__ */ new Date()).toISOString() } : {}
+      }, query: "id" });
+      await sudo.query.AuditEvent.createOne({ data: {
+        practice: { connect: { id: actor.practiceId } },
+        actor: { connect: { id: actor.actorId } },
+        action: `purchase_order.${status}`,
+        resourceType: "PurchaseOrder",
+        resourceId: order.id,
+        correlationId: `${order.id}:${args.expectedRevision}`,
+        evidence: { from: order.status, to: status },
+        evidenceHash: evidenceHash({ orderId: order.id, from: order.status, to: status, actorId: actor.actorId }),
+        occurredAt: (/* @__PURE__ */ new Date()).toISOString()
+      }, query: "id" });
+      return { success: true, recordId: order.id, error: null };
+    });
+  } catch (error) {
+    return fail10(error);
+  }
+}
+var resultType25 = import_core139.graphql.object()({
+  name: "ProcurementWorkflowResult",
+  fields: {
+    success: import_core139.graphql.field({ type: import_core139.graphql.nonNull(import_core139.graphql.Boolean) }),
+    recordId: import_core139.graphql.field({ type: import_core139.graphql.ID }),
+    error: import_core139.graphql.field({ type: import_core139.graphql.String })
+  }
+});
+var upsertProduct = import_core139.graphql.field({
+  type: resultType25,
+  args: {
+    productId: import_core139.graphql.arg({ type: import_core139.graphql.ID }),
+    name: import_core139.graphql.arg({ type: import_core139.graphql.nonNull(import_core139.graphql.String) }),
+    sku: import_core139.graphql.arg({ type: import_core139.graphql.nonNull(import_core139.graphql.String) }),
+    kind: import_core139.graphql.arg({ type: import_core139.graphql.nonNull(import_core139.graphql.String) }),
+    trackLots: import_core139.graphql.arg({ type: import_core139.graphql.nonNull(import_core139.graphql.Boolean) }),
+    price: import_core139.graphql.arg({ type: import_core139.graphql.nonNull(import_core139.graphql.Int) }),
+    cost: import_core139.graphql.arg({ type: import_core139.graphql.Int }),
+    reorderPoint: import_core139.graphql.arg({ type: import_core139.graphql.Int }),
+    category: import_core139.graphql.arg({ type: import_core139.graphql.String }),
+    description: import_core139.graphql.arg({ type: import_core139.graphql.String }),
+    isActive: import_core139.graphql.arg({ type: import_core139.graphql.nonNull(import_core139.graphql.Boolean) })
+  },
+  resolve(_source, args, context) {
+    return upsertProductTransaction(context, args);
+  }
+});
+var createPurchaseOrder = import_core139.graphql.field({
+  type: resultType25,
+  args: {
+    vendorId: import_core139.graphql.arg({ type: import_core139.graphql.nonNull(import_core139.graphql.ID) }),
+    locationId: import_core139.graphql.arg({ type: import_core139.graphql.nonNull(import_core139.graphql.ID) }),
+    expectedAt: import_core139.graphql.arg({ type: import_core139.graphql.String }),
+    lines: import_core139.graphql.arg({ type: import_core139.graphql.nonNull(import_core139.graphql.JSON) }),
+    idempotencyKey: import_core139.graphql.arg({ type: import_core139.graphql.nonNull(import_core139.graphql.String) })
+  },
+  resolve(_source, args, context) {
+    return createPurchaseOrderTransaction(context, args);
+  }
+});
+var transitionPurchaseOrder = import_core139.graphql.field({
+  type: resultType25,
+  args: {
+    purchaseOrderId: import_core139.graphql.arg({ type: import_core139.graphql.nonNull(import_core139.graphql.ID) }),
+    action: import_core139.graphql.arg({ type: import_core139.graphql.nonNull(import_core139.graphql.String) }),
+    expectedRevision: import_core139.graphql.arg({ type: import_core139.graphql.nonNull(import_core139.graphql.Int) })
+  },
+  resolve(_source, args, context) {
+    return transitionPurchaseOrderTransaction(context, args);
+  }
+});
+
+// features/keystone/mutations/formWorkflows.ts
+var import_core140 = require("@keystone-6/core");
+var denied21 = { success: false, recordId: null, version: null };
+var fail11 = (error) => ({ ...denied21, error: error instanceof Error ? error.message : "Form workflow failed" });
+var FIELD_TYPES = /* @__PURE__ */ new Set(["text", "textarea", "checkbox", "radio", "select", "date", "signature"]);
+var TEMPLATE_TYPES = /* @__PURE__ */ new Set(["intake", "consent", "clinical_intake", "waiver"]);
+function normalizeFormFields(input) {
+  if (!Array.isArray(input) || input.length === 0) throw new Error("Add at least one field");
+  if (input.length > 100) throw new Error("A form can have at most 100 fields");
+  const seen = /* @__PURE__ */ new Set();
+  return input.map((raw, index) => {
+    const field2 = raw && typeof raw === "object" ? raw : {};
+    const id2 = String(field2.id || "").trim();
+    const type = String(field2.type || "").trim();
+    const label = String(field2.label || "").trim();
+    if (!/^[a-z][a-z0-9_]{0,63}$/i.test(id2)) throw new Error(`Field ${index + 1} needs an id of letters, numbers or underscores`);
+    if (seen.has(id2)) throw new Error(`Field id "${id2}" is used twice`);
+    seen.add(id2);
+    if (!FIELD_TYPES.has(type)) throw new Error(`Field "${id2}" has an unsupported type`);
+    if (!label || label.length > 200) throw new Error(`Field "${id2}" needs a label of up to 200 characters`);
+    const normalized = { id: id2, type, label, required: field2.required === true };
+    if (type === "select" || type === "radio") {
+      const options = Array.isArray(field2.options) ? field2.options.map((option) => String(option).trim()).filter(Boolean) : [];
+      if (options.length < 2 || options.length > 50) throw new Error(`Field "${id2}" needs 2 to 50 options`);
+      normalized.options = [...new Set(options)];
+    }
+    return normalized;
+  });
+}
+async function scopedIds(context, listKey, practiceId4, ids) {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (unique.length > 200) throw new Error("Too many linked records");
+  if (!unique.length) return [];
+  const rows = await context.sudo().query[listKey].findMany({ where: { id: { in: unique }, practice: { id: { equals: practiceId4 } } }, take: unique.length, query: "id" });
+  if (rows.length !== unique.length) throw new Error("A linked record was not found");
+  return unique;
+}
+async function replay(context, practiceId4, idempotencyKey, action) {
+  const prior = (await context.sudo().query.AuditEvent.findMany({ where: { practice: { id: { equals: practiceId4 } }, correlationId: { equals: idempotencyKey }, action: { equals: action } }, take: 1, query: "resourceId evidence" }))[0];
+  return prior ? { success: true, recordId: prior.resourceId, version: Number(prior.evidence?.version) || null, error: null } : null;
+}
+async function upsertIntakeFormTransaction(context, args) {
+  let actor;
+  try {
+    actor = requireActorPractice(context, permissions.canManageClinical, "Clinical forms access is required");
+  } catch (error) {
+    return fail11(error);
+  }
+  const name = args.name.trim();
+  if (!validIdempotencyKey(args.idempotencyKey) || !name || name.length > 200) return { ...denied21, error: "Enter a form name of up to 200 characters" };
+  try {
+    const fields = normalizeFormFields(args.fields);
+    const serviceIds = await scopedIds(context, "Service", actor.practiceId, args.requiredForServiceIds || []);
+    return await serializableWorkflow(context, "medspa-intake-form", [`intake-form:${args.formId || name.toLowerCase()}`, `idempotency:${actor.practiceId}:${args.idempotencyKey}`], async (tx) => {
+      const sudo = tx.sudo();
+      const prior = await replay(tx, actor.practiceId, args.idempotencyKey, "form.intake.upserted");
+      if (prior) return prior;
+      const data = { name, fields: bounded(fields), isActive: args.isActive === true, requiredForServices: { set: serviceIds.map((id3) => ({ id: id3 })) } };
+      let id2;
+      if (args.formId) {
+        const existing = await sudo.query.IntakeForm.findOne({ where: { id: args.formId }, query: "id practice { id }" });
+        if (!existing || existing.practice?.id !== actor.practiceId) throw new Error("Form not found");
+        id2 = (await sudo.query.IntakeForm.updateOne({ where: { id: existing.id }, data, query: "id" })).id;
+      } else {
+        id2 = (await sudo.query.IntakeForm.createOne({ data: { ...data, practice: { connect: { id: actor.practiceId } }, requiredForServices: { connect: serviceIds.map((serviceId) => ({ id: serviceId })) } }, query: "id" })).id;
+      }
+      const occurredAt = (/* @__PURE__ */ new Date()).toISOString();
+      await sudo.query.AuditEvent.createOne({ data: { practice: { connect: { id: actor.practiceId } }, actor: { connect: { id: actor.actorId } }, action: "form.intake.upserted", resourceType: "IntakeForm", resourceId: id2, correlationId: args.idempotencyKey, evidence: { fieldCount: fields.length, serviceIds, isActive: args.isActive === true }, evidenceHash: evidenceHash({ id: id2, name, fields, serviceIds, isActive: args.isActive, occurredAt }), occurredAt }, query: "id" });
+      return { success: true, recordId: id2, version: null, error: null };
+    });
+  } catch (error) {
+    return fail11(error);
+  }
+}
+async function upsertFormTemplateTransaction(context, args) {
+  let actor;
+  try {
+    actor = requireActorPractice(context, permissions.canManageClinical, "Clinical forms access is required");
+  } catch (error) {
+    return fail11(error);
+  }
+  const name = args.name.trim();
+  if (!validIdempotencyKey(args.idempotencyKey) || !name || name.length > 200) return { ...denied21, error: "Enter a template name of up to 200 characters" };
+  if (!TEMPLATE_TYPES.has(args.type)) return { ...denied21, error: "Choose a template type" };
+  if ((args.description || "").length > 2e3) return { ...denied21, error: "Description is too long" };
+  try {
+    const fields = normalizeFormFields(args.fields);
+    const categoryIds = await scopedIds(context, "ServiceCategory", actor.practiceId, args.requiredForCategoryIds || []);
+    return await serializableWorkflow(context, "medspa-form-template", [`form-template:${args.templateId || name.toLowerCase()}`, `idempotency:${actor.practiceId}:${args.idempotencyKey}`], async (tx) => {
+      const sudo = tx.sudo();
+      const prior = await replay(tx, actor.practiceId, args.idempotencyKey, "form.template.upserted");
+      if (prior) return prior;
+      const content = { name, type: args.type, description: (args.description || "").trim(), fields: bounded(fields), isActive: args.isActive === true };
+      let id2, version = 1;
+      if (args.templateId) {
+        const existing = await sudo.query.FormTemplate.findOne({ where: { id: args.templateId }, query: "id practice { id } version name type fields submissionsCount metadata" });
+        if (!existing || existing.practice?.id !== actor.practiceId) throw new Error("Template not found");
+        const contentChanged = existing.type !== args.type || evidenceHash(existing.fields) !== evidenceHash(fields);
+        if (existing.submissionsCount > 0 && contentChanged) {
+          version = Number(existing.version || 1) + 1;
+          id2 = (await sudo.query.FormTemplate.createOne({ data: { ...content, version, practice: { connect: { id: actor.practiceId } }, requiredForCategories: { connect: categoryIds.map((categoryId) => ({ id: categoryId })) }, metadata: { supersedesId: existing.id } }, query: "id" })).id;
+          await sudo.query.FormTemplate.updateOne({ where: { id: existing.id }, data: { isActive: false, metadata: { ...existing.metadata || {}, supersededById: id2 } }, query: "id" });
+        } else {
+          version = Number(existing.version || 1);
+          id2 = (await sudo.query.FormTemplate.updateOne({ where: { id: existing.id }, data: { ...content, requiredForCategories: { set: categoryIds.map((categoryId) => ({ id: categoryId })) } }, query: "id" })).id;
+        }
+      } else {
+        id2 = (await sudo.query.FormTemplate.createOne({ data: { ...content, version, practice: { connect: { id: actor.practiceId } }, requiredForCategories: { connect: categoryIds.map((categoryId) => ({ id: categoryId })) } }, query: "id" })).id;
+      }
+      const occurredAt = (/* @__PURE__ */ new Date()).toISOString();
+      await sudo.query.AuditEvent.createOne({ data: { practice: { connect: { id: actor.practiceId } }, actor: { connect: { id: actor.actorId } }, action: "form.template.upserted", resourceType: "FormTemplate", resourceId: id2, correlationId: args.idempotencyKey, evidence: { version, fieldCount: fields.length, categoryIds, sourceTemplateId: args.templateId || null }, evidenceHash: evidenceHash({ id: id2, version, content, categoryIds, occurredAt }), occurredAt }, query: "id" });
+      return { success: true, recordId: id2, version, error: null };
+    });
+  } catch (error) {
+    return fail11(error);
+  }
+}
+var resultType26 = import_core140.graphql.object()({ name: "FormWorkflowResult", fields: { success: import_core140.graphql.field({ type: import_core140.graphql.nonNull(import_core140.graphql.Boolean) }), recordId: import_core140.graphql.field({ type: import_core140.graphql.ID }), version: import_core140.graphql.field({ type: import_core140.graphql.Int }), error: import_core140.graphql.field({ type: import_core140.graphql.String }) } });
+var upsertIntakeForm = import_core140.graphql.field({
+  type: resultType26,
+  args: { formId: import_core140.graphql.arg({ type: import_core140.graphql.ID }), name: import_core140.graphql.arg({ type: import_core140.graphql.nonNull(import_core140.graphql.String) }), fields: import_core140.graphql.arg({ type: import_core140.graphql.nonNull(import_core140.graphql.JSON) }), requiredForServiceIds: import_core140.graphql.arg({ type: import_core140.graphql.list(import_core140.graphql.nonNull(import_core140.graphql.ID)) }), isActive: import_core140.graphql.arg({ type: import_core140.graphql.nonNull(import_core140.graphql.Boolean) }), idempotencyKey: import_core140.graphql.arg({ type: import_core140.graphql.nonNull(import_core140.graphql.String) }) },
+  resolve: (_source, args, context) => upsertIntakeFormTransaction(context, args)
+});
+var upsertFormTemplate = import_core140.graphql.field({
+  type: resultType26,
+  args: { templateId: import_core140.graphql.arg({ type: import_core140.graphql.ID }), name: import_core140.graphql.arg({ type: import_core140.graphql.nonNull(import_core140.graphql.String) }), type: import_core140.graphql.arg({ type: import_core140.graphql.nonNull(import_core140.graphql.String) }), description: import_core140.graphql.arg({ type: import_core140.graphql.String }), fields: import_core140.graphql.arg({ type: import_core140.graphql.nonNull(import_core140.graphql.JSON) }), requiredForCategoryIds: import_core140.graphql.arg({ type: import_core140.graphql.list(import_core140.graphql.nonNull(import_core140.graphql.ID)) }), isActive: import_core140.graphql.arg({ type: import_core140.graphql.nonNull(import_core140.graphql.Boolean) }), idempotencyKey: import_core140.graphql.arg({ type: import_core140.graphql.nonNull(import_core140.graphql.String) }) },
+  resolve: (_source, args, context) => upsertFormTemplateTransaction(context, args)
+});
+
+// features/keystone/hostedCheckouts.ts
+var import_node_crypto10 = require("node:crypto");
+var import_core141 = require("@keystone-6/core");
+function dataOf(session) {
+  return session?.data && typeof session.data === "object" ? session.data : {};
+}
+var DESK_SESSION_QUERY = "id status amount currency providerReference data practice { id } appointment { id } payment { id } provider { id code adapter config }";
+async function openDeskCardSessions(sudo, appointmentId) {
+  const rows = await sudo.query.PaymentSession.findMany({
+    where: { appointment: { id: { equals: appointmentId } }, status: { in: ["pending", "requires_action"] } },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+    query: DESK_SESSION_QUERY
+  });
+  return rows.filter((row2) => dataOf(row2).purpose === "checkout_card");
+}
+async function startDeskCardCheckout(context, input) {
+  const actor = requireActorPractice(context, permissions.canManageFinance, "Authorized finance access is required");
+  await assertPracticeRecord(context, "Appointment", input.appointmentId);
+  const canManagePractice = permissions.canManagePractice({ session: context.session });
+  const sudo = context.sudo();
+  const provider = await onlineDepositProvider(sudo, actor.practiceId);
+  if (!provider) throw new Error("Card payments need Stripe connected under Payments");
+  let quote = null;
+  try {
+    const result2 = await runControlledCheckout(context, { ...actor, canManagePractice }, { ...input, paymentMethod: "card", idempotencyKey: `card-quote:${(0, import_node_crypto10.randomUUID)()}` }, { kind: "quote" });
+    if (!result2.success) throw new Error(result2.error || "Checkout is unavailable");
+  } catch (error) {
+    if (!(error instanceof CheckoutQuote)) throw error;
+    quote = error;
+  }
+  if (!quote) throw new Error("Checkout is unavailable");
+  if (quote.total < 50) throw new Error("Nothing is due by card. Record the checkout as cash");
+  const open = (await openDeskCardSessions(sudo, input.appointmentId)).find((row2) => {
+    const data = dataOf(row2);
+    return row2.amount === quote.total && data.inputHash === inputHash(input) && data.checkoutUrl && Date.parse(data.checkoutExpiresAt || "") > Date.now() + 5 * 6e4;
+  });
+  if (open) return { url: dataOf(open).checkoutUrl, sessionId: open.id, amount: quote.total };
+  const key = `${actor.practiceId}:checkout-card:${input.appointmentId}:${(0, import_node_crypto10.randomUUID)()}`;
+  const base = `${trustedOrigin()}/dashboard/platform/checkout/${encodeURIComponent(input.appointmentId)}`;
+  const checkout = await createProviderCheckout({
+    provider: paymentProviderFromRecord(provider),
+    amount: quote.total,
+    currency: "usd",
+    idempotencyKey: key,
+    description: quote.description,
+    successUrl: `${base}?card=return`,
+    cancelUrl: `${base}?card=cancelled`,
+    customerEmail: quote.email,
+    metadata: { purpose: "checkout_card", appointmentId: input.appointmentId, practiceId: actor.practiceId }
+  });
+  const sessionId = await paymentLifecycleTransaction(context, `appointment:${input.appointmentId}`, async (tx) => {
+    const session = await tx.query.PaymentSession.createOne({
+      data: {
+        practice: { connect: { id: actor.practiceId } },
+        appointment: { connect: { id: input.appointmentId } },
+        provider: { connect: { id: provider.id } },
+        idempotencyKey: key,
+        amount: quote.total,
+        currency: "usd",
+        status: "pending",
+        providerReference: checkout.providerReference,
+        data: {
+          purpose: "checkout_card",
+          checkoutUrl: checkout.url,
+          checkoutExpiresAt: checkout.expiresAt,
+          checkoutSessionId: checkout.providerReference,
+          // The sale is replayed from this snapshot once Stripe confirms payment.
+          input: JSON.parse(JSON.stringify({ ...input, retailItems: input.retailItems ?? [] })),
+          inputHash: inputHash(input),
+          actorId: actor.actorId,
+          canManagePractice
+        }
+      },
+      query: "id"
+    });
+    const payment = await tx.query.Payment.createOne({
+      data: {
+        idempotencyKey: `${key}:payment`,
+        practice: { connect: { id: actor.practiceId } },
+        session: { connect: { id: session.id } },
+        subtotal: quote.total,
+        tax: 0,
+        tip: 0,
+        discount: 0,
+        totalAmount: quote.total,
+        paymentMethod: "credit_card",
+        status: "pending",
+        receiptEmail: quote.email || "",
+        notes: `Card payment for appointment ${input.appointmentId}`
+      },
+      query: "id"
+    });
+    await tx.query.PaymentSession.updateOne({ where: { id: session.id }, data: { payment: { connect: { id: payment.id } } }, query: "id" });
+    return session.id;
+  });
+  return { url: checkout.url, sessionId, amount: quote.total };
+}
+function inputHash(input) {
+  return (0, import_node_crypto10.createHash)("sha256").update(JSON.stringify({
+    a: input.appointmentId,
+    t: input.tipAmount,
+    d: input.discountAmount,
+    r: input.discountReason || null,
+    i: input.retailItems ?? [],
+    p: input.clientPackageId || null,
+    m: input.clientMembershipId || null
+  })).digest("hex");
+}
+async function settleDeskCardCheckout(context, sessionId, facts) {
+  const sudo = context.sudo();
+  const session = await sudo.query.PaymentSession.findOne({ where: { id: sessionId }, query: DESK_SESSION_QUERY });
+  const data = dataOf(session);
+  if (!session || data.purpose !== "checkout_card" || !session.practice?.id || !session.appointment?.id) return { outcome: "none", refundAttemptId: null };
+  const decision = decideDepositSettlement({ status: session.status, amount: session.amount, currency: session.currency, providerReference: data.checkoutSessionId || session.providerReference }, facts);
+  if (decision.action === "none") return { outcome: "none", refundAttemptId: null };
+  if (decision.action === "review") {
+    await sudo.query.PaymentSession.updateOne({ where: { id: session.id }, data: { data: { ...data, needsReview: true, reviewReason: decision.reason } }, query: "id" });
+    return { outcome: "review", refundAttemptId: null };
+  }
+  if (decision.action === "expire") {
+    await paymentLifecycleTransaction(context, `session:${session.id}`, async (tx) => {
+      const current = await tx.query.PaymentSession.findOne({ where: { id: session.id }, query: "status" });
+      if (!["pending", "requires_action"].includes(current?.status)) return;
+      await tx.query.PaymentSession.updateOne({ where: { id: session.id }, data: { status: "cancelled", failedAt: (/* @__PURE__ */ new Date()).toISOString() }, query: "id" });
+      if (session.payment?.id) await tx.query.Payment.updateOne({ where: { id: session.payment.id }, data: { status: paymentRecordStatus("cancelled") }, query: "id" });
+    });
+    return { outcome: "expired", refundAttemptId: null };
+  }
+  const input = data.input;
+  let error = null;
+  try {
+    const result2 = await runControlledCheckout(
+      context,
+      { actorId: data.actorId, practiceId: session.practice.id, canManagePractice: data.canManagePractice === true },
+      { ...input, paymentMethod: "card", idempotencyKey: `card-checkout:${session.id}` },
+      { kind: "card", sessionId: session.id, paymentIntentId: decision.paymentIntentId }
+    );
+    if (result2.success) return { outcome: "completed", refundAttemptId: null };
+    error = result2.error;
+  } catch (failure5) {
+    error = failure5 instanceof CardAmountMismatch ? "The visit total changed after the card was charged" : failure5 instanceof Error ? failure5.message : "Checkout failed";
+  }
+  const refundAttemptId = await paymentLifecycleTransaction(context, `session:${session.id}`, async (tx) => {
+    const current = await tx.query.PaymentSession.findOne({ where: { id: session.id }, query: "status data" });
+    if (!["pending", "requires_action"].includes(current?.status) || dataOf(current).transactionId) return null;
+    const now2 = (/* @__PURE__ */ new Date()).toISOString();
+    assertPaymentTransition(current.status, "completed");
+    await tx.query.PaymentSession.updateOne({ where: { id: session.id }, data: { status: "completed", completedAt: now2, providerReference: decision.paymentIntentId, data: { ...dataOf(current), paymentIntentId: decision.paymentIntentId, checkoutUrl: null, failedCheckout: error } }, query: "id" });
+    if (!session.payment?.id) return null;
+    await tx.query.Payment.updateOne({ where: { id: session.payment.id }, data: { status: "completed", processedAt: now2, stripePaymentIntentId: decision.paymentIntentId }, query: "id" });
+    const queued = await enqueueRefund(tx, {
+      practiceId: session.practice.id,
+      paymentId: session.payment.id,
+      sessionId: session.id,
+      amountMinor: session.amount,
+      currencyCode: session.currency,
+      reason: `Card paid but checkout was not completed: ${error}`.slice(0, 500),
+      idempotencyKey: `${session.practice.id}:card-unapplied:${session.id}`,
+      providerReference: decision.paymentIntentId,
+      actorId: null
+    });
+    return queued.attemptId;
+  });
+  return refundAttemptId ? { outcome: "refund_queued", refundAttemptId, error } : { outcome: "completed", refundAttemptId: null };
+}
+async function confirmDeskCardCheckout(context, appointmentId) {
+  requireActorPractice(context, permissions.canManageFinance, "Authorized finance access is required");
+  await assertPracticeRecord(context, "Appointment", appointmentId);
+  const sessions = await openDeskCardSessions(context.sudo(), appointmentId);
+  let outcome = "none";
+  let error = null;
+  for (const session of sessions) {
+    const facts = await getProviderCheckoutStatus({ provider: paymentProviderFromRecord(session.provider), providerReference: dataOf(session).checkoutSessionId || session.providerReference });
+    const settled = await settleDeskCardCheckout(context, session.id, facts);
+    if (settled.refundAttemptId) await processRefundOutbox(context, { attemptIds: [settled.refundAttemptId], limit: 1 }).catch(() => void 0);
+    if (settled.outcome !== "none" && outcome !== "completed") {
+      outcome = settled.outcome;
+      error = settled.error || null;
+    }
+  }
+  return { outcome, error };
+}
+var EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+var GIFT_CARD_MIN = 2500;
+var GIFT_CARD_MAX = 5e4;
+function giftCardAccessToken(sessionId) {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) return null;
+  return (0, import_node_crypto10.createHmac)("sha256", secret).update(`medspa-gift-card:${sessionId}`).digest("base64url");
+}
+function validGiftCardToken(sessionId, token) {
+  const expected = giftCardAccessToken(sessionId);
+  if (!expected || typeof token !== "string" || token.length !== expected.length) return false;
+  return (0, import_node_crypto10.timingSafeEqual)(Buffer.from(expected), Buffer.from(token));
+}
+function giftCardCode3(seed) {
+  return (0, import_node_crypto10.createHash)("sha256").update(seed).digest("hex").slice(0, 12).toUpperCase().match(/.{1,4}/g).join("-");
+}
+function validateOnlineGiftCard(input) {
+  if (!Number.isInteger(input.amount) || input.amount < GIFT_CARD_MIN || input.amount > GIFT_CARD_MAX) return "Gift card amount must be between $25 and $500";
+  const purchaserName = (input.purchaserName || "").trim();
+  const purchaserEmail = (input.purchaserEmail || "").trim().toLowerCase();
+  const recipientEmail = (input.recipientEmail || "").trim().toLowerCase() || purchaserEmail;
+  if (!purchaserName) return "Gift card purchaser name is required";
+  if (!EMAIL.test(purchaserEmail) || !EMAIL.test(recipientEmail)) return "Gift card email is invalid";
+  if (purchaserName.length > 120 || (input.recipientName?.length || 0) > 120 || (input.message?.length || 0) > 500) return "Gift card details are too long";
+  return null;
+}
+async function storefrontPractice(sudo) {
+  const rows = await sudo.query.Practice.findMany({
+    where: { isActive: { equals: true }, storefrontSetting: { isPublished: { equals: true }, primaryLocation: { isActive: { equals: true } } } },
+    take: 2,
+    query: "id name"
+  });
+  if (rows.length !== 1) throw new Error("Gift cards aren't available online right now");
+  return rows[0];
+}
+async function startGiftCardCheckout(context, input) {
+  const invalid = validateOnlineGiftCard(input);
+  if (invalid) throw new Error(invalid);
+  const sudo = context.sudo();
+  const practice = await storefrontPractice(sudo);
+  const provider = await onlineDepositProvider(sudo, practice.id);
+  if (!provider) throw new Error("Gift cards aren't available online right now");
+  const purchaserEmail = input.purchaserEmail.trim().toLowerCase();
+  const recipientEmail = (input.recipientEmail || "").trim().toLowerCase() || purchaserEmail;
+  const purchaserName = input.purchaserName.trim();
+  const recipientName = input.recipientName?.trim() || purchaserName;
+  const ref2 = (0, import_node_crypto10.randomUUID)();
+  const key = `${practice.id}:gift-card-online:${ref2}`;
+  const token = giftCardAccessToken(ref2);
+  if (!token) throw new Error("Gift cards aren't available online right now");
+  const back = `${trustedOrigin()}/gift-cards?ref=${encodeURIComponent(ref2)}&token=${encodeURIComponent(token)}`;
+  const checkout = await createProviderCheckout({
+    provider: paymentProviderFromRecord(provider),
+    amount: input.amount,
+    currency: "usd",
+    idempotencyKey: key,
+    description: `${practice.name} gift card`,
+    successUrl: `${back}&purchase=return`,
+    cancelUrl: `${back}&purchase=cancelled`,
+    customerEmail: purchaserEmail,
+    metadata: { purpose: "gift_card", practiceId: practice.id }
+  });
+  const signedIn = context.session?.itemId ? await sudo.query.User.findOne({ where: { id: context.session.itemId }, query: "id practice { id }" }) : null;
+  await paymentLifecycleTransaction(context, `gift-card:${key}`, async (tx) => {
+    const giftCard = await tx.query.GiftCard.createOne({
+      data: {
+        practice: { connect: { id: practice.id } },
+        code: giftCardCode3(key),
+        initialValue: input.amount,
+        currentBalance: input.amount,
+        recipientEmail,
+        recipientName,
+        message: input.message?.trim() || "",
+        isActive: false,
+        ...signedIn?.practice?.id === practice.id ? { purchasedBy: { connect: { id: signedIn.id } } } : {}
+      },
+      query: "id"
+    });
+    const session = await tx.query.PaymentSession.createOne({
+      data: {
+        practice: { connect: { id: practice.id } },
+        provider: { connect: { id: provider.id } },
+        idempotencyKey: key,
+        amount: input.amount,
+        currency: "usd",
+        status: "pending",
+        providerReference: checkout.providerReference,
+        data: { purpose: "gift_card", channel: "online", giftCardId: giftCard.id, checkoutUrl: checkout.url, checkoutExpiresAt: checkout.expiresAt, checkoutSessionId: checkout.providerReference, purchaserName, purchaserEmail, ref: ref2 }
+      },
+      query: "id"
+    });
+    const sessionId = session.id;
+    const payment = await tx.query.Payment.createOne({
+      data: {
+        idempotencyKey: `${key}:payment`,
+        practice: { connect: { id: practice.id } },
+        session: { connect: { id: sessionId } },
+        subtotal: input.amount,
+        tax: 0,
+        tip: 0,
+        discount: 0,
+        totalAmount: input.amount,
+        paymentMethod: "credit_card",
+        status: "pending",
+        receiptEmail: purchaserEmail,
+        notes: `Online gift-card purchase ${giftCard.id}`
+      },
+      query: "id"
+    });
+    await tx.query.PaymentSession.updateOne({ where: { id: sessionId }, data: { payment: { connect: { id: payment.id } } }, query: "id" });
+  });
+  return { url: checkout.url };
+}
+async function settleGiftCardCheckout(sudo, sessionId, facts) {
+  const session = await sudo.query.PaymentSession.findOne({ where: { id: sessionId }, query: "id status amount currency providerReference idempotencyKey data practice { id } payment { id }" });
+  const data = dataOf(session);
+  if (!session || data.purpose !== "gift_card" || data.channel !== "online" || !data.giftCardId) return { outcome: "none", email: null };
+  const decision = decideDepositSettlement({ status: session.status, amount: session.amount, currency: session.currency, providerReference: data.checkoutSessionId || session.providerReference }, facts);
+  const now2 = (/* @__PURE__ */ new Date()).toISOString();
+  if (decision.action === "none") return { outcome: "none", email: null };
+  if (decision.action === "review") {
+    await sudo.query.PaymentSession.updateOne({ where: { id: session.id }, data: { data: { ...data, needsReview: true, reviewReason: decision.reason } }, query: "id" });
+    return { outcome: "review", email: null };
+  }
+  if (decision.action === "expire") {
+    await sudo.query.PaymentSession.updateOne({ where: { id: session.id }, data: { status: "cancelled", failedAt: now2 }, query: "id" });
+    if (session.payment?.id) await sudo.query.Payment.updateOne({ where: { id: session.payment.id }, data: { status: paymentRecordStatus("cancelled") }, query: "id" });
+    return { outcome: "expired", email: null };
+  }
+  assertPaymentTransition(session.status, "completed");
+  await sudo.query.PaymentSession.updateOne({ where: { id: session.id }, data: { status: "completed", completedAt: now2, providerReference: decision.paymentIntentId, data: { ...data, paymentIntentId: decision.paymentIntentId, checkoutUrl: null } }, query: "id" });
+  if (session.payment?.id) await sudo.query.Payment.updateOne({ where: { id: session.payment.id }, data: { status: "completed", processedAt: now2, stripePaymentIntentId: decision.paymentIntentId }, query: "id" });
+  const giftCard = await sudo.query.GiftCard.findOne({ where: { id: data.giftCardId }, query: "id code initialValue recipientEmail recipientName message" });
+  if (!giftCard) return { outcome: "review", email: null };
+  await sudo.query.GiftCard.updateOne({ where: { id: giftCard.id }, data: { isActive: true }, query: "id" });
+  const purchaseKey = `${session.idempotencyKey}:purchase`;
+  const existing = (await sudo.query.GiftCardTransaction.findMany({ where: { idempotencyKey: { equals: purchaseKey } }, take: 1, query: "id" }))[0];
+  if (!existing) {
+    await sudo.query.GiftCardTransaction.createOne({
+      data: { practice: { connect: { id: session.practice.id } }, giftCard: { connect: { id: giftCard.id } }, type: "purchase", amount: giftCard.initialValue, idempotencyKey: purchaseKey, notes: `online:${decision.paymentIntentId}` },
+      query: "id"
+    });
+  }
+  return {
+    outcome: "completed",
+    email: giftCard.recipientEmail ? { to: giftCard.recipientEmail, recipientName: giftCard.recipientName || "there", senderName: data.purchaserName || "A friend", amount: giftCard.initialValue / 100, code: giftCard.code, message: giftCard.message || void 0 } : null
+  };
+}
+async function deliverGiftCardEmail(email) {
+  if (!email || process.env.NODE_ENV === "test") return;
+  await sendGiftCardEmail(email).catch((error) => console.error("Gift card email failed:", error));
+}
+async function giftCardPurchaseStatus(context, ref2, token) {
+  if (!/^[0-9a-f-]{36}$/.test(ref2) || !validGiftCardToken(ref2, token)) return null;
+  const sudo = context.sudo();
+  const session = (await sudo.query.PaymentSession.findMany({ where: { idempotencyKey: { endsWith: `:gift-card-online:${ref2}` } }, take: 1, query: "id status amount providerReference data provider { code adapter config }" }))[0];
+  const data = dataOf(session);
+  if (!session || data.purpose !== "gift_card" || data.channel !== "online" || data.ref !== ref2) return null;
+  const sessionId = session.id;
+  if (["pending", "requires_action"].includes(session.status) && session.provider) {
+    const facts = await getProviderCheckoutStatus({ provider: paymentProviderFromRecord(session.provider), providerReference: data.checkoutSessionId || session.providerReference });
+    const settled = await paymentLifecycleTransaction(context, `session-checkout:${session.id}`, (tx) => settleGiftCardCheckout(tx, session.id, facts));
+    await deliverGiftCardEmail(settled.email);
+  }
+  const current = await sudo.query.PaymentSession.findOne({ where: { id: sessionId }, query: "status amount data" });
+  const giftCard = await sudo.query.GiftCard.findOne({ where: { id: data.giftCardId }, query: "code isActive recipientName recipientEmail" });
+  const paid = current.status === "completed" && giftCard?.isActive;
+  return {
+    status: paid ? "paid" : dataOf(current).needsReview ? "review" : current.status === "cancelled" ? "expired" : "pending",
+    amount: current.amount,
+    code: paid ? giftCard.code : null,
+    recipientName: giftCard?.recipientName || null,
+    recipientEmail: giftCard?.recipientEmail || null
+  };
+}
+var DeskCardResult = import_core141.graphql.object()({
+  name: "DeskCardCheckoutResult",
+  fields: {
+    success: import_core141.graphql.field({ type: import_core141.graphql.nonNull(import_core141.graphql.Boolean) }),
+    error: import_core141.graphql.field({ type: import_core141.graphql.String }),
+    url: import_core141.graphql.field({ type: import_core141.graphql.String }),
+    amount: import_core141.graphql.field({ type: import_core141.graphql.Int }),
+    outcome: import_core141.graphql.field({ type: import_core141.graphql.String })
+  }
+});
+var message = (error, fallback) => {
+  const text96 = error instanceof Error ? error.message : "";
+  if (!text96 || /prisma|database|ECONN|stripe/i.test(text96)) {
+    console.error(fallback, error);
+    return fallback;
+  }
+  return text96.slice(0, 300);
+};
+var startCardCheckout = import_core141.graphql.field({
+  type: import_core141.graphql.nonNull(DeskCardResult),
+  args: {
+    appointmentId: import_core141.graphql.arg({ type: import_core141.graphql.nonNull(import_core141.graphql.ID) }),
+    tipAmount: import_core141.graphql.arg({ type: import_core141.graphql.nonNull(import_core141.graphql.Int) }),
+    discountAmount: import_core141.graphql.arg({ type: import_core141.graphql.nonNull(import_core141.graphql.Int) }),
+    discountReason: import_core141.graphql.arg({ type: import_core141.graphql.String }),
+    retailItems: import_core141.graphql.arg({ type: import_core141.graphql.JSON }),
+    clientPackageId: import_core141.graphql.arg({ type: import_core141.graphql.ID }),
+    clientMembershipId: import_core141.graphql.arg({ type: import_core141.graphql.ID })
+  },
+  async resolve(_source, args, context) {
+    try {
+      const { url, amount } = await startDeskCardCheckout(context, args);
+      return { success: true, error: null, url, amount, outcome: null };
+    } catch (error) {
+      return { success: false, error: message(error, "The card payment page could not be opened"), url: null, amount: null, outcome: null };
+    }
+  }
+});
+var confirmCardCheckout = import_core141.graphql.field({
+  type: import_core141.graphql.nonNull(DeskCardResult),
+  args: { appointmentId: import_core141.graphql.arg({ type: import_core141.graphql.nonNull(import_core141.graphql.ID) }) },
+  async resolve(_source, { appointmentId }, context) {
+    try {
+      const { outcome, error } = await confirmDeskCardCheckout(context, appointmentId);
+      return { success: true, error, url: null, amount: null, outcome };
+    } catch (error) {
+      return { success: false, error: message(error, "The card payment could not be checked"), url: null, amount: null, outcome: null };
+    }
+  }
+});
+var purchaseGiftCardOnline = import_core141.graphql.field({
+  type: import_core141.graphql.nonNull(import_core141.graphql.object()({
+    name: "PurchaseGiftCardOnlineResult",
+    fields: { success: import_core141.graphql.field({ type: import_core141.graphql.nonNull(import_core141.graphql.Boolean) }), error: import_core141.graphql.field({ type: import_core141.graphql.String }), url: import_core141.graphql.field({ type: import_core141.graphql.String }) }
+  })),
+  args: {
+    amount: import_core141.graphql.arg({ type: import_core141.graphql.nonNull(import_core141.graphql.Int) }),
+    purchaserName: import_core141.graphql.arg({ type: import_core141.graphql.nonNull(import_core141.graphql.String) }),
+    purchaserEmail: import_core141.graphql.arg({ type: import_core141.graphql.nonNull(import_core141.graphql.String) }),
+    recipientName: import_core141.graphql.arg({ type: import_core141.graphql.String }),
+    recipientEmail: import_core141.graphql.arg({ type: import_core141.graphql.String }),
+    message: import_core141.graphql.arg({ type: import_core141.graphql.String })
+  },
+  async resolve(_source, args, context) {
+    try {
+      return { success: true, error: null, ...await startGiftCardCheckout(context, args) };
+    } catch (error) {
+      return { success: false, error: message(error, "The gift card payment page could not be opened"), url: null };
+    }
+  }
+});
+var confirmGiftCardOnline = import_core141.graphql.field({
+  type: import_core141.graphql.object()({
+    name: "StorefrontGiftCardPurchase",
+    fields: {
+      status: import_core141.graphql.field({ type: import_core141.graphql.nonNull(import_core141.graphql.String) }),
+      amount: import_core141.graphql.field({ type: import_core141.graphql.nonNull(import_core141.graphql.Int) }),
+      code: import_core141.graphql.field({ type: import_core141.graphql.String }),
+      recipientName: import_core141.graphql.field({ type: import_core141.graphql.String }),
+      recipientEmail: import_core141.graphql.field({ type: import_core141.graphql.String })
+    }
+  }),
+  args: { ref: import_core141.graphql.arg({ type: import_core141.graphql.nonNull(import_core141.graphql.ID) }), token: import_core141.graphql.arg({ type: import_core141.graphql.nonNull(import_core141.graphql.String) }) },
+  async resolve(_source, { ref: ref2, token }, context) {
+    try {
+      return await giftCardPurchaseStatus(context, ref2, token);
+    } catch (error) {
+      console.error("Gift card status failed", error);
+      return null;
+    }
+  }
+});
+
+// features/keystone/mutations/storefrontClientWorkflows.ts
+var import_core142 = require("@keystone-6/core");
+
+// features/keystone/depositDisplay.ts
+var OPEN = /* @__PURE__ */ new Set(["pending", "confirmed"]);
+var CAPTURED = /* @__PURE__ */ new Set(["completed", "partially_refunded", "refunded"]);
+function depositDisplay(appointment, sessions) {
+  const captured = sessions.filter((session) => CAPTURED.has(session.status));
+  const paidAmount = captured.reduce((sum, session) => sum + session.amount, 0);
+  const refunds = captured.flatMap((session) => session.refunds);
+  const done = refunds.filter((refund) => refund.status === "completed");
+  const refundedAmount = done.reduce((sum, refund) => sum + refund.amountMinor, 0);
+  const refundedAt = done.map((refund) => refund.processedAt || refund.createdAt || "").filter(Boolean).sort().pop() || captured.map((session) => session.refundedAt || "").filter(Boolean).sort().pop() || null;
+  if (paidAmount > 0 && refundedAmount >= paidAmount) return { state: "refunded", refundedAmount, refundedAt };
+  if (refunds.some((refund) => refund.status === "pending")) return { state: "refund_pending", refundedAmount, refundedAt };
+  if (refunds.some((refund) => refund.status === "failed")) return { state: "refund_failed", refundedAmount, refundedAt };
+  if (OPEN.has(appointment.status)) return { state: appointment.depositPaid || paidAmount > 0 ? "paid" : "due", refundedAmount, refundedAt };
+  if (paidAmount > refundedAmount && appointment.status === "cancelled") return { state: "refund_pending", refundedAmount, refundedAt };
+  if (appointment.depositPaid || paidAmount > 0) return { state: "paid", refundedAmount, refundedAt };
+  return { state: "not_charged", refundedAmount, refundedAt };
+}
+
+// features/keystone/mutations/storefrontClientWorkflows.ts
+var failed = (error) => ({ success: false, recordId: null, error: error instanceof Error ? error.message : "Request failed" });
+async function ownedAppointment(context, appointmentId) {
+  const actor = await assertActiveActor(context);
+  const appointment = await context.sudo().query.Appointment.findOne({
+    where: { id: appointmentId },
+    query: "id status practice { id } client { id user { id } } provider { id } lineItems { service { id category { id } } } services { id category { id } } review { id }"
+  });
+  if (!appointment || appointment.practice?.id !== actor.practiceId || appointment.client?.user?.id !== actor.actorId) throw new Error("Appointment not found");
+  return { actor, appointment };
+}
+var IntakeTemplateType = import_core142.graphql.object()({
+  name: "ClientIntakeTemplate",
+  fields: {
+    id: import_core142.graphql.field({ type: import_core142.graphql.nonNull(import_core142.graphql.ID) }),
+    name: import_core142.graphql.field({ type: import_core142.graphql.nonNull(import_core142.graphql.String) }),
+    type: import_core142.graphql.field({ type: import_core142.graphql.nonNull(import_core142.graphql.String) }),
+    description: import_core142.graphql.field({ type: import_core142.graphql.String }),
+    fields: import_core142.graphql.field({ type: import_core142.graphql.JSON }),
+    submitted: import_core142.graphql.field({ type: import_core142.graphql.nonNull(import_core142.graphql.Boolean) }),
+    status: import_core142.graphql.field({ type: import_core142.graphql.String })
+  }
+});
+var clientIntakeForms = import_core142.graphql.field({
+  type: import_core142.graphql.nonNull(import_core142.graphql.list(import_core142.graphql.nonNull(IntakeTemplateType))),
+  args: { appointmentId: import_core142.graphql.arg({ type: import_core142.graphql.nonNull(import_core142.graphql.ID) }) },
+  async resolve(_source, args, context) {
+    const { actor, appointment } = await ownedAppointment(context, args.appointmentId);
+    const categoryIds = [...new Set([
+      ...(appointment.lineItems || []).map((line) => line.service?.category?.id),
+      ...(appointment.services || []).map((service) => service.category?.id)
+    ].filter(Boolean))];
+    if (!categoryIds.length) return [];
+    const sudo = context.sudo();
+    const templates = await sudo.query.FormTemplate.findMany({
+      where: { practice: { id: { equals: actor.practiceId } }, isActive: { equals: true }, type: { in: ["intake", "clinical_intake"] }, requiredForCategories: { some: { id: { in: categoryIds } } } },
+      take: 20,
+      orderBy: { name: "asc" },
+      query: "id name type description fields version"
+    });
+    const submissions = templates.length ? await sudo.query.FormSubmission.findMany({
+      where: { practice: { id: { equals: actor.practiceId } }, appointment: { id: { equals: appointment.id } }, client: { id: { equals: actor.actorId } }, template: { id: { in: templates.map((template) => template.id) } }, supersededBy: null },
+      take: 50,
+      query: "id status template { id }"
+    }) : [];
+    return templates.map((template) => {
+      const submission = submissions.find((item) => item.template?.id === template.id);
+      return { id: template.id, name: template.name, type: template.type, description: template.description || null, fields: template.fields ?? null, submitted: Boolean(submission), status: submission?.status || null };
+    });
+  }
+});
+var submitAppointmentReview = import_core142.graphql.field({
+  type: import_core142.graphql.nonNull(import_core142.graphql.object()({
+    name: "SubmitAppointmentReviewResult",
+    fields: {
+      success: import_core142.graphql.field({ type: import_core142.graphql.nonNull(import_core142.graphql.Boolean) }),
+      recordId: import_core142.graphql.field({ type: import_core142.graphql.ID }),
+      error: import_core142.graphql.field({ type: import_core142.graphql.String })
+    }
+  })),
+  args: {
+    appointmentId: import_core142.graphql.arg({ type: import_core142.graphql.nonNull(import_core142.graphql.ID) }),
+    rating: import_core142.graphql.arg({ type: import_core142.graphql.nonNull(import_core142.graphql.Int) }),
+    comment: import_core142.graphql.arg({ type: import_core142.graphql.String }),
+    idempotencyKey: import_core142.graphql.arg({ type: import_core142.graphql.nonNull(import_core142.graphql.String) })
+  },
+  async resolve(_source, args, context) {
+    try {
+      if (!validIdempotencyKey(args.idempotencyKey)) throw new Error("Request key is invalid");
+      if (!Number.isInteger(args.rating) || args.rating < 1 || args.rating > 5) throw new Error("Choose a rating from 1 to 5");
+      const comment = (args.comment || "").trim();
+      if (comment.length > 2e3) throw new Error("Review is too long");
+      const { actor, appointment } = await ownedAppointment(context, args.appointmentId);
+      if (appointment.status !== "completed") throw new Error("Only completed visits can be reviewed");
+      if (appointment.review?.id) return { success: true, recordId: appointment.review.id, error: null };
+      const serviceId = appointment.lineItems?.[0]?.service?.id || appointment.services?.[0]?.id || null;
+      return await serializableWorkflow(context, "medspa-client-review", [`appointment:${appointment.id}`], async (tx) => {
+        const sudo = tx.sudo();
+        const existing = await sudo.query.Review.findMany({ where: { appointment: { id: { equals: appointment.id } } }, take: 1, query: "id" });
+        if (existing[0]) return { success: true, recordId: existing[0].id, error: null };
+        const review = await sudo.query.Review.createOne({
+          data: {
+            practice: { connect: { id: actor.practiceId } },
+            rating: args.rating,
+            comment,
+            isApproved: false,
+            client: { connect: { id: appointment.client.id } },
+            appointment: { connect: { id: appointment.id } },
+            service: serviceId ? { connect: { id: serviceId } } : void 0,
+            provider: appointment.provider?.id ? { connect: { id: appointment.provider.id } } : void 0
+          },
+          query: "id"
+        });
+        return { success: true, recordId: review.id, error: null };
+      });
+    } catch (error) {
+      return failed(error);
+    }
+  }
+});
+var PublicReviewType = import_core142.graphql.object()({
+  name: "StorefrontReview",
+  fields: {
+    id: import_core142.graphql.field({ type: import_core142.graphql.nonNull(import_core142.graphql.ID) }),
+    rating: import_core142.graphql.field({ type: import_core142.graphql.nonNull(import_core142.graphql.Int) }),
+    comment: import_core142.graphql.field({ type: import_core142.graphql.String }),
+    author: import_core142.graphql.field({ type: import_core142.graphql.nonNull(import_core142.graphql.String) }),
+    serviceName: import_core142.graphql.field({ type: import_core142.graphql.String }),
+    providerName: import_core142.graphql.field({ type: import_core142.graphql.String }),
+    createdAt: import_core142.graphql.field({ type: import_core142.graphql.String })
+  }
+});
+function initialName(name) {
+  const parts = (name || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "Client";
+  return parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1][0]}.` : parts[0];
+}
+var storefrontReviews = import_core142.graphql.field({
+  type: import_core142.graphql.nonNull(import_core142.graphql.list(import_core142.graphql.nonNull(PublicReviewType))),
+  args: { serviceId: import_core142.graphql.arg({ type: import_core142.graphql.ID }), providerId: import_core142.graphql.arg({ type: import_core142.graphql.ID }), take: import_core142.graphql.arg({ type: import_core142.graphql.Int }) },
+  async resolve(_source, args, context) {
+    const slug = await storefrontPracticeSlug(context);
+    if (!slug) return [];
+    const sudo = context.sudo();
+    const practice = (await sudo.query.Practice.findMany({ where: { slug: { equals: slug }, isActive: { equals: true }, storefrontSetting: { isPublished: { equals: true } } }, take: 1, query: "id" }))[0];
+    if (!practice) return [];
+    const take = Math.max(1, Math.min(args.take || 24, 60));
+    const where = { practice: { id: { equals: practice.id } }, isApproved: { equals: true } };
+    if (args.serviceId) where.service = { id: { equals: args.serviceId } };
+    if (args.providerId) where.provider = { id: { equals: args.providerId } };
+    const reviews = await sudo.query.Review.findMany({ where, take, orderBy: { createdAt: "desc" }, query: "id rating comment createdAt client { user { name } } service { name isPublic } provider { isPublic user { name } }" });
+    return reviews.map((review) => ({
+      id: review.id,
+      rating: review.rating,
+      comment: review.comment ? String(review.comment).slice(0, 2e3) : null,
+      author: initialName(review.client?.user?.name),
+      serviceName: review.service?.isPublic ? review.service.name : null,
+      providerName: review.provider?.isPublic ? review.provider.user?.name || null : null,
+      createdAt: review.createdAt ? new Date(review.createdAt).toISOString() : null
+    }));
+  }
+});
+var requestWaitlistSpot = import_core142.graphql.field({
+  type: import_core142.graphql.nonNull(import_core142.graphql.object()({
+    name: "RequestWaitlistSpotResult",
+    fields: {
+      success: import_core142.graphql.field({ type: import_core142.graphql.nonNull(import_core142.graphql.Boolean) }),
+      recordId: import_core142.graphql.field({ type: import_core142.graphql.ID }),
+      error: import_core142.graphql.field({ type: import_core142.graphql.String })
+    }
+  })),
+  args: {
+    serviceId: import_core142.graphql.arg({ type: import_core142.graphql.nonNull(import_core142.graphql.ID) }),
+    providerId: import_core142.graphql.arg({ type: import_core142.graphql.ID }),
+    preferredDays: import_core142.graphql.arg({ type: import_core142.graphql.list(import_core142.graphql.nonNull(import_core142.graphql.String)) }),
+    preferredTimeRange: import_core142.graphql.arg({ type: import_core142.graphql.String }),
+    notes: import_core142.graphql.arg({ type: import_core142.graphql.String }),
+    idempotencyKey: import_core142.graphql.arg({ type: import_core142.graphql.nonNull(import_core142.graphql.String) })
+  },
+  async resolve(_source, args, context) {
+    try {
+      requireActorPractice(context, void 0, "Sign in to join the waitlist");
+      const actor = await assertActiveActor(context);
+      if (!validIdempotencyKey(args.idempotencyKey)) throw new Error("Request key is invalid");
+      const days = [...new Set((args.preferredDays || []).map((day) => day.toLowerCase()))];
+      const allowed = /* @__PURE__ */ new Set(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]);
+      if (days.some((day) => !allowed.has(day))) throw new Error("Preferred days are invalid");
+      const timeRange = (args.preferredTimeRange || "").trim();
+      const notes = (args.notes || "").trim();
+      if (timeRange.length > 120 || notes.length > 1e3) throw new Error("Waitlist details are too long");
+      const sudo = context.sudo();
+      const service = await sudo.query.Service.findOne({ where: { id: args.serviceId }, query: "id status isPublic practice { id }" });
+      if (!service || service.practice?.id !== actor.practiceId || service.status !== "active" || service.isPublic !== true) throw new Error("Treatment is unavailable");
+      if (args.providerId) {
+        const provider = await sudo.query.Provider.findOne({ where: { id: args.providerId }, query: "id status isActive isPublic practice { id }" });
+        if (!provider || provider.practice?.id !== actor.practiceId || provider.status !== "active" || provider.isActive !== true || provider.isPublic !== true) throw new Error("Provider is unavailable");
+      }
+      return await serializableWorkflow(context, "medspa-client-waitlist", [`client-service:${actor.actorId}:${service.id}`, `request:${args.idempotencyKey}`], async (tx) => {
+        const txSudo = tx.sudo();
+        const open = (await txSudo.query.WaitlistEntry.findMany({
+          where: { OR: [{ requestKey: { equals: args.idempotencyKey } }, { client: { id: { equals: actor.actorId } }, service: { id: { equals: service.id } }, isActive: { equals: true } }] },
+          take: 1,
+          query: "id"
+        }))[0];
+        if (open) return { success: true, recordId: open.id, error: null };
+        const entry = await txSudo.query.WaitlistEntry.createOne({
+          data: {
+            practice: { connect: { id: actor.practiceId } },
+            client: { connect: { id: actor.actorId } },
+            service: { connect: { id: service.id } },
+            preferredProviders: args.providerId ? { connect: [{ id: args.providerId }] } : void 0,
+            preferredDays: days,
+            preferredTimeRange: timeRange,
+            notes,
+            requestKey: args.idempotencyKey,
+            status: "active",
+            isActive: true
+          },
+          query: "id"
+        });
+        return { success: true, recordId: entry.id, error: null };
+      });
+    } catch (error) {
+      return failed(error);
+    }
+  }
+});
+var GuestAppointmentType = import_core142.graphql.object()({
+  name: "StorefrontGuestAppointment",
+  fields: {
+    id: import_core142.graphql.field({ type: import_core142.graphql.nonNull(import_core142.graphql.ID) }),
+    status: import_core142.graphql.field({ type: import_core142.graphql.nonNull(import_core142.graphql.String) }),
+    startTime: import_core142.graphql.field({ type: import_core142.graphql.nonNull(import_core142.graphql.String) }),
+    duration: import_core142.graphql.field({ type: import_core142.graphql.Int }),
+    timezone: import_core142.graphql.field({ type: import_core142.graphql.String }),
+    serviceNames: import_core142.graphql.field({ type: import_core142.graphql.nonNull(import_core142.graphql.list(import_core142.graphql.nonNull(import_core142.graphql.String))) }),
+    providerName: import_core142.graphql.field({ type: import_core142.graphql.String }),
+    locationName: import_core142.graphql.field({ type: import_core142.graphql.String }),
+    price: import_core142.graphql.field({ type: import_core142.graphql.Int }),
+    cancellable: import_core142.graphql.field({ type: import_core142.graphql.nonNull(import_core142.graphql.Boolean) }),
+    depositAmount: import_core142.graphql.field({ type: import_core142.graphql.Int }),
+    depositPaid: import_core142.graphql.field({ type: import_core142.graphql.nonNull(import_core142.graphql.Boolean) }),
+    depositOnline: import_core142.graphql.field({ type: import_core142.graphql.nonNull(import_core142.graphql.Boolean) }),
+    // due | paid | not_charged | refund_pending | refund_failed | refunded
+    depositState: import_core142.graphql.field({ type: import_core142.graphql.nonNull(import_core142.graphql.String) }),
+    depositRefundedAmount: import_core142.graphql.field({ type: import_core142.graphql.nonNull(import_core142.graphql.Int) }),
+    depositRefundedAt: import_core142.graphql.field({ type: import_core142.graphql.String })
+  }
+});
+var GUEST_FIELDS = "id status startTime duration revision metadata depositAmount depositPaid client { id } practice { id } location { id name timezone } provider { user { name } } lineItems { serviceTitle price quantity } payment { id } transaction { id } consentsCount treatmentSessionsCount resourceReservations(where: { status: { in: [reserved, in_use] } }) { id } supervisorReservations(where: { status: { equals: reserved } }) { id } paymentSessions { status amount refundedAt data payment { refunds { status amountMinor processedAt createdAt } } }";
+async function guestRecord(context, appointmentId, token) {
+  if (!validGuestAccessToken(appointmentId, token)) throw new Error("Appointment not found");
+  const appointment = await context.sudo().query.Appointment.findOne({ where: { id: appointmentId }, query: GUEST_FIELDS });
+  if (!appointment || appointment.client?.id) throw new Error("Appointment not found");
+  return appointment;
+}
+function guestCancellable(appointment) {
+  return ["pending", "confirmed"].includes(appointment.status) && new Date(appointment.startTime).getTime() > Date.now() && !appointment.payment?.id && !appointment.transaction?.id && !appointment.treatmentSessionsCount && !appointment.consentsCount;
+}
+var storefrontAppointment = import_core142.graphql.field({
+  type: GuestAppointmentType,
+  args: { appointmentId: import_core142.graphql.arg({ type: import_core142.graphql.nonNull(import_core142.graphql.ID) }), token: import_core142.graphql.arg({ type: import_core142.graphql.String }) },
+  async resolve(_source, args, context) {
+    try {
+      let appointment;
+      if (args.token) appointment = await guestRecord(context, args.appointmentId, args.token);
+      else {
+        const { appointment: owned } = await ownedAppointment(context, args.appointmentId);
+        appointment = await context.sudo().query.Appointment.findOne({ where: { id: owned.id }, query: GUEST_FIELDS });
+      }
+      if (!appointment) return null;
+      const lines = appointment.lineItems || [];
+      const deposit = depositDisplay(appointment, (appointment.paymentSessions || []).filter((session) => session.data?.purpose === "appointment_deposit").map((session) => ({ status: session.status, amount: Number(session.amount || 0), refundedAt: session.refundedAt, refunds: session.payment?.refunds || [] })));
+      return {
+        id: appointment.id,
+        status: appointment.status,
+        startTime: new Date(appointment.startTime).toISOString(),
+        duration: appointment.duration ?? null,
+        timezone: appointment.location?.timezone || null,
+        serviceNames: lines.map((line) => line.serviceTitle).filter(Boolean),
+        providerName: appointment.provider?.user?.name || null,
+        locationName: appointment.location?.name || null,
+        price: lines.length ? lines.reduce((sum, line) => sum + Number(line.price || 0) * Number(line.quantity || 1), 0) : null,
+        // Signed-in owners cancel from the account's scheduling control; the flag is for guest links.
+        cancellable: Boolean(args.token) && guestCancellable(appointment),
+        depositAmount: Number(appointment.depositAmount || 0) > 0 ? Number(appointment.depositAmount) : null,
+        depositPaid: appointment.depositPaid === true,
+        // Only offered while the visit can still take it and the practice has Stripe installed and configured.
+        depositOnline: Number(appointment.depositAmount || 0) > 0 && appointment.depositPaid !== true && ["pending", "confirmed"].includes(appointment.status) && Boolean(await onlineDepositProvider(context.sudo(), appointment.practice.id)),
+        depositState: deposit.state,
+        depositRefundedAmount: deposit.refundedAmount,
+        depositRefundedAt: deposit.refundedAt
+      };
+    } catch {
+      return null;
+    }
+  }
+});
+var cancelGuestAppointment = import_core142.graphql.field({
+  type: import_core142.graphql.nonNull(import_core142.graphql.object()({
+    name: "CancelGuestAppointmentResult",
+    fields: {
+      success: import_core142.graphql.field({ type: import_core142.graphql.nonNull(import_core142.graphql.Boolean) }),
+      recordId: import_core142.graphql.field({ type: import_core142.graphql.ID }),
+      error: import_core142.graphql.field({ type: import_core142.graphql.String })
+    }
+  })),
+  args: { appointmentId: import_core142.graphql.arg({ type: import_core142.graphql.nonNull(import_core142.graphql.ID) }), token: import_core142.graphql.arg({ type: import_core142.graphql.nonNull(import_core142.graphql.String) }), reason: import_core142.graphql.arg({ type: import_core142.graphql.String }) },
+  async resolve(_source, args, context) {
+    try {
+      const reason = (args.reason || "").trim().slice(0, 1e3) || "Cancelled by guest";
+      await guestRecord(context, args.appointmentId, args.token);
+      let depositAttempts = [];
+      const cancelled = await serializableWorkflow(context, "medspa-guest-cancel", [`appointment:${args.appointmentId}`], async (tx) => {
+        const sudo = tx.sudo();
+        const appointment = await sudo.query.Appointment.findOne({ where: { id: args.appointmentId }, query: GUEST_FIELDS });
+        if (!appointment || appointment.client?.id) throw new Error("Appointment not found");
+        if (appointment.status === "cancelled") return { success: true, recordId: appointment.id, error: null };
+        if (!guestCancellable(appointment)) throw new Error("This appointment can't be cancelled online; contact the practice");
+        const now2 = (/* @__PURE__ */ new Date()).toISOString();
+        const metadata = appointment.metadata && typeof appointment.metadata === "object" ? appointment.metadata : {};
+        const history = Array.isArray(metadata.transitionHistory) ? metadata.transitionHistory.slice(-49) : [];
+        await sudo.query.Appointment.updateOne({
+          where: { id: appointment.id },
+          data: {
+            status: "cancelled",
+            cancelledAt: now2,
+            cancellationReason: reason,
+            revision: Number(appointment.revision || 1) + 1,
+            metadata: { ...metadata, transitionHistory: [...history, { from: appointment.status, to: "cancelled", reason, actorId: null, actor: "guest_link", at: now2 }] }
+          },
+          query: "id"
+        });
+        for (const reservation of appointment.resourceReservations || []) await sudo.query.AppointmentResourceReservation.updateOne({ where: { id: reservation.id }, data: { status: "cancelled" }, query: "id" });
+        for (const reservation of appointment.supervisorReservations || []) await sudo.query.AppointmentSupervisorReservation.updateOne({ where: { id: reservation.id }, data: { status: "cancelled" }, query: "id" });
+        await sudo.query.AuditEvent.createOne({ data: { practice: { connect: { id: appointment.practice.id } }, location: appointment.location?.id ? { connect: { id: appointment.location.id } } : void 0, action: "appointment.guest_cancelled", resourceType: "Appointment", resourceId: appointment.id, correlationId: `guest-cancel:${appointment.id}`, evidence: { fromStatus: appointment.status, reason }, evidenceHash: evidenceHash({ appointmentId: appointment.id, fromStatus: appointment.status, reason, at: now2 }), occurredAt: now2 }, query: "id" });
+        depositAttempts = await queueDepositRefundsOnCancel(sudo, appointment.id, appointment.practice.id);
+        return { success: true, recordId: appointment.id, error: null };
+      });
+      await kickRefundAttempts(context, depositAttempts);
+      return cancelled;
+    } catch (error) {
+      return failed(error);
+    }
+  }
+});
+
 // features/keystone/mutations/index.ts
 var gql = String.raw;
-var extendGraphqlSchema = import_core132.graphql.extend((base) => ({
+var extendGraphqlSchema = import_core143.graphql.extend((base) => ({
   query: {
-    redirectToInit: import_core132.graphql.field({
-      type: import_core132.graphql.Boolean,
+    redirectToInit: import_core143.graphql.field({
+      type: import_core143.graphql.Boolean,
       resolve: redirectToInit_default
     }),
     checkAvailability,
     calculateCommission,
     storefrontProviders,
     storefrontProvider,
+    storefrontServices,
+    storefrontRooms,
     publicStorefrontSettings,
     medspaOperationsWorkspace,
     medspaPlanJourney,
     medspaConsultationQueue,
     medspaAppointmentSchedule,
     medspaAppointmentClinicalHeader,
-    clientPortal
+    clientPortal,
+    clientIntakeForms,
+    storefrontReviews,
+    storefrontAppointment,
+    medspaClientDirectory,
+    medspaClientRecord,
+    medspaWaitlistBoard,
+    medspaMessageLog,
+    medspaReviewBoard
   },
   mutation: {
     registerCustomer,
@@ -14146,6 +17895,7 @@ var extendGraphqlSchema = import_core132.graphql.extend((base) => ({
     refundPayment: paymentMutations.refundPayment,
     reverseAppointmentSettlement: paymentMutations.reverseAppointmentSettlement,
     distributeTip: paymentMutations.distributeTip,
+    retryRefunds: paymentMutations.retryRefunds,
     purchaseGiftCard: giftCardMutations.purchaseGiftCard,
     confirmGiftCardPurchase: giftCardMutations.confirmGiftCardPurchase,
     applyGiftCardBalance: giftCardMutations.applyGiftCardBalance,
@@ -14211,9 +17961,114 @@ var extendGraphqlSchema = import_core132.graphql.extend((base) => ({
     acceptStaffInvitation,
     createProviderProfile,
     publishStorefrontSettings,
-    completeAppointmentCheckout
+    completeAppointmentCheckout,
+    submitAppointmentReview,
+    requestWaitlistSpot,
+    cancelGuestAppointment,
+    startDepositCheckout,
+    startCardCheckout,
+    confirmCardCheckout,
+    purchaseGiftCardOnline,
+    confirmGiftCardOnline,
+    confirmDepositCheckout,
+    upsertResource,
+    updateProviderProfile,
+    upsertLocation,
+    updateClientProfile,
+    moderateReview,
+    upsertMembershipPlan,
+    upsertServicePackage,
+    enrollClientMembership,
+    sellClientPackage,
+    issueGiftCard,
+    upsertProduct,
+    // Keystone already generates createPurchaseOrder for the list.
+    draftPurchaseOrder: createPurchaseOrder,
+    transitionPurchaseOrder,
+    upsertIntakeForm,
+    upsertFormTemplate
   }
 }));
+
+// features/keystone/database-url.ts
+var POOL_SIZES = { web: 15, worker: 5 };
+var OVERRIDE_ENV = {
+  web: "DATABASE_CONNECTION_LIMIT",
+  worker: "DATABASE_CONNECTION_LIMIT_WORKER"
+};
+function pooledDatabaseUrl(url, role = "web") {
+  if (!url || !/^postgres(ql)?:\/\//.test(url)) return url;
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+  if (parsed.searchParams.has("connection_limit")) return url;
+  const override = Number(process.env[OVERRIDE_ENV[role]]);
+  parsed.searchParams.set("connection_limit", String(Number.isInteger(override) && override > 0 ? override : POOL_SIZES[role]));
+  return parsed.toString();
+}
+
+// features/keystone/lib/keystonePrismaErrors.ts
+var RAW_METHOD = /^\$(queryRaw|executeRaw|queryRawUnsafe|executeRawUnsafe|queryRawTyped|runCommandRaw)$/;
+var clients = /* @__PURE__ */ new WeakMap();
+var delegates = /* @__PURE__ */ new WeakMap();
+function isKeystonePrismaError(value) {
+  return value instanceof Error && value.extensions?.code === "KS_PRISMA_ERROR";
+}
+function rethrowKeystonePrismaError(value) {
+  if (!isKeystonePrismaError(value)) return value;
+  const prisma = value.extensions.prisma ?? {};
+  throw Object.assign(value, { code: prisma.code, meta: prisma.meta, clientVersion: prisma.clientVersion });
+}
+function throwing(result2) {
+  if (!result2 || typeof result2.then !== "function") return rethrowKeystonePrismaError(result2);
+  const settled = () => result2.then(rethrowKeystonePrismaError);
+  return new Proxy(result2, {
+    get(target, key) {
+      if (key === "then") return (ok, fail12) => settled().then(ok, fail12);
+      if (key === "catch") return (fail12) => settled().catch(fail12);
+      if (key === "finally") return (done) => settled().finally(done);
+      const value = Reflect.get(target, key, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+  });
+}
+function throwingDelegate(delegate) {
+  const cached = delegates.get(delegate);
+  if (cached) return cached;
+  const wrapped = new Proxy(delegate, {
+    get(target, key) {
+      const value = Reflect.get(target, key, target);
+      return typeof value === "function" ? (...args) => throwing(value.apply(target, args)) : value;
+    }
+  });
+  delegates.set(delegate, wrapped);
+  return wrapped;
+}
+function throwKeystonePrismaErrors(client) {
+  const cached = clients.get(client);
+  if (cached) return cached;
+  const wrapped = new Proxy(client, {
+    get(target, key) {
+      const value = Reflect.get(target, key, target);
+      if (key === "$transaction" && typeof value === "function") {
+        return (work, ...options) => {
+          if (typeof work === "function") return value.call(target, (tx) => work(throwKeystonePrismaErrors(tx)), ...options);
+          return Promise.resolve(value.call(target, work, ...options)).then((results) => Array.isArray(results) ? results.map(rethrowKeystonePrismaError) : results);
+        };
+      }
+      if (key === "$extends" && typeof value === "function") return (...args) => throwKeystonePrismaErrors(value.apply(target, args));
+      if (typeof key === "string" && RAW_METHOD.test(key) && typeof value === "function") return (...args) => throwing(value.apply(target, args));
+      if (typeof value === "function") return value.bind(target);
+      if (typeof key === "string" && !key.startsWith("$") && value && typeof value === "object" && typeof value.findFirst === "function") return throwingDelegate(value);
+      return value;
+    }
+  });
+  clients.set(client, wrapped);
+  return wrapped;
+}
 
 // features/keystone/index.ts
 function required(name) {
@@ -14273,8 +18128,8 @@ var { withAuth } = (0, import_auth.createAuth)({
     }
   `
 });
-var keystone_default = withAuth((0, import_core133.config)({
-  db: { provider: "postgresql", url: databaseURL, onConnect: async (context) => {
+var keystone_default = withAuth((0, import_core144.config)({
+  db: { provider: "postgresql", url: pooledDatabaseUrl(databaseURL), extendPrismaClient: throwKeystonePrismaErrors, onConnect: async (context) => {
     await assertOwnedLocalDatabase(context.prisma);
   } },
   lists: models,
@@ -14294,7 +18149,7 @@ var keystone_default = withAuth((0, import_core133.config)({
       secretAccessKey: required("S3_SECRET_ACCESS_KEY"),
       endpoint: required("S3_ENDPOINT"),
       signed: { expiry: 300 },
-      forcePathStyle: true
+      forcePathStyle: s3ForcePathStyle(required("S3_ENDPOINT"))
     }
   },
   ui: { isAccessAllowed: ({ session }) => permissions.canAccessDashboard({ session }) },

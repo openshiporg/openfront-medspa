@@ -52,7 +52,6 @@ import { MembershipAgreement } from './MembershipAgreement'
 import { MembershipLedgerEntry } from './MembershipLedgerEntry'
 import { MessageLog } from './MessageLog'
 import { MessageTemplate } from './MessageTemplate'
-import { OutboxEvent } from './OutboxEvent'
 import { Payment } from './Payment'
 import { PaymentProvider } from './PaymentProvider'
 import { PaymentSession } from './PaymentSession'
@@ -153,7 +152,6 @@ export const models = {
   MembershipLedgerEntry,
   MessageLog,
   MessageTemplate,
-  OutboxEvent,
   Payment,
   PaymentProvider,
   PaymentSession,

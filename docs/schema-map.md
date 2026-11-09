@@ -115,7 +115,7 @@ Columns: **Created by** is M (merchant/staff via a dashboard workflow), C (custo
 | MessageTemplate | Reminder, confirmation and marketing text | M (CRUD), O | isActive |
 | MessageLog | Sent message record | S | sent/delivered/failed |
 | Review | Client review of a visit | **no create or moderation mutation** | isApproved |
-| DomainEvent / OutboxEvent | Event outbox | S | pending/processing/delivered/dead_letter |
+| DomainEvent | Domain event log | S | recorded |
 
 ## Merchant workflows end to end
 
@@ -166,7 +166,7 @@ Columns: **Created by** is M (merchant/staff via a dashboard workflow), C (custo
 | Reports | `/platform/reports` (metric list) | THIN |
 | Payment providers, webhooks, events | `/platform/integrations` (read-only) | THIN |
 
-Join, log and system lists that a parent page covers: AppointmentLineItem, Appointment*Reservation (appointment detail); AuditEvent and ClinicalAuthorityEvent (record detail timelines); MedSpaTransactionLineItem (checkout); GoodsReceipt*, StockMovement, InventoryMovement (inventory); ClientPackageUsage/Adjustment and MembershipLedgerEntry (benefits); IncidentAction, RecallAction/Exposure (safety); PatientRightsAction (privacy); PaymentWebhookEvent, WebhookInbox, DomainEvent, OutboxEvent (integrations); AssetAccessEvent (client record); ProductSale (legacy, reports).
+Join, log and system lists that a parent page covers: AppointmentLineItem, Appointment*Reservation (appointment detail); AuditEvent and ClinicalAuthorityEvent (record detail timelines); MedSpaTransactionLineItem (checkout); GoodsReceipt*, StockMovement, InventoryMovement (inventory); ClientPackageUsage/Adjustment and MembershipLedgerEntry (benefits); IncidentAction, RecallAction/Exposure (safety); PatientRightsAction (privacy); PaymentWebhookEvent, WebhookInbox, DomainEvent (integrations); AssetAccessEvent (client record); ProductSale (legacy, reports).
 
 ## Coverage after this pass
 
@@ -205,4 +205,4 @@ Still without a dashboard page:
 - **ResourceScheduleBlock** (room downtime): no mutation.
 - **ClientAsset and PhotoConsent** (clinical photos): the workflow mutations exist, but uploading clinical files needs an encrypted object-store intent flow that isn't wired to any storage. Not built.
 - **ProductSale**: legacy.
-- **OutboxEvent and WebhookInbox**: system lists.
+- **WebhookInbox**: system lists.
