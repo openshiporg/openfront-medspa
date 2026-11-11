@@ -1,5 +1,5 @@
+import { notFound } from 'next/navigation';
 import { ReceiptText } from 'lucide-react';
-import { WorkflowUnavailable } from '@/features/platform/components/WorkflowUnavailable';
 import { ErrorState, Notice, PageHeader, PillLink, PlatformPage, Track } from '@/features/platform/components/medspa-ui';
 import { getAppointmentWorkflowDetail } from '@/features/platform/appointments/actions/appointmentWorkflow';
 import { getCheckoutAppointment } from '../actions/checkout';
@@ -8,7 +8,7 @@ import { CardPaymentStatus } from '../components/CardCheckoutControls';
 
 export async function AppointmentCheckoutWorkflowPage({ appointmentId, checkoutNotice, cardNotice }: { appointmentId: string; checkoutNotice?: 'completed' | 'failed' | null; cardNotice?: 'return' | 'cancelled' | null }) {
   const workflow = await getAppointmentWorkflowDetail(appointmentId);
-  if (!workflow.appointment) return <WorkflowUnavailable flow="checkout" />;
+  if (!workflow.appointment) notFound();
   const checkout = await getCheckoutAppointment(appointmentId);
 
   const title = workflow.appointment.lineItems.map((item) => item.serviceTitle).filter(Boolean).join(', ')

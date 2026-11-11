@@ -1,7 +1,8 @@
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { Sparkles } from 'lucide-react';
 import {
-  Chip, EmptyState, ErrorState, Fact, MetricStrip, PageHeader, Panel, PillLink, PlatformPage, StatusDot, TitleStatus, Track, usd,
+  Chip, ErrorState, Fact, MetricStrip, PageHeader, Panel, PillLink, PlatformPage, StatusDot, TitleStatus, Track, usd,
 } from '@/features/platform/components/medspa-ui';
 import { getTreatment } from '../actions/catalog';
 import { CLINICAL_FLAGS } from '../types';
@@ -13,12 +14,11 @@ export async function TreatmentDetailPage({ id }: { id: string }) {
   const result = await getTreatment(id);
   const base = [{ label: 'Treatments', href: '/dashboard/platform/catalog' }];
 
+  if (result.status === 'missing') notFound();
   if (result.status !== 'loaded') {
     return (
-      <PlatformPage breadcrumbs={[...base, { label: result.status === 'missing' ? 'Not found' : 'Unavailable' }]} width="narrow">
-        {result.status === 'missing'
-          ? <EmptyState icon={Sparkles} title="Treatment not found" action={<Track><PillLink href="/dashboard/platform/catalog">Treatments</PillLink></Track>} />
-          : <ErrorState id="treatment-unavailable" title="Treatment unavailable" message="This treatment could not be loaded." action={<Track><PillLink href={`/dashboard/platform/catalog/${id}`}>Retry</PillLink></Track>} />}
+      <PlatformPage breadcrumbs={[...base, { label: 'Unavailable' }]} width="narrow">
+        <ErrorState id="treatment-unavailable" title="Treatment unavailable" message="This treatment could not be loaded." action={<Track><PillLink href={`/dashboard/platform/catalog/${id}`}>Retry</PillLink></Track>} />
       </PlatformPage>
     );
   }

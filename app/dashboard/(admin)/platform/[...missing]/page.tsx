@@ -1,5 +1,5 @@
-import { PlatformNotFound, platformNotFoundMetadata } from '@/features/platform/components/PlatformNotFound';
+import { notFound } from 'next/navigation';
 
-export const metadata = platformNotFoundMetadata;
-
-export default PlatformNotFound;
+export default function PlatformMissingRoute() {
+  notFound();
+}

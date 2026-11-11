@@ -1,5 +1,5 @@
+import { notFound } from 'next/navigation';
 import { CalendarClock, CreditCard, FileCheck2, ShieldAlert, Stethoscope, UserRound } from 'lucide-react';
-import { WorkflowUnavailable } from '@/features/platform/components/WorkflowUnavailable';
 import {
   appointmentLabel, appointmentTone, Avatar, Chip, Fact, Notice, PageHeader, Panel, PillLink, PlatformPage,
   StatusDot, TitleStatus, Track, usd, type Tone,
@@ -18,7 +18,7 @@ function needsClinicalReview(appointment: AppointmentWorkflowDetail) {
 
 export async function AppointmentWorkflowPage({ appointmentId }: { appointmentId: string }) {
   const { appointment, capabilities, clinical, guest } = await getAppointmentWorkflowDetail(appointmentId);
-  if (!appointment) return <WorkflowUnavailable flow="appointment" />;
+  if (!appointment) notFound();
 
   if (capabilities.canSchedule && !capabilities.canManageClinical) {
     return (

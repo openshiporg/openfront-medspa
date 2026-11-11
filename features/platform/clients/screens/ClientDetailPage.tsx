@@ -1,9 +1,10 @@
+import { notFound } from 'next/navigation';
 import { ViewerTime } from '@/features/dashboard/components/ViewerTime';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { CalendarDays, ClipboardList, ContactRound, FileText, Gift, Hourglass } from 'lucide-react';
 import {
-  appointmentLabel, appointmentTone, Avatar, Chip, EmptyState, ErrorState, Fact, humanize, PageHeader, Panel, PillLink,
+  appointmentLabel, appointmentTone, Avatar, Chip, ErrorState, Fact, humanize, PageHeader, Panel, PillLink,
   PlatformPage, StatusDot, statusTone, TitleStatus, Track, usd,
 } from '@/features/platform/components/medspa-ui';
 import { getClientFormOptions, getClientRecord } from '../actions/clients';
@@ -66,13 +67,7 @@ export async function ClientDetailPage({ clientId }: { clientId: string }) {
       </PlatformPage>
     );
   }
-  if (!record) {
-    return (
-      <PlatformPage breadcrumbs={breadcrumbs}>
-        <EmptyState icon={ContactRound} title="Client not found" action={<Track><PillLink href="/dashboard/platform/clients">Clients</PillLink></Track>} />
-      </PlatformPage>
-    );
-  }
+  if (!record) notFound();
 
   const { client } = record;
   const now = Date.now();
