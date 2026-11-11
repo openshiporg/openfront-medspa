@@ -85,14 +85,12 @@ async function load(section: Section, sudo: ReturnType<Context["sudo"]>, practic
     const commissionLiability=commissions.reduce((sum,item)=>sum+Number(item.commissionAmount||0),0);
     return {metrics:[money("Net settled revenue — max 500 payments",net),money("Unpaid commission liability — max 500",commissionLiability),count("Paid commission records",payoutCount),count("Open incidents",incidents),count("Rights requests open",rights)],records:payments.slice(0,50).map((item)=>row({id:item.id,title:"Settled payment",status:item.status,amount:Number(item.totalAmount||0)-Number(item.refundedAmount||0),occurredAt:occurred(item.processedAt)})),attentionCount:incidents+rights};
   }
-  const [providers,pending,failed,webhooks] = await Promise.all([
+  const [providers,webhooks] = await Promise.all([
     sudo.query.PaymentProvider.findMany({where:scoped(practiceId),take:20,query:"id name code adapter isInstalled isDefault"}),
-    sudo.query.DomainEvent.count({where:scoped(practiceId,{status:{equals:"pending"}})}),
-    sudo.query.DomainEvent.count({where:scoped(practiceId,{status:{equals:"dead_letter"}})}),
     sudo.query.PaymentWebhookEvent.findMany({where:scoped(practiceId),take:100,orderBy:{processedAt:"desc"},query:"id status"}),
   ]);
   const webhookAttention=webhooks.filter((item)=>item.status!=="processed").length;
-  return {metrics:[count("Providers installed (max 20)",providers.filter((x)=>x.isInstalled).length),count("Events recorded",pending),count("Events failed",failed),count("Webhook attention (max 100)",webhookAttention)],records:providers.map((item)=>row({id:item.id,title:item.name,subtitle:`${item.adapter} · ${item.code}`,status:item.isInstalled?(item.isDefault?"installed_default":"installed"):"not_installed",detail:"Secrets and payloads omitted"})),attentionCount:failed+webhookAttention};
+  return {metrics:[count("Providers installed (max 20)",providers.filter((x)=>x.isInstalled).length),count("Webhook attention (max 100)",webhookAttention)],records:providers.map((item)=>row({id:item.id,title:item.name,subtitle:`${item.adapter} · ${item.code}`,status:item.isInstalled?(item.isDefault?"installed_default":"installed"):"not_installed",detail:"Secrets and payloads omitted"})),attentionCount:webhookAttention};
 }
 
 const sectionCapability: Record<Section,typeof permissions.canReadClients> = {

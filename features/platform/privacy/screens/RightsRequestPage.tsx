@@ -1,3 +1,4 @@
+import { notFound } from 'next/navigation';
 import { UserRoundSearch } from 'lucide-react';
 import { ErrorState, Fact, PageHeader, Panel, PillLink, PlatformPage, StatusDot, TitleStatus, Track, humanize } from '@/features/platform/components/medspa-ui';
 import { getRightsRequest } from '../actions/privacy';
@@ -10,13 +11,7 @@ export async function RightsRequestPage({ params }: { params: Promise<{ id: stri
   const { id } = await params;
   const request = await getRightsRequest(id);
   const breadcrumbs = [{ label: 'Privacy & records', href: '/dashboard/platform/privacy' }, { label: 'Request' }];
-  if (!request) {
-    return (
-      <PlatformPage breadcrumbs={breadcrumbs} width="narrow">
-        <ErrorState id="request-unavailable" title="Request unavailable" action={<Track><PillLink href="/dashboard/platform/privacy">Privacy & records</PillLink></Track>} />
-      </PlatformPage>
-    );
-  }
+  if (!request) notFound();
   const due = dueTone(request);
   const details = request.scope && typeof request.scope === 'object' && typeof (request.scope as any).details === 'string' ? (request.scope as any).details as string : null;
 

@@ -12,7 +12,6 @@ import {
 
 import { rules } from "../access";
 import { canReadAppointmentPrivateFields } from "../appointmentSchedulingAuthority";
-import { createLifecycleHooks } from "../lifecycle";
 import { trackingFields } from "./trackingFields";
 
 export const Appointment = list({
@@ -27,7 +26,6 @@ export const Appointment = list({
       query: rules.canReadAppointments,
     },
   },
-  hooks: createLifecycleHooks("appointment", ["startTime", "endTime", "duration", "status", "depositAmount", "depositPaid", "locationId", "clientId", "providerId", "resourceId"]),
   ui: {
     listView: {
       initialColumns: ["client", "provider", "startTime", "status", "duration"],

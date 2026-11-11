@@ -1,3 +1,4 @@
+import { notFound } from 'next/navigation';
 import { ClipboardList, PackageCheck } from 'lucide-react';
 import { EmptyState, ErrorState, Fact, MetricStrip, PageHeader, Panel, PillLink, PlatformPage, TitleStatus, Track, usd } from '@/features/platform/components/medspa-ui';
 import { getPurchaseOrder } from '../actions/inventory';
@@ -10,6 +11,7 @@ const LIST = '/dashboard/platform/inventory?tab=purchase-orders';
 export async function PurchaseOrderDetailPage({ id }: { id: string }) {
   const result = await getPurchaseOrder(id);
   const order = result.status === 'loaded' ? result.data : null;
+  if (result.status !== 'unavailable' && !order) notFound();
   const breadcrumbs = [{ label: 'Inventory', href: '/dashboard/platform/inventory' }, { label: 'Purchase orders', href: LIST }, { label: order?.number || 'Order' }];
 
   if (result.status === 'unavailable' || !order) {

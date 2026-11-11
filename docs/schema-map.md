@@ -115,7 +115,6 @@ Columns: **Created by** is M (merchant/staff via a dashboard workflow), C (custo
 | MessageTemplate | Reminder, confirmation and marketing text | M (CRUD), O | isActive |
 | MessageLog | Sent message record | S | sent/delivered/failed |
 | Review | Client review of a visit | **no create or moderation mutation** | isApproved |
-| DomainEvent | Domain event log | S | recorded |
 
 ## Merchant workflows end to end
 
@@ -166,7 +165,7 @@ Columns: **Created by** is M (merchant/staff via a dashboard workflow), C (custo
 | Reports | `/platform/reports` (metric list) | THIN |
 | Payment providers, webhooks, events | `/platform/integrations` (read-only) | THIN |
 
-Join, log and system lists that a parent page covers: AppointmentLineItem, Appointment*Reservation (appointment detail); AuditEvent and ClinicalAuthorityEvent (record detail timelines); MedSpaTransactionLineItem (checkout); GoodsReceipt*, StockMovement, InventoryMovement (inventory); ClientPackageUsage/Adjustment and MembershipLedgerEntry (benefits); IncidentAction, RecallAction/Exposure (safety); PatientRightsAction (privacy); PaymentWebhookEvent, WebhookInbox, DomainEvent (integrations); AssetAccessEvent (client record); ProductSale (legacy, reports).
+Join, log and system lists that a parent page covers: AppointmentLineItem, Appointment*Reservation (appointment detail); AuditEvent and ClinicalAuthorityEvent (record detail timelines); MedSpaTransactionLineItem (checkout); GoodsReceipt*, StockMovement, InventoryMovement (inventory); ClientPackageUsage/Adjustment and MembershipLedgerEntry (benefits); IncidentAction, RecallAction/Exposure (safety); PatientRightsAction (privacy); PaymentWebhookEvent, WebhookInbox (integrations); AssetAccessEvent (client record); ProductSale (legacy, reports).
 
 ## Coverage after this pass
 
@@ -194,10 +193,10 @@ Join, log and system lists that a parent page covers: AppointmentLineItem, Appoi
 | Incidents, recalls, device readiness log | MISSING | `/platform/safety`, `/incidents/[id]`, `/recalls/[id]` (safety) | `reportIncident`, `appendIncidentAction`, `openRecallCase`, `appendRecallAction` |
 | Patient rights, legal holds, retention, break-glass | MISSING | `/platform/privacy`, `/requests/[id]` (privacy) | `requestPatientRights` gets a 30-day default; holds, retention |
 | Reports | THIN | `/platform/reports` (reports) | Revenue by day, treatments, providers, liabilities |
-| Payment methods, email status, event log, webhooks | THIN | `/platform/integrations` (integrations) | PaymentProvider flags; only failures count as attention |
+| Payment methods, email status, webhooks | THIN | `/platform/integrations` (integrations) | PaymentProvider flags; only failures count as attention |
 | Storefront identity, publish, checkout tax | OK | `/platform/storefront` (storefront-settings) | `Practice.taxRate` |
 
-Lists covered by a parent page rather than their own: AppointmentLineItem and the reservation lists (appointment detail); TreatmentAdministration, AdministrationLot, ClinicalOrderAction, ConsentAction (treatment workspace); MedSpaTransactionLineItem (checkout and payments); GoodsReceipt*, StockMovement, InventoryMovement (inventory); ClientPackageUsage/Adjustment, MembershipAgreement, MembershipLedgerEntry, GiftCardTransaction (benefits); IncidentAction, RecallAction/Exposure, DeviceReadinessEvent (safety); PatientRightsAction, BreakGlassEvent (privacy); FormSubmission, IntakeReviewAction (forms); FollowUpAction (follow-ups); DomainEvent, PaymentWebhookEvent (integrations); AuditEvent and ClinicalAuthorityEvent (record timelines).
+Lists covered by a parent page rather than their own: AppointmentLineItem and the reservation lists (appointment detail); TreatmentAdministration, AdministrationLot, ClinicalOrderAction, ConsentAction (treatment workspace); MedSpaTransactionLineItem (checkout and payments); GoodsReceipt*, StockMovement, InventoryMovement (inventory); ClientPackageUsage/Adjustment, MembershipAgreement, MembershipLedgerEntry, GiftCardTransaction (benefits); IncidentAction, RecallAction/Exposure, DeviceReadinessEvent (safety); PatientRightsAction, BreakGlassEvent (privacy); FormSubmission, IntakeReviewAction (forms); FollowUpAction (follow-ups); PaymentWebhookEvent (integrations); AuditEvent and ClinicalAuthorityEvent (record timelines).
 
 Still without a dashboard page:
 - **WidgetConfiguration** (embed widget): it has direct CRUD through Models, but no storefront embed consumes it.

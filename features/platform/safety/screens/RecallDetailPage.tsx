@@ -1,3 +1,4 @@
+import { notFound } from 'next/navigation';
 import { Siren } from 'lucide-react';
 import { EmptyState, ErrorState, Fact, MetricStrip, PageHeader, Panel, PillLink, PlatformPage, StatusDot, TitleStatus, Track, humanize, type Tone } from '@/features/platform/components/medspa-ui';
 import { getRecall } from '../actions/safety';
@@ -10,13 +11,7 @@ export async function RecallDetailPage({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   const result = await getRecall(id);
   const breadcrumbs = [{ label: 'Safety', href: '/dashboard/platform/safety?tab=recalls' }, { label: 'Recall' }];
-  if (!result) {
-    return (
-      <PlatformPage breadcrumbs={breadcrumbs} width="narrow">
-        <ErrorState id="recall-unavailable" title="Recall unavailable" action={<Track><PillLink href="/dashboard/platform/safety?tab=recalls">Recalls</PillLink></Track>} />
-      </PlatformPage>
-    );
-  }
+  if (!result) notFound();
   const { recall, canManageClinical } = result;
   const title = recall.lot ? `${recall.lot.product?.name || 'Product'} · lot ${recall.lot.lotNumber}` : recall.device?.name || 'Recall';
   const closable = recall.exposures.every((item) => item.status === 'assessed' || item.status === 'closed');

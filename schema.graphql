@@ -4036,156 +4036,6 @@ input ContraindicationFindingRelateToManyForCreateInput {
   connect: [ContraindicationFindingWhereUniqueInput!]
 }
 
-type DomainEvent {
-  id: ID!
-  practice: Practice
-  eventKey: String
-  eventType: String
-  eventVersion: Int
-  aggregateType: String
-  aggregateId: String
-  operation: DomainEventOperationType
-  actorId: String
-  locationId: String
-  payload: JSON
-  payloadHash: String
-  occurredAt: DateTime
-  status: DomainEventStatusType
-  attempts: Int
-  availableAt: DateTime
-  deliveredAt: DateTime
-  lastError: String
-  createdAt: DateTime
-  updatedAt: DateTime
-}
-
-enum DomainEventOperationType {
-  create
-  update
-  delete
-}
-
-enum DomainEventStatusType {
-  pending
-  processing
-  delivered
-  dead_letter
-}
-
-input DomainEventWhereUniqueInput {
-  id: ID
-  eventKey: String
-}
-
-input DomainEventWhereInput {
-  AND: [DomainEventWhereInput!]
-  OR: [DomainEventWhereInput!]
-  NOT: [DomainEventWhereInput!]
-  id: IDFilter
-  practice: PracticeWhereInput
-  eventKey: StringFilter
-  eventType: StringFilter
-  eventVersion: IntFilter
-  aggregateType: StringFilter
-  aggregateId: StringFilter
-  operation: DomainEventOperationTypeNullableFilter
-  actorId: StringFilter
-  locationId: StringFilter
-  payloadHash: StringFilter
-  occurredAt: DateTimeFilter
-  status: DomainEventStatusTypeNullableFilter
-  attempts: IntFilter
-  availableAt: DateTimeFilter
-  deliveredAt: DateTimeNullableFilter
-  lastError: StringFilter
-  createdAt: DateTimeFilter
-  updatedAt: DateTimeFilter
-}
-
-input DomainEventOperationTypeNullableFilter {
-  equals: DomainEventOperationType
-  in: [DomainEventOperationType!]
-  notIn: [DomainEventOperationType!]
-  not: DomainEventOperationTypeNullableFilter
-}
-
-input DomainEventStatusTypeNullableFilter {
-  equals: DomainEventStatusType
-  in: [DomainEventStatusType!]
-  notIn: [DomainEventStatusType!]
-  not: DomainEventStatusTypeNullableFilter
-}
-
-input DomainEventOrderByInput {
-  id: OrderDirection
-  eventKey: OrderDirection
-  eventType: OrderDirection
-  eventVersion: OrderDirection
-  aggregateType: OrderDirection
-  aggregateId: OrderDirection
-  operation: OrderDirection
-  actorId: OrderDirection
-  locationId: OrderDirection
-  payloadHash: OrderDirection
-  occurredAt: OrderDirection
-  status: OrderDirection
-  attempts: OrderDirection
-  availableAt: OrderDirection
-  deliveredAt: OrderDirection
-  lastError: OrderDirection
-  createdAt: OrderDirection
-  updatedAt: OrderDirection
-}
-
-input DomainEventUpdateInput {
-  practice: PracticeRelateToOneForUpdateInput
-  eventKey: String
-  eventType: String
-  eventVersion: Int
-  aggregateType: String
-  aggregateId: String
-  operation: DomainEventOperationType
-  actorId: String
-  locationId: String
-  payload: JSON
-  payloadHash: String
-  occurredAt: DateTime
-  status: DomainEventStatusType
-  attempts: Int
-  availableAt: DateTime
-  deliveredAt: DateTime
-  lastError: String
-  createdAt: DateTime
-  updatedAt: DateTime
-}
-
-input DomainEventUpdateArgs {
-  where: DomainEventWhereUniqueInput!
-  data: DomainEventUpdateInput!
-}
-
-input DomainEventCreateInput {
-  practice: PracticeRelateToOneForCreateInput
-  eventKey: String
-  eventType: String
-  eventVersion: Int
-  aggregateType: String
-  aggregateId: String
-  operation: DomainEventOperationType
-  actorId: String
-  locationId: String
-  payload: JSON
-  payloadHash: String
-  occurredAt: DateTime
-  status: DomainEventStatusType
-  attempts: Int
-  availableAt: DateTime
-  deliveredAt: DateTime
-  lastError: String
-  createdAt: DateTime
-  updatedAt: DateTime
-}
-
 type FollowUpAction {
   id: ID!
   practice: Practice
@@ -13476,12 +13326,6 @@ type Mutation {
   updateConsultations(data: [ConsultationUpdateArgs!]!): [Consultation]
   deleteConsultation(where: ConsultationWhereUniqueInput!): Consultation
   deleteConsultations(where: [ConsultationWhereUniqueInput!]!): [Consultation]
-  createDomainEvent(data: DomainEventCreateInput!): DomainEvent
-  createDomainEvents(data: [DomainEventCreateInput!]!): [DomainEvent]
-  updateDomainEvent(where: DomainEventWhereUniqueInput!, data: DomainEventUpdateInput!): DomainEvent
-  updateDomainEvents(data: [DomainEventUpdateArgs!]!): [DomainEvent]
-  deleteDomainEvent(where: DomainEventWhereUniqueInput!): DomainEvent
-  deleteDomainEvents(where: [DomainEventWhereUniqueInput!]!): [DomainEvent]
   createFollowUpAction(data: FollowUpActionCreateInput!): FollowUpAction
   createFollowUpActions(data: [FollowUpActionCreateInput!]!): [FollowUpAction]
   updateFollowUpAction(where: FollowUpActionWhereUniqueInput!, data: FollowUpActionUpdateInput!): FollowUpAction
@@ -14443,9 +14287,6 @@ type Query {
   consultation(where: ConsultationWhereUniqueInput!): Consultation
   consultations(where: ConsultationWhereInput! = {}, orderBy: [ConsultationOrderByInput!]! = [], take: Int! = 5000, skip: Int! = 0, cursor: ConsultationWhereUniqueInput): [Consultation!]
   consultationsCount(where: ConsultationWhereInput! = {}): Int
-  domainEvent(where: DomainEventWhereUniqueInput!): DomainEvent
-  domainEvents(where: DomainEventWhereInput! = {}, orderBy: [DomainEventOrderByInput!]! = [], take: Int! = 5000, skip: Int! = 0, cursor: DomainEventWhereUniqueInput): [DomainEvent!]
-  domainEventsCount(where: DomainEventWhereInput! = {}): Int
   followUpAction(where: FollowUpActionWhereUniqueInput!): FollowUpAction
   followUpActions(where: FollowUpActionWhereInput! = {}, orderBy: [FollowUpActionOrderByInput!]! = [], take: Int! = 5000, skip: Int! = 0, cursor: FollowUpActionWhereUniqueInput): [FollowUpAction!]
   followUpActionsCount(where: FollowUpActionWhereInput! = {}): Int

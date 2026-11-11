@@ -1,3 +1,4 @@
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { BadgeCheck, CalendarClock, CalendarDays, ShieldCheck, Sparkles, UserRound } from 'lucide-react';
 import {
@@ -19,6 +20,7 @@ function weeklyHours(schedules: StaffSchedule[]) {
 
 export async function StaffDetailPage({ providerId }: { providerId: string }) {
   const detail = await getStaffDetail(providerId);
+  if (detail.status === 'missing') notFound();
   const base = [{ label: 'Staff', href: '/dashboard/platform/staff' }];
 
   if (detail.status !== 'loaded') {
@@ -26,8 +28,8 @@ export async function StaffDetailPage({ providerId }: { providerId: string }) {
       <PlatformPage breadcrumbs={[...base, { label: 'Provider' }]} width="narrow">
         <ErrorState
           id="provider-unavailable"
-          title={detail.status === 'missing' ? 'Provider not found' : 'Provider unavailable'}
-          action={<Track><PillLink href="/dashboard/platform/staff">Staff</PillLink>{detail.status === 'unavailable' ? <PillLink href={`/dashboard/platform/staff/${providerId}`}>Retry</PillLink> : null}</Track>}
+          title="Provider unavailable"
+          action={<Track><PillLink href="/dashboard/platform/staff">Staff</PillLink><PillLink href={`/dashboard/platform/staff/${providerId}`}>Retry</PillLink></Track>}
         />
       </PlatformPage>
     );

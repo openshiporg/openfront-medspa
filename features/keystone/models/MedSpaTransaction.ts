@@ -11,7 +11,6 @@ import {
 } from "@keystone-6/core/fields";
 
 import { rules } from "../access";
-import { createLifecycleHooks } from "../lifecycle";
 import { trackingFields } from "./trackingFields";
 
 const formatCurrency = (amount: number): string => {
@@ -47,7 +46,6 @@ export const MedSpaTransaction = list({
       query: rules.canReadMedSpaTransactions,
     },
   },
-  hooks: createLifecycleHooks("medspa_transaction", ["type", "tip", "paymentMethod", "paymentStatus", "status", "completedAt", "locationId", "clientId", "appointmentId", "staffId"]),
   ui: {
     listView: {
       initialColumns: ["type", "client", "staff", "total", "paymentStatus", "status"],

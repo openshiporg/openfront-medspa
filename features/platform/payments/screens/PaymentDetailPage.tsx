@@ -1,3 +1,4 @@
+import { notFound } from 'next/navigation';
 import { ViewerTime } from '@/features/dashboard/components/ViewerTime';
 import Link from 'next/link';
 import { Banknote, ReceiptText } from 'lucide-react';
@@ -13,13 +14,12 @@ function stamp(value?: string | null) {
 
 export async function PaymentDetailPage({ paymentId }: { paymentId: string }) {
   const result = await getPayment(paymentId);
+  if (result.status === 'missing') notFound();
   const breadcrumbs = [{ label: 'Payments', href: '/dashboard/platform/payments' }, { label: 'Payment' }];
   if (result.status !== 'loaded') {
     return (
       <PlatformPage breadcrumbs={breadcrumbs} width="narrow">
-        {result.status === 'missing'
-          ? <EmptyState icon={Banknote} title="Payment not found" action={<Track><PillLink href="/dashboard/platform/payments">Payments</PillLink></Track>} />
-          : <ErrorState id="payment-unavailable" title="Payment unavailable" message="This payment could not be loaded." action={<Track><PillLink href={`/dashboard/platform/payments/${paymentId}`}>Retry</PillLink></Track>} />}
+        <ErrorState id="payment-unavailable" title="Payment unavailable" message="This payment could not be loaded." action={<Track><PillLink href={`/dashboard/platform/payments/${paymentId}`}>Retry</PillLink></Track>} />
       </PlatformPage>
     );
   }

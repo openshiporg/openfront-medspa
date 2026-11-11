@@ -860,32 +860,6 @@ model Consultation {
   @@index([providerId])
 }
 
-model DomainEvent {
-  id            String                   @id @default(cuid())
-  practice      Practice?                @relation("DomainEvent_practice", fields: [practiceId], references: [id])
-  practiceId    String?                  @map("practice")
-  eventKey      String                   @unique @default("")
-  eventType     String                   @default("")
-  eventVersion  Int                      @default(1)
-  aggregateType String                   @default("")
-  aggregateId   String                   @default("")
-  operation     DomainEventOperationType
-  actorId       String                   @default("")
-  locationId    String                   @default("")
-  payload       Json?
-  payloadHash   String                   @default("")
-  occurredAt    DateTime
-  status        DomainEventStatusType    @default(pending)
-  attempts      Int                      @default(0)
-  availableAt   DateTime                 @default(now())
-  deliveredAt   DateTime?
-  lastError     String                   @default("")
-  createdAt     DateTime                 @default(now())
-  updatedAt     DateTime                 @default(now()) @updatedAt
-
-  @@index([practiceId])
-}
-
 model FollowUpAction {
   id             String                     @id @default(cuid())
   practice       Practice?                  @relation("FollowUpAction_practice", fields: [practiceId], references: [id])
@@ -1811,7 +1785,6 @@ model Practice {
   from_ClientPoints_practice                     ClientPoints[]                     @relation("ClientPoints_practice")
   from_Commission_practice                       Commission[]                       @relation("Commission_practice")
   from_Consultation_practice                     Consultation[]                     @relation("Consultation_practice")
-  from_DomainEvent_practice                      DomainEvent[]                      @relation("DomainEvent_practice")
   from_FollowUpAction_practice                   FollowUpAction[]                   @relation("FollowUpAction_practice")
   from_FollowUpTask_practice                     FollowUpTask[]                     @relation("FollowUpTask_practice")
   from_FormSubmission_practice                   FormSubmission[]                   @relation("FormSubmission_practice")
@@ -3176,19 +3149,6 @@ enum ConsultationCandidacyDecisionType {
   deferred
   declined
   referred
-}
-
-enum DomainEventOperationType {
-  create
-  update
-  delete
-}
-
-enum DomainEventStatusType {
-  pending
-  processing
-  delivered
-  dead_letter
 }
 
 enum FollowUpActionActionType {

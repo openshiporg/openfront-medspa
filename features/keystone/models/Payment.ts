@@ -9,7 +9,6 @@ import {
 } from "@keystone-6/core/fields";
 
 import { activeListPermissions, rules } from "../access";
-import { createLifecycleHooks } from "../lifecycle";
 import { trackingFields } from "./trackingFields";
 
 export const Payment = list({
@@ -24,7 +23,6 @@ export const Payment = list({
       query: rules.canReadPayments,
     },
   },
-  hooks: createLifecycleHooks("payment", ["subtotal", "tax", "tip", "discount", "totalAmount", "refundedAmount", "paymentMethod", "status", "processedAt", "refundedAt", "appointmentId", "sessionId"]),
   ui: {
     listView: {
       initialColumns: ["appointment", "totalAmount", "paymentMethod", "status", "processedAt"],

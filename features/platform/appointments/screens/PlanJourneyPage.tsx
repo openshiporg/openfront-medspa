@@ -1,3 +1,4 @@
+import { notFound } from 'next/navigation';
 import { hasPracticeSetup } from '@/features/platform/lib/practiceSetup';
 import { PracticeSetupState } from '@/features/platform/components/PracticeSetupState';
 import Link from 'next/link';
@@ -12,6 +13,7 @@ const queueCrumbs = [{ label: 'Appointments', href: '/dashboard/platform/appoint
 
 export async function PlanJourneyPage({ consultationId, pages }: { consultationId: string; pages?: { planPage?: number; appointmentPage?: number; historyPage?: number } }) {
   const data = await getPlanJourney(consultationId, pages);
+  if (!data) notFound();
   return (
     <PlatformPage width="narrow" breadcrumbs={[
       { label: 'Appointments', href: '/dashboard/platform/appointments' },

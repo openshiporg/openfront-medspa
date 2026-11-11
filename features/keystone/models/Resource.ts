@@ -2,7 +2,6 @@ import { tenantFilter } from './tenantAccess';
 import { graphql, list } from '@keystone-6/core'
 import { checkbox, image, integer, json, relationship, select, text, timestamp, virtual } from '@keystone-6/core/fields'
 import { activeListPermissions, permissions } from '../access'
-import { createLifecycleHooks } from '../lifecycle'
 import { trackingFields } from './trackingFields'
 
 function photographyOnlyFields<T extends Record<string, any>>(fields: T): T {
@@ -24,7 +23,6 @@ export const Resource = list({
     },
     filter: { query: tenantFilter, update: tenantFilter },
   },
-  hooks: createLifecycleHooks('resource', ['name', 'type', 'capacity', 'isActive', 'revision', 'locationId']),
   ui: { listView: { initialColumns: ['name', 'type', 'location', 'capacity', 'isActive', 'isPublic'] }, labelField: 'name' },
   fields: photographyOnlyFields({
     practice: relationship({ ref: 'Practice' }),

@@ -9,7 +9,6 @@ import {
 } from "@keystone-6/core/fields";
 
 import { rules } from "../access";
-import { createLifecycleHooks } from "../lifecycle";
 import { trackingFields } from "./trackingFields";
 
 export const ProviderSchedule = list({
@@ -24,7 +23,6 @@ export const ProviderSchedule = list({
       query: rules.canReadProviderSchedules,
     },
   },
-  hooks: createLifecycleHooks("provider_schedule", ["type", "dayOfWeek", "localDate", "startTime", "endTime", "isAvailable", "revision", "providerId", "locationId"]),
   ui: {
     listView: {
       initialColumns: ["provider", "dayOfWeek", "startTime", "endTime", "isAvailable", "isPublic"],

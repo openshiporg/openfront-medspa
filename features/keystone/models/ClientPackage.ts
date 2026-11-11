@@ -9,7 +9,6 @@ import {
 } from "@keystone-6/core/fields";
 
 import { rules } from "../access";
-import { createLifecycleHooks } from "../lifecycle";
 
 const formatCurrency = (amount: number): string => {
   return new Intl.NumberFormat("en-US", {
@@ -32,7 +31,6 @@ export const ClientPackage = list({
       query: rules.canReadClientPackages,
     },
   },
-  hooks: createLifecycleHooks("client_package", ["status", "totalValue", "paidAmount", "usedValue", "expiresAt", "clientId", "packageId"]),
   ui: {
     listView: {
       initialColumns: ["client", "package", "status", "purchasedAt", "expiresAt"],

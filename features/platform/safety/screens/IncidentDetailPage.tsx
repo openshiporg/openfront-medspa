@@ -1,3 +1,4 @@
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ShieldAlert } from 'lucide-react';
 import { ErrorState, Fact, PageHeader, Panel, PillLink, PlatformPage, StatusDot, TitleStatus, Track, humanize } from '@/features/platform/components/medspa-ui';
@@ -13,13 +14,7 @@ export async function IncidentDetailPage({ params }: { params: Promise<{ id: str
   const { id } = await params;
   const result = await getIncident(id);
   const breadcrumbs = [{ label: 'Safety', href: '/dashboard/platform/safety' }, { label: 'Incident' }];
-  if (!result) {
-    return (
-      <PlatformPage breadcrumbs={breadcrumbs} width="narrow">
-        <ErrorState id="incident-unavailable" title="Incident unavailable" action={<Track><PillLink href="/dashboard/platform/safety">Safety</PillLink></Track>} />
-      </PlatformPage>
-    );
-  }
+  if (!result) notFound();
   const { incident, canActAsClinician } = result;
   const interventions = incident.interventions || {};
 

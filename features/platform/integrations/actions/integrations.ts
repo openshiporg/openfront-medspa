@@ -4,25 +4,18 @@ import { revalidatePath } from 'next/cache';
 import { keystoneClient } from '@/features/dashboard/lib/keystoneClient';
 import type { IntegrationsRead } from '../types';
 
-export async function getIntegrations(eventStatus: string): Promise<IntegrationsRead> {
-  const where = eventStatus === 'all' ? {} : { status: { equals: eventStatus } };
+export async function getIntegrations(): Promise<IntegrationsRead> {
   const response = await keystoneClient<any>(`
-    query Integrations($where: DomainEventWhereInput!) {
+    query Integrations {
       paymentProviders(orderBy: { name: asc }, take: 20) { id name code adapter isInstalled isDefault }
-      domainEvents(where: $where, orderBy: { occurredAt: desc }, take: 50) { id eventType aggregateType status attempts occurredAt lastError }
-      pending: domainEventsCount(where: { status: { equals: pending } })
-      deadLetter: domainEventsCount(where: { status: { equals: dead_letter } })
-      delivered: domainEventsCount(where: { status: { equals: delivered } })
       paymentWebhookEvents(orderBy: { processedAt: desc }, take: 20) { id type status processedAt provider { name } }
     }
-  `, { where }, { cache: 'no-store' }).catch(() => null);
+  `, {}, { cache: 'no-store' }).catch(() => null);
   if (!response?.success) return { status: 'unavailable' };
   const data = response.data;
   return {
     status: 'loaded',
     providers: data.paymentProviders || [],
-    events: data.domainEvents || [],
-    eventCounts: { pending: data.pending || 0, deadLetter: data.deadLetter || 0, delivered: data.delivered || 0 },
     webhooks: data.paymentWebhookEvents || [],
     // Presence only; no setting values leave the server.
     email: { configured: Boolean(process.env.SMTP_HOST?.trim() && process.env.SMTP_FROM?.trim()) },

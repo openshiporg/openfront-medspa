@@ -1,7 +1,6 @@
 import { list } from '@keystone-6/core'
 import { checkbox, integer, relationship, text, timestamp } from '@keystone-6/core/fields'
 import { rules } from '../access'
-import { createLifecycleHooks } from '../lifecycle'
 import { trackingFields } from './trackingFields'
 
 export const Client = list({
@@ -9,7 +8,6 @@ export const Client = list({
     operation: { query: () => true, create: () => false, update: () => false, delete: () => false },
     filter: { query: rules.canReadClients },
   },
-  hooks: createLifecycleHooks('client', ['userId', 'practiceId', 'preferredProviderId', 'homeLocationId', 'marketingConsent']),
   ui: { listView: { initialColumns: ['user', 'practice', 'preferredProvider', 'totalVisits', 'lifetimeValue'] } },
   fields: {
     practice: relationship({ ref: 'Practice' }),

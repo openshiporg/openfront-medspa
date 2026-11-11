@@ -2,7 +2,6 @@ import { tenantFilter } from './tenantAccess';
 import { list } from "@keystone-6/core";
 import { integer, json, relationship, select, text } from "@keystone-6/core/fields";
 import { permissions } from "../access";
-import { createLifecycleHooks } from "../lifecycle";
 import { trackingFields } from "./trackingFields";
 
 export const InventoryMovement = list({
@@ -15,9 +14,6 @@ export const InventoryMovement = list({
     },
     filter: { query: tenantFilter },
   },
-  hooks: createLifecycleHooks("inventory_movement", [
-    "type", "delta", "balanceBefore", "balanceAfter", "reason", "idempotencyKey", "locationId", "productId", "appointmentId",
-  ]),
   fields: {
     practice: relationship({ ref: "Practice" }),
     type: select({

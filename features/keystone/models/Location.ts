@@ -7,7 +7,6 @@ import {
 } from "@keystone-6/core/fields";
 
 import { activeListPermissions, practiceId } from "../access";
-import { createLifecycleHooks } from "../lifecycle";
 import { trackingFields } from "./trackingFields";
 import { validateTenantInput } from './tenantAccess';
 
@@ -26,7 +25,7 @@ export const Location = list({
       update: ({ session }) => practiceId(session) ? { practice: { id: { equals: practiceId(session)! } } } : false,
     },
   },
-  hooks: { ...createLifecycleHooks("location", ["name", "city", "state", "timezone", "isActive"]), validateInput: validateTenantInput },
+  hooks: { validateInput: validateTenantInput },
   ui: {
     listView: {
       initialColumns: ["name", "city", "state", "phone", "isActive"],

@@ -7,7 +7,6 @@ import {
 } from "@keystone-6/core/fields";
 
 import { rules } from "../access";
-import { createLifecycleHooks } from "../lifecycle";
 
 import { trackingFields } from "./trackingFields";
 
@@ -23,7 +22,6 @@ export const ProductSale = list({
       query: rules.canReadProductSales,
     },
   },
-  hooks: createLifecycleHooks("product_sale", ["total", "soldAt", "appointmentId", "soldById"]),
   ui: {
     listView: {
       initialColumns: ["soldAt", "total", "soldBy", "appointment"],

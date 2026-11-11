@@ -26,7 +26,6 @@ import { ClientPackageUsage } from './ClientPackageUsage'
 import { ClientPoints } from './ClientPoints'
 import { Commission } from './Commission'
 import { Consultation } from './Consultation'
-import { DomainEvent } from './DomainEvent'
 import { FollowUpAction } from './FollowUpAction'
 import { FollowUpTask } from './FollowUpTask'
 import { FormSubmission } from './FormSubmission'
@@ -126,7 +125,6 @@ export const models = {
   ClientPoints,
   Commission,
   Consultation,
-  DomainEvent,
   FollowUpAction,
   FollowUpTask,
   FormSubmission,
