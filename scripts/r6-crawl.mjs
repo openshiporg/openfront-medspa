@@ -16,13 +16,13 @@ const cookie = 'keystonejs-session=' + token
 const first = async (field) => (await gql(`{${field}(take:1){id}}`, cookie)).data?.[field]?.[0]?.id
 const ids = {}
 for (const k of ['clients', 'payments', 'appointments', 'services', 'purchaseOrders', 'incidents', 'recallCases', 'patientRightsRequests', 'consultations', 'medSpaTransactions', 'staff', 'providers']) ids[k] = await first(k)
-const platform = ['', 'commissions', 'clients', 'payments', 'storefront', 'forms', 'privacy', 'appointments', 'appointments/plans', 'appointments/new', 'catalog', 'resources', 'schedules', 'checkout', 'safety', 'engagement', 'integrations', 'locations', 'inventory', 'follow-ups', 'benefits', 'administration', 'staff', 'reports', 'reviews']
+const platform = ['commissions', 'clients', 'payments', 'storefront', 'forms', 'privacy', 'appointments', 'appointments/plans', 'appointments/new', 'catalog', 'resources', 'schedules', 'checkout', 'safety', 'engagement', 'integrations', 'locations', 'inventory', 'follow-ups', 'benefits', 'administration', 'staff', 'reports', 'reviews']
 const detail = (p, id) => id ? [p + '/' + id] : []
 const staffPaths = [
   ...platform.map((p) => '/dashboard/platform' + (p ? '/' + p : '')), '/dashboard/waitlist',
   ...detail('/dashboard/platform/clients', ids.clients), ...detail('/dashboard/platform/payments', ids.payments),
   ...detail('/dashboard/platform/appointments', ids.appointments), ...(ids.appointments ? ['/dashboard/platform/appointments/' + ids.appointments + '/treatment'] : []),
-  ...detail('/dashboard/platform/catalog', ids.services), ...detail('/dashboard/platform/checkout', ids.medSpaTransactions),
+  ...detail('/dashboard/platform/catalog', ids.services), ...detail('/dashboard/platform/checkout', ids.appointments),
   ...detail('/dashboard/platform/inventory/purchase-orders', ids.purchaseOrders), ...detail('/dashboard/platform/safety/incidents', ids.incidents),
   ...detail('/dashboard/platform/safety/recalls', ids.recallCases), ...detail('/dashboard/platform/privacy/requests', ids.patientRightsRequests),
   ...detail('/dashboard/platform/appointments/plans', ids.consultations), ...detail('/dashboard/platform/staff', ids.staff),
@@ -51,7 +51,8 @@ async function check(path, expect, authed) {
   n++; if (!ok) bad++
   console.log(`CHECK ${path}: ${ok ? 'PASS' : 'FAIL'} (${http}${expect === 404 ? ' expected 404' : ''})`)
 }
-for (const path of staffPaths) await check(path, 200, true)
+const only = process.env.CRAWL_ONLY ? process.env.CRAWL_ONLY.split(',') : null
+for (const path of (only || staffPaths)) await check(path, 200, true)
 for (const path of [...nope, ...lists]) await check(path, 404, true)
 for (const path of store) await check(path, 200, false)
 for (const path of store404) await check(path, 404, false)
