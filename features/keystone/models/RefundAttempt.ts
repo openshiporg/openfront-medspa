@@ -5,16 +5,16 @@ import { trackingFields } from "./trackingFields";
 import { tenantFilter } from "./tenantAccess";
 
 /**
- * Durable refund outbox. One row is written in the same transaction as its Refund, and the
- * outbox processor is the only writer afterwards. The provider call is never made inside that
- * transaction, so a crash or timeout leaves a row that is re-queried (never blindly re-sent).
+ * Refund attempt state. One row is written in the same transaction as its Refund; the provider call
+ * is made right after, never inside that transaction, so a crash or timeout leaves a row that is
+ * re-queried (never blindly re-sent) by the next request, webhook or the staff Retry button.
  */
 export const RefundAttempt = list({
   access: {
     operation: { query: permissions.canManageFinance, create: () => false, update: () => false, delete: () => false },
     filter: { query: tenantFilter },
   },
-  ui: { listView: { initialColumns: ["refund", "status", "amountMinor", "providerRefundId", "attemptCount", "nextAttemptAt"] } },
+  ui: { listView: { initialColumns: ["refund", "status", "amountMinor", "providerRefundId", "attemptCount"] } },
   fields: {
     practice: relationship({ ref: "Practice" }),
     refund: relationship({ ref: "Refund.attempt" }),
@@ -38,8 +38,6 @@ export const RefundAttempt = list({
     providerRefundId: text({ isIndexed: true, ui: { description: "The provider's refund id (Stripe re_…)" } }),
     attemptCount: integer({ defaultValue: 0 }),
     submitStartedAt: timestamp({ ui: { description: "Set before the provider call; once set the provider is re-queried before any resend" } }),
-    leaseUntil: timestamp(),
-    nextAttemptAt: timestamp({ defaultValue: { kind: "now" }, isIndexed: true }),
     needsReview: checkbox({ defaultValue: false, ui: { description: "The provider's refund disagrees with ours; staff must reconcile it" } }),
     lastError: text(),
     completedAt: timestamp(),

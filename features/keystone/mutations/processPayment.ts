@@ -10,7 +10,7 @@ import {
   paymentProviderFromRecord,
   refundProviderPayment,
 } from "../utils/paymentProviderAdapter";
-import { enqueueRefund, processRefundOutbox, refundableMinor, retryPracticeRefunds } from "../refundOutbox";
+import { enqueueRefund, processRefunds, refundableMinor, retryPracticeRefunds } from "../refunds";
 import { aggregateIdempotencyKey } from "../aggregateIdempotencyKey";
 
 
@@ -257,7 +257,7 @@ export const refundPayment = graphql.field({
     try {
       const processorSession = await context.sudo().query.PaymentSession.findOne({ where: { id: paymentSessionId }, query: "provider { adapter }" });
       if (processorSession?.provider?.adapter && processorSession.provider.adapter !== "manual") {
-        // Processor refund: record the Refund + outbox attempt atomically, then let the outbox call the provider.
+        // Processor refund: record the Refund + attempt atomically, then call the provider.
         const key = (idempotencyKey || "").trim();
         if (key.length < 12 || key.length > 200) throw new Error("Idempotency key is invalid");
         const queued = await paymentTransaction(context, [`session:${paymentSessionId}`], async (sudo) => {
@@ -292,8 +292,8 @@ export const refundPayment = graphql.field({
             providerReference: session.providerReference, actorId: actor.actorId,
           });
         });
-        // After the commit: first attempt right away. The outbox keeps going if this call fails or the process dies.
-        if (queued.attemptId) await processRefundOutbox(context, { attemptIds: [queued.attemptId], limit: 1 }).catch(error => console.error("Refund outbox kick failed", error));
+        // After the commit: submit right away. If this fails or the process dies, the staff Retry refunds button re-queries it.
+        if (queued.attemptId) await processRefunds(context, [queued.attemptId]).catch(error => console.error("Refund submit failed", error));
         const refund = await context.sudo().query.Refund.findOne({ where: { id: queued.refundId }, query: "status" });
         return { success: true, refundId: queued.refundId, error: null, status: refund?.status === "completed" ? "refunded" : refund?.status === "failed" ? "failed" : "processing" };
       }

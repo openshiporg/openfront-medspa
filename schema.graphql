@@ -10188,8 +10188,6 @@ type RefundAttempt {
   providerRefundId: String
   attemptCount: Int
   submitStartedAt: DateTime
-  leaseUntil: DateTime
-  nextAttemptAt: DateTime
   needsReview: Boolean
   lastError: String
   completedAt: DateTime
@@ -10228,8 +10226,6 @@ input RefundAttemptWhereInput {
   providerRefundId: StringFilter
   attemptCount: IntNullableFilter
   submitStartedAt: DateTimeNullableFilter
-  leaseUntil: DateTimeNullableFilter
-  nextAttemptAt: DateTimeNullableFilter
   needsReview: BooleanFilter
   lastError: StringFilter
   completedAt: DateTimeNullableFilter
@@ -10254,8 +10250,6 @@ input RefundAttemptOrderByInput {
   providerRefundId: OrderDirection
   attemptCount: OrderDirection
   submitStartedAt: OrderDirection
-  leaseUntil: OrderDirection
-  nextAttemptAt: OrderDirection
   needsReview: OrderDirection
   lastError: OrderDirection
   completedAt: OrderDirection
@@ -10275,8 +10269,6 @@ input RefundAttemptUpdateInput {
   providerRefundId: String
   attemptCount: Int
   submitStartedAt: DateTime
-  leaseUntil: DateTime
-  nextAttemptAt: DateTime
   needsReview: Boolean
   lastError: String
   completedAt: DateTime
@@ -10308,8 +10300,6 @@ input RefundAttemptCreateInput {
   providerRefundId: String
   attemptCount: Int
   submitStartedAt: DateTime
-  leaseUntil: DateTime
-  nextAttemptAt: DateTime
   needsReview: Boolean
   lastError: String
   completedAt: DateTime

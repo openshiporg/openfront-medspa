@@ -6,7 +6,7 @@ import {
 } from "../integrations/payment/types";
 
 /**
- * Refund outbox state machine (pure: no database, no framework).
+ * Refund state machine (pure: no database, no framework).
  *
  *   pending ──submit──▶ submitted ──provider settles──▶ succeeded | failed
  *      │                    │
@@ -40,7 +40,6 @@ export type RefundAttemptPatch = Partial<{
   providerRefundId: string;
   attemptCount: number;
   submitStartedAt: Date | null;
-  nextAttemptAt: Date | null;
   needsReview: boolean;
   lastError: string;
 }>;
@@ -53,7 +52,7 @@ export interface RefundAttemptStore {
   settleFailed(attempt: RefundAttemptRecord, reason: string): Promise<void>;
 }
 
-export interface RefundOutboxDeps {
+export interface RefundDeps {
   adapter: Pick<PaymentAdapter, "refund" | "getRefundStatus">;
   provider: PaymentProviderConfig;
   store: RefundAttemptStore;
@@ -69,28 +68,23 @@ export type RefundStep =
   | "needs_review";
 
 export const MAX_REFUND_ATTEMPTS = 8;
-const SUBMITTED_RECHECK_MS = 5 * 60_000;
 
 export function refundIdempotencyKey(refundId: string) {
   return `refund:${refundId}`;
 }
 
-export function refundBackoffMs(attemptCount: number) {
-  return Math.min(60 * 60_000, 30_000 * 2 ** Math.max(0, attemptCount));
-}
-
 const terminal = (status: RefundAttemptStatus) => status === "succeeded" || status === "failed";
 
-async function park(deps: RefundOutboxDeps, attempt: RefundAttemptRecord, reason: string): Promise<RefundStep> {
-  await deps.store.patch(attempt.id, { status: "unknown", needsReview: true, lastError: reason.slice(0, 500), nextAttemptAt: null });
+async function park(deps: RefundDeps, attempt: RefundAttemptRecord, reason: string): Promise<RefundStep> {
+  await deps.store.patch(attempt.id, { status: "unknown", needsReview: true, lastError: reason.slice(0, 500) });
   return "needs_review";
 }
 
 /**
- * Applies what the provider says about this refund. Used by the worker (after a submit or a lookup)
+ * Applies what the provider says about this refund. Used after a submit or a lookup
  * and by the signed `refund.updated` webhook, so every path converges on the same rules.
  */
-export async function applyProviderRefund(deps: RefundOutboxDeps, attempt: RefundAttemptRecord, found: ProviderRefund): Promise<RefundStep> {
+export async function applyProviderRefund(deps: RefundDeps, attempt: RefundAttemptRecord, found: ProviderRefund): Promise<RefundStep> {
   const now = (deps.now ?? (() => new Date()))();
   if (found.amount !== attempt.amountMinor || found.currency.toLowerCase() !== attempt.currencyCode.toLowerCase()) {
     return park(deps, attempt, `Provider refund ${found.providerRefundId} is ${found.amount} ${found.currency}; expected ${attempt.amountMinor} ${attempt.currencyCode}`);
@@ -121,13 +115,12 @@ export async function applyProviderRefund(deps: RefundOutboxDeps, attempt: Refun
     status: "submitted",
     providerRefundId: found.providerRefundId,
     lastError: "",
-    nextAttemptAt: new Date(now.getTime() + SUBMITTED_RECHECK_MS),
   });
   return "submitted";
 }
 
 /** Moves one claimed attempt as far as it can go right now. */
-export async function advanceRefundAttempt(deps: RefundOutboxDeps, attempt: RefundAttemptRecord): Promise<RefundStep> {
+export async function advanceRefundAttempt(deps: RefundDeps, attempt: RefundAttemptRecord): Promise<RefundStep> {
   const now = (deps.now ?? (() => new Date()))();
   if (terminal(attempt.status) || attempt.needsReview) return "skipped";
 
@@ -135,7 +128,6 @@ export async function advanceRefundAttempt(deps: RefundOutboxDeps, attempt: Refu
     return park(deps, attempt, "Too many attempts without a confirmed provider outcome");
   }
 
-  const backoff = (count: number) => new Date(now.getTime() + refundBackoffMs(count));
   const mustRequery = attempt.submitStartedAt !== null || attempt.status !== "pending" || Boolean(attempt.providerRefundId);
 
   if (mustRequery) {
@@ -149,7 +141,7 @@ export async function advanceRefundAttempt(deps: RefundOutboxDeps, attempt: Refu
         attemptId: attempt.id,
       });
     } catch (error) {
-      await deps.store.patch(attempt.id, { status: "unknown", lastError: describe(error), nextAttemptAt: backoff(attempt.attemptCount) });
+      await deps.store.patch(attempt.id, { status: "unknown", lastError: describe(error) });
       return "unknown";
     }
     if (found) return applyProviderRefund(deps, attempt, found);
@@ -177,7 +169,7 @@ export async function advanceRefundAttempt(deps: RefundOutboxDeps, attempt: Refu
       return "failed";
     }
     // Timeout, connection reset, 5xx: the provider may or may not have acted.
-    await deps.store.patch(attempt.id, { status: "unknown", lastError: describe(error), nextAttemptAt: backoff(attemptCount) });
+    await deps.store.patch(attempt.id, { status: "unknown", lastError: describe(error) });
     return "unknown";
   }
 

@@ -2,10 +2,10 @@ import { createHash } from "node:crypto";
 import type { Context } from ".keystone/types";
 import { canTransitionPayment, paymentRecordStatus, type PaymentLifecycleStatus } from "./payment-lifecycle";
 import { parseProviderWebhook, paymentProviderFromRecord } from "./utils/paymentProviderAdapter";
-import { processRefundOutbox, reconcileRefundFromWebhook, signalRefundRecheck } from "./refundOutbox";
+import { processRefunds, reconcileRefundFromWebhook, signalRefundRecheck } from "./refunds";
 import { settleDepositCheckout } from "./depositCheckout";
 import { settleHostedCheckoutWebhook } from "./hostedCheckouts";
-import { enqueueRefund } from "./refundOutbox";
+import { enqueueRefund } from "./refunds";
 import { depositWebhookAppointmentEffect } from "./lotLifecycle";
 
 export type PaymentWebhookOutcome = {
@@ -38,7 +38,7 @@ export async function reconcilePaymentWebhook(
   const replayKey = `${provider.id}:${event.eventId}`;
   const payloadHash = createHash("sha256").update(payload).digest("hex");
 
-  // Refund events belong to the outbox. They are applied through its own transactions (so not inside
+  // Refund events belong to refund reconcile. They are applied through its own transactions (so not inside
   // the one below) and are idempotent, so a crash between apply and the receipt just replays safely.
   if (event.refund || event.refundSignal) {
     const sudo = context.sudo();
@@ -186,7 +186,7 @@ export async function reconcilePaymentWebhook(
       }
       if (session.appointment?.id && sessionData.purpose === "appointment_deposit") {
         if (targetStatus === "completed") {
-          // A late deposit never revives a cancelled, completed or no-show visit: the money goes back through the refund outbox.
+          // A late deposit never revives a cancelled, completed or no-show visit: the money goes back through a refund.
           const effect = depositWebhookAppointmentEffect(session.appointment.status);
           if (effect === "confirm") await sudo.query.Appointment.updateOne({ where: { id: session.appointment.id }, data: { depositPaid: true, status: "confirmed", confirmedAt: now }, query: "id" });
           else if (effect === "mark_paid") await sudo.query.Appointment.updateOne({ where: { id: session.appointment.id }, data: { depositPaid: true }, query: "id" });
@@ -216,6 +216,6 @@ export async function reconcilePaymentWebhook(
     });
     return { replayed: false, processed: eventStatus === "processed", status: eventStatus };
   }, { maxWait: 5_000, timeout: 30_000 });
-  if (refundAttemptToKick) await processRefundOutbox(context, { attemptIds: [refundAttemptToKick], limit: 1 }).catch(() => undefined);
+  if (refundAttemptToKick) await processRefunds(context, [refundAttemptToKick]).catch(() => undefined);
   return outcome;
 }

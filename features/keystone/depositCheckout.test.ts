@@ -123,7 +123,7 @@ test("webhook: checkout.session.completed yields checkout facts for the deposit"
   assert.equal(result.status, null, "a checkout event never moves a payment status directly");
 });
 
-test("webhook: refund.updated is routed to the outbox with our attempt id, not applied as a payment status", async () => {
+test("webhook: refund.updated is routed to refund reconcile with our attempt id, not applied as a payment status", async () => {
   const result = await parse({ id: "evt_r1", type: "refund.updated", livemode: false, data: { object: { id: "re_test_1", object: "refund", status: "succeeded", amount: 7500, currency: "usd", payment_intent: "pi_test_1", metadata: { refundAttemptId: "att_9" } } } });
   assert.deepEqual(result.refund, { providerRefundId: "re_test_1", providerReference: "pi_test_1", status: "succeeded", amount: 7500, currency: "usd", attemptId: "att_9" });
   assert.equal(result.status, null);

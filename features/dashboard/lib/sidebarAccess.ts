@@ -5,7 +5,25 @@
  */
 
 type SidebarList = { path: string; isHidden?: boolean | null }
-type SidebarUser = { role?: { canAccessDashboard?: boolean | null } | null } | null | undefined
+type SidebarUser = { role?: ({ canAccessDashboard?: boolean | null } & Record<string, boolean | null | undefined>) | null } | null | undefined
+
+/** Platform pages that need a role flag beyond dashboard access. Other pages stay open to every dashboard role. */
+export const platformRouteFlags: Record<string, string> = {
+  payments: 'canManageFinance',
+  commissions: 'canManageFinance',
+  reports: 'canViewReports',
+  integrations: 'canManageIntegrations',
+  storefront: 'canManagePractice',
+  staff: 'canManagePeople',
+  privacy: 'canManageSensitiveRecords',
+}
+
+/** An unknown user is left to the middleware; a known role must hold the page's flag. */
+export function canOpenPlatformRoute(slug: string | undefined, user: SidebarUser) {
+  const flag = slug ? platformRouteFlags[slug] : undefined
+  if (!flag || !user) return true
+  return user.role?.[flag] === true
+}
 
 /** Only an explicit false hides navigation; an unknown user is left to the middleware. */
 export function canUseDashboardNav(user: SidebarUser) {
@@ -30,6 +48,6 @@ export function visiblePlatformItems<T extends { href: string }>(
   const hiddenPaths = new Set(lists.filter((list) => list.isHidden).map((list) => list.path))
   return items.filter((item) => {
     const slug = item.href.split('/platform/')[1]?.split(/[/?#]/)[0]
-    return !slug || !hiddenPaths.has(slug)
+    return canOpenPlatformRoute(slug, user) && (!slug || !hiddenPaths.has(slug))
   })
 }

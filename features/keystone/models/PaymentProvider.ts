@@ -3,7 +3,7 @@ import { checkbox, json, relationship, select, text } from "@keystone-6/core/fie
 import { activeListPermissions, permissions } from "../access";
 import { trackingFields } from "./trackingFields";
 import { tenantFilter, validateTenantInput } from "./tenantAccess";
-import { REFUND_OUTBOX_PROCESSOR } from "../refundOutbox";
+import { REFUND_PROCESSOR } from "../refunds";
 import { historyDeleteGuard } from '../deleteHistoryGuard';
 
 export const PaymentProvider = list({
@@ -11,7 +11,7 @@ export const PaymentProvider = list({
     await validateTenantInput(args);
     const adapter = args.resolvedData.adapter ?? args.item?.adapter;
     const installed = args.resolvedData.isInstalled ?? args.item?.isInstalled;
-    if (adapter === "stripe" && installed === true && REFUND_OUTBOX_PROCESSOR.registered !== true) args.addValidationError("Stripe cannot be installed until the durable refund outbox processor is registered");
+    if (adapter === "stripe" && installed === true && REFUND_PROCESSOR.registered !== true) args.addValidationError("Stripe cannot be installed until the refund processor is registered");
   } },
   access: {
     operation: {

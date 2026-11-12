@@ -8,7 +8,7 @@ import { trustedOrigin } from "./lib/trustedOrigin";
 import { assertPaymentTransition, paymentRecordStatus, type PaymentLifecycleStatus } from "./payment-lifecycle";
 import { createProviderCheckout, getProviderCheckoutStatus, paymentProviderFromRecord } from "./utils/paymentProviderAdapter";
 import { decideDepositSettlement, depositAppointmentAcceptsPayment, type DepositCheckoutFacts } from "./depositCheckoutCore";
-import { enqueueRefund, paymentLifecycleTransaction, processRefundOutbox } from "./refundOutbox";
+import { enqueueRefund, paymentLifecycleTransaction, processRefunds } from "./refunds";
 
 type Sudo = ReturnType<Context["sudo"]>;
 
@@ -93,7 +93,7 @@ export async function settleDepositCheckout(sudo: Sudo, sessionId: string, facts
     await sudo.query.Appointment.updateOne({ where: { id: appointment.id }, data: { depositPaid: true }, query: "id" });
     return { outcome: "completed", refundAttemptId: null };
   }
-  // Paid after the visit was cancelled or completed: give the money back through the outbox.
+  // Paid after the visit was cancelled or completed: give the money back through a refund.
   if (session.payment?.id && session.practice?.id) {
     const queued = await enqueueRefund(sudo, {
       practiceId: session.practice.id, paymentId: session.payment.id, sessionId: session.id, amountMinor: session.amount, currencyCode: session.currency,
@@ -180,7 +180,7 @@ export async function confirmDepositCheckoutFlow(context: Context, args: { appoi
     refundAttemptId = settled.refundAttemptId;
     return settled.outcome;
   });
-  if (refundAttemptId) await processRefundOutbox(context, { attemptIds: [refundAttemptId], limit: 1 }).catch(() => undefined);
+  if (refundAttemptId) await processRefunds(context, [refundAttemptId]).catch(() => undefined);
   if (outcome === "review") throw new Error("The amount paid does not match the deposit. Contact the practice.");
   return { paid: outcome === "completed" };
 }
@@ -226,7 +226,7 @@ export const confirmDepositCheckout = graphql.field({
 
 /**
  * A cancelled visit gives its unapplied online deposit back. Runs inside the cancel transaction (the Refund and its
- * outbox attempt commit with the cancellation); the caller kicks the returned attempts after commit.
+ * outbox attempt commit with the cancellation); the caller submits the returned attempts after commit.
  * A no-show keeps the deposit.
  */
 export async function queueDepositRefundsOnCancel(sudo: Sudo, appointmentId: string, practiceId: string): Promise<string[]> {
@@ -252,5 +252,5 @@ export async function queueDepositRefundsOnCancel(sudo: Sudo, appointmentId: str
 }
 
 export async function kickRefundAttempts(context: Context, attemptIds: string[]) {
-  if (attemptIds.length) await processRefundOutbox(context, { attemptIds, limit: attemptIds.length }).catch(error => console.error("Refund outbox kick failed", error));
+  if (attemptIds.length) await processRefunds(context, attemptIds).catch(error => console.error("Refund submit failed", error));
 }

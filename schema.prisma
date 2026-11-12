@@ -2264,8 +2264,6 @@ model RefundAttempt {
   providerRefundId  String                  @default("")
   attemptCount      Int?                    @default(0)
   submitStartedAt   DateTime?
-  leaseUntil        DateTime?
-  nextAttemptAt     DateTime?               @default(now())
   needsReview       Boolean                 @default(false)
   lastError         String                  @default("")
   completedAt       DateTime?
@@ -2276,7 +2274,6 @@ model RefundAttempt {
   @@index([practiceId])
   @@index([paymentSessionId])
   @@index([providerRefundId])
-  @@index([nextAttemptAt])
 }
 
 model RetentionPolicy {

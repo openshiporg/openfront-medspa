@@ -40,7 +40,7 @@ test("cash checkout still records cash only; card goes through Charge card", () 
   assert.match(checkout, /Card payments are taken with Charge card/);
 });
 
-test("a paid card that cannot be applied to the visit is refunded through the outbox", () => {
+test("a paid card that cannot be applied to the visit is refunded through a refund", () => {
   assert.match(source, /card-unapplied/);
   assert.match(source, /enqueueRefund\(/);
 });

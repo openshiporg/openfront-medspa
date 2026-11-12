@@ -8,8 +8,8 @@ import {
   type RefundAttemptPatch,
   type RefundAttemptRecord,
   type RefundAttemptStore,
-} from "./refundOutboxCore";
-import { REFUND_OUTBOX_PROCESSOR, refundableMinor } from "./refundOutbox";
+} from "./refundsCore";
+import { REFUND_PROCESSOR, refundableMinor } from "./refunds";
 
 const provider = { code: "pp_stripe", adapter: "stripe" as const, config: {} };
 
@@ -21,7 +21,7 @@ function newAttempt(overrides: Partial<RefundAttemptRecord> = {}): RefundAttempt
   };
 }
 
-/** In-memory outbox store + fake processor that records every call, so tests can count real refunds. */
+/** In-memory store + fake processor that records every call, so tests can count real refunds. */
 function harness(options: {
   submit?: (call: { idempotencyKey: string; amount?: number }) => Promise<any>;
   lookup?: (call: { providerRefundId?: string | null; attemptId: string }) => Promise<ProviderRefund | null>;
@@ -187,9 +187,9 @@ test("refundable amount excludes pending and completed refunds but not failed on
   assert.equal(refundableMinor(10000, [{ amountMinor: 4000, status: "failed" }]), 10000);
 });
 
-test("the Stripe install guard is satisfied only by the registered outbox processor", () => {
-  assert.equal(REFUND_OUTBOX_PROCESSOR.registered, true);
-  assert.equal(REFUND_OUTBOX_PROCESSOR.processor, "processRefundOutbox");
-  assert.ok(REFUND_OUTBOX_PROCESSOR.reconcilesWebhooks.includes("refund.updated"));
-  assert.ok(REFUND_OUTBOX_PROCESSOR.reconcilesWebhooks.includes("charge.refunded"));
+test("the Stripe install guard is satisfied only by the registered refund processor", () => {
+  assert.equal(REFUND_PROCESSOR.registered, true);
+  assert.equal(REFUND_PROCESSOR.processor, "processRefunds");
+  assert.ok(REFUND_PROCESSOR.reconcilesWebhooks.includes("refund.updated"));
+  assert.ok(REFUND_PROCESSOR.reconcilesWebhooks.includes("charge.refunded"));
 });

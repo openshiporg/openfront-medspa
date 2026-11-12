@@ -10,21 +10,14 @@ import {
   type RefundAttemptRecord,
   type RefundAttemptStore,
   type RefundStep,
-} from "./refundOutboxCore";
+} from "./refundsCore";
 
-/**
- * Registered marker the PaymentProvider guard checks before a processor-backed adapter may be installed.
- * It is a code constant (not a flag): it exists only because the processor, the claim lease, the
- * webhook reconciliation and the dashboard retry below are all wired.
- */
-export const REFUND_OUTBOX_PROCESSOR = Object.freeze({
+/** Marker the PaymentProvider guard checks before Stripe may be installed: refunds are submitted on request and reconciled by signed webhooks. */
+export const REFUND_PROCESSOR = Object.freeze({
   registered: true as const,
-  processor: "processRefundOutbox",
+  processor: "processRefunds",
   reconcilesWebhooks: ["refund.created", "refund.updated", "refund.failed", "charge.refunded"] as const,
 });
-
-const LEASE_SECONDS = 120;
-const DEFAULT_BATCH = 10;
 
 type Sudo = ReturnType<Context["sudo"]>;
 
@@ -65,7 +58,7 @@ export interface RequestRefundInput {
 }
 
 /**
- * Writes the Refund and its outbox attempt. Call inside the caller's serializable transaction so both
+ * Writes the Refund and its attempt row. Call inside the caller's serializable transaction so both
  * commit together or not at all. No provider call happens here.
  */
 export async function enqueueRefund(sudo: Sudo, input: RequestRefundInput) {
@@ -138,7 +131,7 @@ function createStore(context: Context): RefundAttemptStore {
         if (cumulative > Number(session.amount)) throw new Error("Refund exceeds the captured payment");
         const target: PaymentLifecycleStatus = cumulative < Number(session.amount) ? "partially_refunded" : "refunded";
         assertPaymentTransition(session.status as PaymentLifecycleStatus, target);
-        await sudo.query.RefundAttempt.updateOne({ where: { id: attempt.id }, data: { status: "succeeded", providerRefundId, completedAt: now, lastError: "", nextAttemptAt: null, needsReview: false }, query: "id" });
+        await sudo.query.RefundAttempt.updateOne({ where: { id: attempt.id }, data: { status: "succeeded", providerRefundId, completedAt: now, lastError: "", needsReview: false }, query: "id" });
         await sudo.query.Refund.updateOne({ where: { id: attempt.refundId }, data: { status: "completed", processedAt: now, providerReference: providerRefundId }, query: "id" });
         const data = session.data && typeof session.data === "object" ? session.data as Record<string, any> : {};
         await sudo.query.PaymentSession.updateOne({ where: { id: session.id }, data: { status: target, refundedAt: now, data: { ...data, lastRefundId: providerRefundId } }, query: "id" });
@@ -155,7 +148,7 @@ function createStore(context: Context): RefundAttemptStore {
         const current = await sudo.query.RefundAttempt.findOne({ where: { id: attempt.id }, query: "status" });
         if (current?.status === "failed" || current?.status === "succeeded") return;
         const now = new Date().toISOString();
-        await sudo.query.RefundAttempt.updateOne({ where: { id: attempt.id }, data: { status: "failed", completedAt: now, lastError: reason.slice(0, 500), nextAttemptAt: null }, query: "id" });
+        await sudo.query.RefundAttempt.updateOne({ where: { id: attempt.id }, data: { status: "failed", completedAt: now, lastError: reason.slice(0, 500) }, query: "id" });
         await sudo.query.Refund.updateOne({ where: { id: attempt.refundId }, data: { status: "failed", processedAt: now }, query: "id" });
       });
     },
@@ -169,37 +162,18 @@ async function loadProvider(sudo: Sudo, sessionId: string) {
   return paymentProviderFromRecord(provider as { code: string; adapter: string; config?: unknown });
 }
 
-/** Leases up to `limit` due attempts. A crashed worker's lease simply expires. */
-async function claimAttempts(context: Context, limit: number, attemptIds?: string[]): Promise<string[]> {
-  const rows = await context.sudo().prisma.$queryRawUnsafe<Array<{ id: string }>>(
-    `UPDATE "RefundAttempt" SET "leaseUntil" = now() + ($1 || ' seconds')::interval
-     WHERE id IN (
-       SELECT id FROM "RefundAttempt"
-       WHERE status IN ('pending','submitted','unknown') AND "needsReview" = false
-         AND "nextAttemptAt" IS NOT NULL AND "nextAttemptAt" <= now()
-         AND ("leaseUntil" IS NULL OR "leaseUntil" < now())
-         AND ($3::text[] IS NULL OR id = ANY($3::text[]))
-       ORDER BY "nextAttemptAt" ASC
-       LIMIT $2
-       FOR UPDATE SKIP LOCKED
-     ) RETURNING id`,
-    String(LEASE_SECONDS), limit, attemptIds ?? null,
-  );
-  return rows.map(row => row.id);
-}
-
-export interface RefundOutboxSummary { claimed: number; results: Record<string, RefundStep | "error"> }
+export interface RefundSummary { claimed: number; results: Record<string, RefundStep | "error"> }
 
 /**
- * Worker: claims due attempts under a lease and advances each one. Safe to run concurrently and
- * repeatedly; an unknown outcome is re-queried before it can ever be resubmitted.
+ * Submits or re-queries the given refund attempts, one after another. Runs on the refund request, on a
+ * signed webhook, or from the staff Retry button. The provider key `refund:<id>` makes a repeat safe, and
+ * an unknown outcome is re-queried before it can ever be resubmitted.
  */
-export async function processRefundOutbox(context: Context, options: { limit?: number; attemptIds?: string[] } = {}): Promise<RefundOutboxSummary> {
-  const ids = await claimAttempts(context, options.limit ?? DEFAULT_BATCH, options.attemptIds);
-  const results: RefundOutboxSummary["results"] = {};
+export async function processRefunds(context: Context, attemptIds: string[]): Promise<RefundSummary> {
+  const results: RefundSummary["results"] = {};
   const sudo = context.sudo();
   const store = createStore(context);
-  for (const id of ids) {
+  for (const id of attemptIds) {
     try {
       const row = await sudo.query.RefundAttempt.findOne({ where: { id }, query: ATTEMPT_QUERY });
       if (!row?.paymentSession?.id || !row.refund?.id) { results[id] = "skipped"; continue; }
@@ -207,28 +181,21 @@ export async function processRefundOutbox(context: Context, options: { limit?: n
       const adapter = await getPaymentAdapter(provider);
       results[id] = await advanceRefundAttempt({ adapter, provider, store }, toRecord(row));
     } catch (error) {
-      console.error("Refund outbox attempt failed", id, error instanceof Error ? error.message : error);
+      console.error("Refund attempt failed", id, error instanceof Error ? error.message : error);
       results[id] = "error";
-      await sudo.query.RefundAttempt.updateOne({ where: { id }, data: { lastError: (error instanceof Error ? error.message : String(error)).slice(0, 500), nextAttemptAt: new Date(Date.now() + 60_000).toISOString() }, query: "id" }).catch(() => undefined);
-    } finally {
-      await sudo.query.RefundAttempt.updateOne({ where: { id }, data: { leaseUntil: null }, query: "id" }).catch(() => undefined);
+      await sudo.query.RefundAttempt.updateOne({ where: { id }, data: { lastError: (error instanceof Error ? error.message : String(error)).slice(0, 500) }, query: "id" }).catch(() => undefined);
     }
   }
-  return { claimed: ids.length, results };
+  return { claimed: attemptIds.length, results };
 }
 
-/** Dashboard "Retry refunds": make this practice's open attempts due now, then process them. */
-export async function retryPracticeRefunds(context: Context, practiceId: string): Promise<RefundOutboxSummary> {
-  await context.sudo().prisma.$executeRawUnsafe(
-    `UPDATE "RefundAttempt" SET "nextAttemptAt" = now()
-     WHERE "practice" = $1 AND status IN ('pending','submitted','unknown') AND "needsReview" = false AND ("leaseUntil" IS NULL OR "leaseUntil" < now())`,
-    practiceId,
-  );
+/** Staff "Retry refunds": process this practice's open attempts now. */
+export async function retryPracticeRefunds(context: Context, practiceId: string): Promise<RefundSummary> {
   const open = await context.sudo().query.RefundAttempt.findMany({
     where: { practice: { id: { equals: practiceId } }, status: { in: ["pending", "submitted", "unknown"] }, needsReview: { equals: false } },
     take: 50, query: "id",
   });
-  return processRefundOutbox(context, { limit: 50, attemptIds: open.map(row => row.id) });
+  return processRefunds(context, open.map(row => row.id));
 }
 
 /**
@@ -253,12 +220,12 @@ export async function reconcileRefundFromWebhook(context: Context, providerCode:
   return "applied";
 }
 
-/** `charge.refunded` only says "something was refunded": make that payment's open attempts due for a re-query. */
+/** `charge.refunded` only says "something was refunded": re-query that payment's open attempts now. */
 export async function signalRefundRecheck(context: Context, providerReference: string): Promise<number> {
-  const count = await context.sudo().prisma.$executeRawUnsafe(
-    `UPDATE "RefundAttempt" SET "nextAttemptAt" = now() WHERE "providerReference" = $1 AND status IN ('submitted','unknown') AND "needsReview" = false`,
-    providerReference,
-  );
-  if (count > 0) await processRefundOutbox(context, { limit: 10 });
-  return count;
+  const open = await context.sudo().query.RefundAttempt.findMany({
+    where: { providerReference: { equals: providerReference }, status: { in: ["submitted", "unknown"] }, needsReview: { equals: false } },
+    take: 10, query: "id",
+  });
+  if (open.length) await processRefunds(context, open.map(row => row.id));
+  return open.length;
 }

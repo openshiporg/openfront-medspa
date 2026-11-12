@@ -9,7 +9,7 @@ import { assertPaymentTransition, paymentRecordStatus, type PaymentLifecycleStat
 import { createProviderCheckout, getProviderCheckoutStatus, paymentProviderFromRecord } from "./utils/paymentProviderAdapter";
 import { decideDepositSettlement, type DepositCheckoutFacts } from "./depositCheckoutCore";
 import { onlineDepositProvider } from "./depositCheckout";
-import { enqueueRefund, paymentLifecycleTransaction, processRefundOutbox } from "./refundOutbox";
+import { enqueueRefund, paymentLifecycleTransaction, processRefunds } from "./refunds";
 import { CardAmountMismatch, CheckoutQuote, runControlledCheckout, type CheckoutArgs } from "./mutations/completeAppointmentCheckout";
 
 /*
@@ -177,7 +177,7 @@ export async function confirmDeskCardCheckout(context: Context, appointmentId: s
   for (const session of sessions) {
     const facts = await getProviderCheckoutStatus({ provider: paymentProviderFromRecord(session.provider), providerReference: dataOf(session).checkoutSessionId || session.providerReference });
     const settled = await settleDeskCardCheckout(context, session.id, facts);
-    if (settled.refundAttemptId) await processRefundOutbox(context, { attemptIds: [settled.refundAttemptId], limit: 1 }).catch(() => undefined);
+    if (settled.refundAttemptId) await processRefunds(context, [settled.refundAttemptId]).catch(() => undefined);
     if (settled.outcome !== "none" && outcome !== "completed") { outcome = settled.outcome; error = settled.error || null; }
   }
   return { outcome, error };
@@ -365,7 +365,7 @@ export async function settleHostedCheckoutWebhook(context: Context, providerId: 
   const sessionId = target[0].id as string;
   if (dataOf(target[0]).purpose === "checkout_card") {
     const settled = await settleDeskCardCheckout(context, sessionId, checkout);
-    if (settled.refundAttemptId) await processRefundOutbox(context, { attemptIds: [settled.refundAttemptId], limit: 1 }).catch(() => undefined);
+    if (settled.refundAttemptId) await processRefunds(context, [settled.refundAttemptId]).catch(() => undefined);
     return { applied: settled.outcome !== "none", outcome: settled.outcome };
   }
   const settled = await paymentLifecycleTransaction(context, `session-checkout:${sessionId}`, tx => settleGiftCardCheckout(tx, sessionId, checkout));

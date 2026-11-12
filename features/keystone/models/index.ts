@@ -1,5 +1,6 @@
 import { GRAPHQL_MAX_TAKE } from '../security/graphql-budget'
 import { resolveTenantPractice } from './tenantAccess'
+import { permissions } from '../access'
 import { AdministrationLot } from './AdministrationLot'
 import { Appointment } from './Appointment'
 import { AppointmentLineItem } from './AppointmentLineItem'
@@ -226,8 +227,15 @@ for (const [listKey, model] of Object.entries(models)) {
     } };
   }
   const original = model.ui;
+  const query = typeof access.operation === 'function' ? access.operation : access.operation.query;
   model.ui = {
     ...original,
+    // A list the role cannot read is hidden from the sidebar and its URLs are 404 (the dashboard checks isHidden).
+    isHidden: async (args) => {
+      if (typeof original?.isHidden === 'function' ? await original.isHidden(args) : original?.isHidden) return true;
+      if (listKey === 'Payment') return !permissions.canManageFinance(args);
+      return typeof query === 'function' ? !(await query({ ...args, listKey, operation: 'query' })) : query === false;
+    },
     itemView: { ...original?.itemView, defaultFieldMode: async (args) => {
       const originalMode = original?.itemView?.defaultFieldMode;
       const mode = typeof originalMode === 'function' ? await originalMode(args) : originalMode || 'edit';
