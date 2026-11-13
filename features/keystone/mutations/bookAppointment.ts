@@ -349,7 +349,7 @@ export async function bookAppointmentTransaction(context: Context, args: Booking
         });
         const requestBoundaryEvidenceHash = authorityDecisions.length
           ? authorityDecisions.map(decision => decision.evidenceHash).join(":")
-          : evidenceHash({ appointmentId: appointment.id, practiceId, providerId: args.providerId, serviceIds, stage: "non_clinical_demo_request" });
+          : evidenceHash({ appointmentId: appointment.id, practiceId, providerId: args.providerId, serviceIds, stage: "booking_request" });
         const selectedResources = services.flatMap((service: any) => service.requiredResources || [])
           .filter((resource: any, index: number, all: any[]) => selectedSlot.resourceIds.includes(resource.id) && all.findIndex(candidate => candidate.id === resource.id) === index);
         for (const resource of selectedResources) {
