@@ -26,7 +26,7 @@ export async function PaymentDetailPage({ paymentId }: { paymentId: string }) {
   const { payment, refundRoute } = result;
   const total = Number(payment.totalAmount || 0);
   const refunded = Number(payment.refundedAmount || 0);
-  const refundable = Math.max(0, total - refunded);
+  const refundable = Math.max(0, total - refunded) + Number((payment as any).appliedDeposit || 0);
   const client = payment.appointment?.client;
   const guestName = payment.appointment?.metadata?.guest?.name || null;
   const canRefund = refundRoute && payment.session && refundable > 0 && ['completed', 'partially_refunded'].includes(payment.status || '');

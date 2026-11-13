@@ -70,6 +70,7 @@ export async function getPayment(id: string): Promise<PaymentDetailRead> {
         session { id status amount data provider { name adapter } }
         appointment {
           lineItems { id serviceTitle price quantity }
+          paymentSessions { id status amount data payment { refundedAmount } }
           transaction { lineItems { id itemType quantity unitPrice discount service { name } product { name } } }
         }
       }
@@ -86,7 +87,11 @@ export async function getPayment(id: string): Promise<PaymentDetailRead> {
       // A deposit is part of the visit's price, not the visit's lines.
       ? [{ id: payment.id, kind: 'deposit', title: paymentNoteLabel(payment.notes).replace(/^Online deposit( · )?/, '').split(' · ')[0] || 'Visit', quantity: 1, amount: Number(payment.totalAmount || 0) }]
       : ((payment.appointment as any)?.lineItems || []).map((line: any) => ({ id: line.id, kind: 'service', title: line.serviceTitle || 'Treatment', quantity: Number(line.quantity || 1), amount: Number(line.quantity || 1) * Number(line.price || 0) }));
-  return { status: 'loaded', payment: { ...payment, lines }, refundRoute: refundRouteFor(payment.session) };
+  // A checkout also returns the deposit applied to it (refunded against the deposit's own charge).
+  const appliedDeposit = payment.session?.data?.purpose === 'checkout_card'
+    ? ((payment.appointment as any)?.paymentSessions || []).filter((d: any) => d.data?.purpose === 'appointment_deposit' && d.data?.appliedCheckoutPaymentId === payment.id && ['completed', 'partially_refunded'].includes(d.status)).reduce((sum: number, d: any) => sum + Math.max(0, Number(d.amount || 0) - Number(d.payment?.refundedAmount || 0)), 0)
+    : 0;
+  return { status: 'loaded', payment: { ...payment, appliedDeposit, lines }, refundRoute: refundRouteFor(payment.session) };
 }
 
 export async function refundPaymentAction(input: { paymentId: string; paymentSessionId: string; route: 'deposit' | 'settlement'; amount: number; reason: string; idempotencyKey: string }) {

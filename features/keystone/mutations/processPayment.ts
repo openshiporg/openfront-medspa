@@ -271,30 +271,52 @@ export const refundPayment = graphql.field({
           if (replay) {
             // A retried request returns the original Refund, whatever state the payment has reached since.
             if (replay.payment?.id !== session.payment.id) throw new Error("Idempotency key was already used for another operation");
-            return { refundId: replay.id, attemptId: replay.attempt?.id ?? null, replayed: true };
+            return { refundId: replay.id, attemptIds: replay.attempt?.id ? [replay.attempt.id] : [], replayed: true };
           }
           if (!["completed", "partially_refunded"].includes(session.status)) throw new Error("Completed payment not found");
-          if (sessionData.appliedToCheckout) throw new Error("This deposit was applied to the visit's checkout. Refund the checkout instead");
           const refunds = await sudo.query.Refund.findMany({ where: { payment: { id: { equals: session.payment.id } } }, take: 200, query: "amountMinor status" });
           const refundable = refundableMinor(session.amount, refunds as any);
-          const refundCents = amount ?? refundable;
+          // A checkout may also return the deposit applied to it: each part refunds against its own card charge.
+          const legs: Array<{ sessionId: string; paymentId: string; providerReference: string; currency: string; refundable: number; key: string }> = [
+            { sessionId: session.id, paymentId: session.payment.id, providerReference: session.providerReference, currency: session.currency, refundable, key: scopedKey },
+          ];
+          if (purpose === "checkout_card" && session.appointment?.id) {
+            const siblings = await sudo.query.PaymentSession.findMany({ where: { appointment: { id: { equals: session.appointment.id } } }, take: 50, query: "id amount currency status providerReference data payment { id }" });
+            for (const deposit of siblings as any[]) {
+              const data = deposit.data && typeof deposit.data === "object" ? deposit.data : {};
+              if (data.purpose !== "appointment_deposit" || data.appliedCheckoutPaymentId !== session.payment.id || !deposit.payment?.id || !deposit.providerReference) continue;
+              if (!["completed", "partially_refunded"].includes(deposit.status)) continue;
+              const depositRefunds = await sudo.query.Refund.findMany({ where: { payment: { id: { equals: deposit.payment.id } } }, take: 200, query: "amountMinor status" });
+              legs.push({ sessionId: deposit.id, paymentId: deposit.payment.id, providerReference: deposit.providerReference, currency: deposit.currency, refundable: refundableMinor(deposit.amount, depositRefunds as any), key: `${scopedKey}:${deposit.id}` });
+            }
+          }
+          const totalRefundable = legs.reduce((sum, leg) => sum + leg.refundable, 0);
+          const refundCents = amount ?? totalRefundable;
           if (!Number.isInteger(refundCents) || refundCents <= 0) throw new Error("Invalid refund amount");
-          if (refundCents > refundable) throw new Error("Refund exceeds what is still refundable");
+          if (refundCents > totalRefundable) throw new Error("Refund exceeds what is still refundable");
           if (purpose === "gift_card") {
             // A sold gift card is refunded whole and only while unspent; it stops working as the refund is queued.
             const giftCard: any = await sudo.query.GiftCard.findOne({ where: { id: sessionData.giftCardId }, query: "id initialValue currentBalance" });
             if (!giftCard || giftCard.currentBalance !== giftCard.initialValue || refundCents !== session.amount) throw new Error("Payment can be refunded only in full while the gift card is unspent");
             await sudo.query.GiftCard.updateOne({ where: { id: giftCard.id }, data: { isActive: false, currentBalance: 0 }, query: "id" });
           }
-          return enqueueRefund(sudo, {
-            practiceId: actor.practiceId, paymentId: session.payment.id, sessionId: session.id, amountMinor: refundCents,
-            currencyCode: session.currency, reason: (reason || "").trim() || "Refund requested", idempotencyKey: scopedKey,
-            providerReference: session.providerReference, actorId: actor.actorId,
-          });
+          let left = refundCents;
+          const queuedLegs: Array<{ refundId: string; attemptId: string | null }> = [];
+          for (const leg of legs) {
+            const take = Math.min(left, leg.refundable);
+            if (take <= 0) continue;
+            left -= take;
+            queuedLegs.push(await enqueueRefund(sudo, {
+              practiceId: actor.practiceId, paymentId: leg.paymentId, sessionId: leg.sessionId, amountMinor: take,
+              currencyCode: leg.currency, reason: (reason || "").trim() || "Refund requested", idempotencyKey: leg.key,
+              providerReference: leg.providerReference, actorId: actor.actorId,
+            }));
+          }
+          return { refundId: queuedLegs.map(leg => leg.refundId).join(","), attemptIds: queuedLegs.map(leg => leg.attemptId).filter(Boolean) as string[], replayed: false };
         });
         // After the commit: submit right away. If this fails or the process dies, the staff Retry refunds button re-queries it.
-        if (queued.attemptId) await processRefunds(context, [queued.attemptId]).catch(error => console.error("Refund submit failed", error));
-        const refund = await context.sudo().query.Refund.findOne({ where: { id: queued.refundId }, query: "status" });
+        if (queued.attemptIds.length) await processRefunds(context, queued.attemptIds).catch(error => console.error("Refund submit failed", error));
+        const refund = await context.sudo().query.Refund.findOne({ where: { id: queued.refundId.split(",")[0] }, query: "status" });
         return { success: true, refundId: queued.refundId, error: null, status: refund?.status === "completed" ? "refunded" : refund?.status === "failed" ? "failed" : "processing" };
       }
       return await paymentTransaction(context, [`session:${paymentSessionId}`], async (sudo) => {

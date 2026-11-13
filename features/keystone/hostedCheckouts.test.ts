@@ -50,3 +50,10 @@ test("webhook routes hosted card and gift-card checkouts before the deposit path
   assert.match(refunds, /purpose !== "checkout_card"/);
   assert.match(refunds, /while the gift card is unspent/);
 });
+
+test("a checkout refund also returns its applied deposit, each part against its own card charge, capped at total paid", () => {
+  assert.match(refunds, /data\.appliedCheckoutPaymentId !== session\.payment\.id/);
+  assert.match(refunds, /refundCents > totalRefundable/);
+  assert.match(refunds, /Refund exceeds what is still refundable/);
+  assert.match(refunds, /paymentId: leg\.paymentId, sessionId: leg\.sessionId/);
+});
