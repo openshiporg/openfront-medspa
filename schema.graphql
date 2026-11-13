@@ -54,7 +54,6 @@ input AdministrationLotWhereInput {
   wasteQuantity: StringFilter
   wasteReason: StringFilter
   witness: UserWhereInput
-  evidenceHash: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -140,7 +139,6 @@ input AdministrationLotOrderByInput {
   discardAt: OrderDirection
   wasteQuantity: OrderDirection
   wasteReason: OrderDirection
-  evidenceHash: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -325,7 +323,6 @@ enum AppointmentStatusType {
 
 input AppointmentWhereUniqueInput {
   id: ID
-  idempotencyKey: String
   consultation: ConsultationWhereUniqueInput
   payment: PaymentWhereUniqueInput
   transaction: MedSpaTransactionWhereUniqueInput
@@ -339,7 +336,6 @@ input AppointmentWhereInput {
   id: IDFilter
   practice: PracticeWhereInput
   revision: IntFilter
-  idempotencyKey: StringFilter
   startTime: DateTimeFilter
   endTime: DateTimeNullableFilter
   duration: IntNullableFilter
@@ -474,7 +470,6 @@ input InventoryMovementManyRelationFilter {
 input AppointmentOrderByInput {
   id: OrderDirection
   revision: OrderDirection
-  idempotencyKey: OrderDirection
   startTime: OrderDirection
   endTime: OrderDirection
   duration: OrderDirection
@@ -941,7 +936,6 @@ enum AppointmentResourceReservationStatusType {
 
 input AppointmentResourceReservationWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input AppointmentResourceReservationWhereInput {
@@ -961,8 +955,6 @@ input AppointmentResourceReservationWhereInput {
   endsAt: DateTimeFilter
   status: AppointmentResourceReservationStatusTypeNullableFilter
   revision: IntNullableFilter
-  evidenceHash: StringFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -990,8 +982,6 @@ input AppointmentResourceReservationOrderByInput {
   endsAt: OrderDirection
   status: OrderDirection
   revision: OrderDirection
-  evidenceHash: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -1077,7 +1067,6 @@ enum AppointmentSupervisorReservationStatusType {
 
 input AppointmentSupervisorReservationWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input AppointmentSupervisorReservationWhereInput {
@@ -1093,8 +1082,6 @@ input AppointmentSupervisorReservationWhereInput {
   startsAt: DateTimeFilter
   endsAt: DateTimeFilter
   status: AppointmentSupervisorReservationStatusTypeNullableFilter
-  evidenceHash: StringFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -1111,8 +1098,6 @@ input AppointmentSupervisorReservationOrderByInput {
   startsAt: OrderDirection
   endsAt: OrderDirection
   status: OrderDirection
-  evidenceHash: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -1185,7 +1170,6 @@ enum AssetAccessEventActionType {
 
 input AssetAccessEventWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input AssetAccessEventWhereInput {
@@ -1200,10 +1184,7 @@ input AssetAccessEventWhereInput {
   purpose: StringFilter
   outcome: StringFilter
   reason: StringFilter
-  sessionReferenceHash: StringFilter
-  evidenceHash: StringFilter
   occurredAt: DateTimeFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -1221,10 +1202,7 @@ input AssetAccessEventOrderByInput {
   purpose: OrderDirection
   outcome: OrderDirection
   reason: OrderDirection
-  sessionReferenceHash: OrderDirection
-  evidenceHash: OrderDirection
   occurredAt: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -1311,7 +1289,6 @@ input AuditEventWhereInput {
   resourceType: StringFilter
   resourceId: StringFilter
   correlationId: StringFilter
-  evidenceHash: StringFilter
   occurredAt: DateTimeFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
@@ -1323,7 +1300,6 @@ input AuditEventOrderByInput {
   resourceType: OrderDirection
   resourceId: OrderDirection
   correlationId: OrderDirection
-  evidenceHash: OrderDirection
   occurredAt: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
@@ -1393,7 +1369,6 @@ enum BreakGlassEventStatusType {
 
 input BreakGlassEventWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input BreakGlassEventWhereInput {
@@ -1411,8 +1386,6 @@ input BreakGlassEventWhereInput {
   reviewer: UserWhereInput
   reviewedAt: DateTimeNullableFilter
   reviewReason: StringFilter
-  evidenceHash: StringFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -1432,8 +1405,6 @@ input BreakGlassEventOrderByInput {
   expiresAt: OrderDirection
   reviewedAt: OrderDirection
   reviewReason: OrderDirection
-  evidenceHash: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -1700,13 +1671,10 @@ input ClientAssetWhereInput {
   photoConsent: PhotoConsentWhereInput
   category: ClientAssetCategoryTypeNullableFilter
   purpose: StringFilter
-  storageKey: StringFilter
-  encryptionKeyReference: StringFilter
   storageRegion: StringFilter
   originalFilename: StringFilter
   contentType: StringFilter
   byteSize: StringFilter
-  checksum: StringFilter
   status: ClientAssetStatusTypeNullableFilter
   releasedToClient: BooleanFilter
   accessClass: ClientAssetAccessClassTypeNullableFilter
@@ -1753,13 +1721,10 @@ input ClientAssetOrderByInput {
   id: OrderDirection
   category: OrderDirection
   purpose: OrderDirection
-  storageKey: OrderDirection
-  encryptionKeyReference: OrderDirection
   storageRegion: OrderDirection
   originalFilename: OrderDirection
   contentType: OrderDirection
   byteSize: OrderDirection
-  checksum: OrderDirection
   status: OrderDirection
   releasedToClient: OrderDirection
   accessClass: OrderDirection
@@ -2063,7 +2028,6 @@ enum ClientPackageAdjustmentTypeType {
 
 input ClientPackageAdjustmentWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input ClientPackageAdjustmentWhereInput {
@@ -2079,8 +2043,6 @@ input ClientPackageAdjustmentWhereInput {
   valueDelta: IntFilter
   reason: StringFilter
   occurredAt: DateTimeFilter
-  evidenceHash: StringFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -2098,8 +2060,6 @@ input ClientPackageAdjustmentOrderByInput {
   valueDelta: OrderDirection
   reason: OrderDirection
   occurredAt: OrderDirection
-  evidenceHash: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -2204,7 +2164,6 @@ enum ClinicalAuthorityEventDecisionType {
 
 input ClinicalAuthorityEventWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input ClinicalAuthorityEventWhereInput {
@@ -2226,9 +2185,7 @@ input ClinicalAuthorityEventWhereInput {
   decision: ClinicalAuthorityEventDecisionTypeNullableFilter
   reason: StringFilter
   policyVersion: StringFilter
-  evidenceHash: StringFilter
   decidedAt: DateTimeFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -2253,9 +2210,7 @@ input ClinicalAuthorityEventOrderByInput {
   decision: OrderDirection
   reason: OrderDirection
   policyVersion: OrderDirection
-  evidenceHash: OrderDirection
   decidedAt: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -2379,7 +2334,6 @@ enum ClinicalOrderStatusType {
 
 input ClinicalOrderWhereUniqueInput {
   id: ID
-  idempotencyKey: String
   supersedes: ClinicalOrderWhereUniqueInput
   supersededBy: ClinicalOrderWhereUniqueInput
 }
@@ -2408,8 +2362,6 @@ input ClinicalOrderWhereInput {
   signedAt: DateTimeFilter
   validFrom: DateTimeFilter
   validUntil: DateTimeFilter
-  evidenceHash: StringFilter
-  idempotencyKey: StringFilter
   supersedes: ClinicalOrderWhereInput
   supersededBy: ClinicalOrderWhereInput
   actions: ClinicalOrderActionManyRelationFilter
@@ -2443,8 +2395,6 @@ input ClinicalOrderOrderByInput {
   signedAt: OrderDirection
   validFrom: OrderDirection
   validUntil: OrderDirection
-  evidenceHash: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -2579,7 +2529,6 @@ enum ClinicalOrderActionActionType {
 
 input ClinicalOrderActionWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input ClinicalOrderActionWhereInput {
@@ -2594,9 +2543,7 @@ input ClinicalOrderActionWhereInput {
   fromStatus: StringFilter
   toStatus: StringFilter
   reason: StringFilter
-  evidenceHash: StringFilter
   occurredAt: DateTimeFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -2614,9 +2561,7 @@ input ClinicalOrderActionOrderByInput {
   fromStatus: OrderDirection
   toStatus: OrderDirection
   reason: OrderDirection
-  evidenceHash: OrderDirection
   occurredAt: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -2684,7 +2629,6 @@ enum ConsentActionActionType {
 
 input ConsentActionWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input ConsentActionWhereInput {
@@ -2699,9 +2643,7 @@ input ConsentActionWhereInput {
   fromStatus: StringFilter
   toStatus: StringFilter
   reason: StringFilter
-  evidenceHash: StringFilter
   occurredAt: DateTimeFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -2719,9 +2661,7 @@ input ConsentActionOrderByInput {
   fromStatus: OrderDirection
   toStatus: OrderDirection
   reason: OrderDirection
-  evidenceHash: OrderDirection
   occurredAt: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -2822,7 +2762,6 @@ input ConsentRecordWhereUniqueInput {
   id: ID
   supersedes: ConsentRecordWhereUniqueInput
   supersededBy: ConsentRecordWhereUniqueInput
-  idempotencyKey: String
 }
 
 input ConsentRecordWhereInput {
@@ -2842,15 +2781,12 @@ input ConsentRecordWhereInput {
   representativeAuthority: StringFilter
   interpreter: StringFilter
   witness: StringFilter
-  signatureEvidenceHash: StringFilter
-  evidenceHash: StringFilter
   signedAt: DateTimeFilter
   effectiveUntil: DateTimeNullableFilter
   withdrawnAt: DateTimeNullableFilter
   supersedes: ConsentRecordWhereInput
   supersededBy: ConsentRecordWhereInput
   actions: ConsentActionManyRelationFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -2883,12 +2819,9 @@ input ConsentRecordOrderByInput {
   representativeAuthority: OrderDirection
   interpreter: OrderDirection
   witness: OrderDirection
-  signatureEvidenceHash: OrderDirection
-  evidenceHash: OrderDirection
   signedAt: OrderDirection
   effectiveUntil: OrderDirection
   withdrawnAt: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -2999,7 +2932,6 @@ input ConsentTemplateVersionWhereUniqueInput {
   id: ID
   supersedes: ConsentTemplateVersionWhereUniqueInput
   supersededBy: ConsentTemplateVersionWhereUniqueInput
-  idempotencyKey: String
 }
 
 input ConsentTemplateVersionWhereInput {
@@ -3012,13 +2944,11 @@ input ConsentTemplateVersionWhereInput {
   jurisdiction: StringFilter
   language: StringFilter
   version: StringFilter
-  contentHash: StringFilter
   effectiveFrom: DateTimeFilter
   effectiveUntil: DateTimeNullableFilter
   supersedes: ConsentTemplateVersionWhereInput
   supersededBy: ConsentTemplateVersionWhereInput
   records: ConsentRecordManyRelationFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -3028,10 +2958,8 @@ input ConsentTemplateVersionOrderByInput {
   jurisdiction: OrderDirection
   language: OrderDirection
   version: OrderDirection
-  contentHash: OrderDirection
   effectiveFrom: OrderDirection
   effectiveUntil: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -3103,7 +3031,6 @@ enum ContraindicationDecisionDispositionType {
 
 input ContraindicationDecisionWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input ContraindicationDecisionWhereInput {
@@ -3116,10 +3043,8 @@ input ContraindicationDecisionWhereInput {
   decidedBy: ProviderWhereInput
   disposition: ContraindicationDecisionDispositionTypeNullableFilter
   rationale: StringFilter
-  evidenceHash: StringFilter
   decidedAt: DateTimeFilter
   expiresAt: DateTimeNullableFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -3135,10 +3060,8 @@ input ContraindicationDecisionOrderByInput {
   id: OrderDirection
   disposition: OrderDirection
   rationale: OrderDirection
-  evidenceHash: OrderDirection
   decidedAt: OrderDirection
   expiresAt: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -3217,7 +3140,6 @@ enum ContraindicationFindingSeverityType {
 
 input ContraindicationFindingWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input ContraindicationFindingWhereInput {
@@ -3231,10 +3153,8 @@ input ContraindicationFindingWhereInput {
   service: ServiceWhereInput
   ruleCode: StringFilter
   ruleVersion: StringFilter
-  sourceEvidenceHash: StringFilter
   severity: ContraindicationFindingSeverityTypeNullableFilter
   detectedAt: DateTimeFilter
-  idempotencyKey: StringFilter
   decisions: ContraindicationDecisionManyRelationFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
@@ -3257,10 +3177,8 @@ input ContraindicationFindingOrderByInput {
   id: OrderDirection
   ruleCode: OrderDirection
   ruleVersion: OrderDirection
-  sourceEvidenceHash: OrderDirection
   severity: OrderDirection
   detectedAt: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -3340,7 +3258,6 @@ type ClientNote {
 
 input ClientNoteWhereUniqueInput {
   id: ID
-  idempotencyKey: String
   supersedes: ClientNoteWhereUniqueInput
   supersededBy: ClientNoteWhereUniqueInput
 }
@@ -3359,8 +3276,6 @@ input ClientNoteWhereInput {
   type: StringFilter
   status: StringFilter
   signedAt: DateTimeNullableFilter
-  evidenceHash: StringFilter
-  idempotencyKey: StringFilter
   lateEntryReason: StringFilter
   supersedes: ClientNoteWhereInput
   supersededBy: ClientNoteWhereInput
@@ -3376,8 +3291,6 @@ input ClientNoteOrderByInput {
   type: OrderDirection
   status: OrderDirection
   signedAt: OrderDirection
-  evidenceHash: OrderDirection
-  idempotencyKey: OrderDirection
   lateEntryReason: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
@@ -3589,7 +3502,6 @@ type ClientPackageUsage {
 
 input ClientPackageUsageWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input ClientPackageUsageWhereInput {
@@ -3604,7 +3516,6 @@ input ClientPackageUsageWhereInput {
   quantityUsed: IntNullableFilter
   valueUsed: IntFilter
   usedAt: DateTimeNullableFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -3614,7 +3525,6 @@ input ClientPackageUsageOrderByInput {
   quantityUsed: OrderDirection
   valueUsed: OrderDirection
   usedAt: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -3861,7 +3771,6 @@ enum ConsultationCandidacyDecisionType {
 input ConsultationWhereUniqueInput {
   id: ID
   appointment: AppointmentWhereUniqueInput
-  idempotencyKey: String
   supersedes: ConsultationWhereUniqueInput
   supersededBy: ConsultationWhereUniqueInput
 }
@@ -3887,9 +3796,6 @@ input ConsultationWhereInput {
   revision: StringFilter
   protocolVersion: StringFilter
   contraindicationProtocolVersion: StringFilter
-  contraindicationReviewHash: StringFilter
-  evidenceHash: StringFilter
-  idempotencyKey: StringFilter
   supersedes: ConsultationWhereInput
   supersededBy: ConsultationWhereInput
   orders: ClinicalOrderManyRelationFilter
@@ -3936,9 +3842,6 @@ input ConsultationOrderByInput {
   revision: OrderDirection
   protocolVersion: OrderDirection
   contraindicationProtocolVersion: OrderDirection
-  contraindicationReviewHash: OrderDirection
-  evidenceHash: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -4069,7 +3972,6 @@ enum FollowUpActionRedFlagType {
 
 input FollowUpActionWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input FollowUpActionWhereInput {
@@ -4083,9 +3985,7 @@ input FollowUpActionWhereInput {
   action: FollowUpActionActionTypeNullableFilter
   reason: StringFilter
   redFlag: FollowUpActionRedFlagTypeNullableFilter
-  evidenceHash: StringFilter
   occurredAt: DateTimeFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -4109,9 +4009,7 @@ input FollowUpActionOrderByInput {
   action: OrderDirection
   reason: OrderDirection
   redFlag: OrderDirection
-  evidenceHash: OrderDirection
   occurredAt: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -4322,7 +4220,6 @@ enum FormSubmissionStatusType {
 
 input FormSubmissionWhereUniqueInput {
   id: ID
-  idempotencyKey: String
   supersedes: FormSubmissionWhereUniqueInput
   supersededBy: FormSubmissionWhereUniqueInput
 }
@@ -4338,8 +4235,6 @@ input FormSubmissionWhereInput {
   reviewedBy: UserWhereInput
   reviewedAt: DateTimeNullableFilter
   signedAt: DateTimeNullableFilter
-  evidenceHash: StringFilter
-  idempotencyKey: StringFilter
   supersedes: FormSubmissionWhereInput
   supersededBy: FormSubmissionWhereInput
   reviewActions: IntakeReviewActionManyRelationFilter
@@ -4372,8 +4267,6 @@ input FormSubmissionOrderByInput {
   status: OrderDirection
   reviewedAt: OrderDirection
   signedAt: OrderDirection
-  evidenceHash: OrderDirection
-  idempotencyKey: OrderDirection
   acknowledgement: OrderDirection
   submittedAt: OrderDirection
   createdAt: OrderDirection
@@ -4724,7 +4617,6 @@ type GiftCardTransaction {
 
 input GiftCardTransactionWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input GiftCardTransactionWhereInput {
@@ -4735,7 +4627,6 @@ input GiftCardTransactionWhereInput {
   practice: PracticeWhereInput
   amount: IntFilter
   type: StringFilter
-  idempotencyKey: StringFilter
   notes: StringFilter
   giftCard: GiftCardWhereInput
   appointment: AppointmentWhereInput
@@ -4747,7 +4638,6 @@ input GiftCardTransactionOrderByInput {
   id: OrderDirection
   amount: OrderDirection
   type: OrderDirection
-  idempotencyKey: OrderDirection
   notes: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
@@ -4811,7 +4701,6 @@ type GoodsReceipt {
 
 input GoodsReceiptWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input GoodsReceiptWhereInput {
@@ -4825,7 +4714,6 @@ input GoodsReceiptWhereInput {
   receiptNumber: StringFilter
   receivedAt: DateTimeFilter
   receivedBy: UserWhereInput
-  idempotencyKey: StringFilter
   lines: GoodsReceiptLineManyRelationFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
@@ -4841,7 +4729,6 @@ input GoodsReceiptOrderByInput {
   id: OrderDirection
   receiptNumber: OrderDirection
   receivedAt: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -4924,7 +4811,6 @@ type GoodsReceiptLine {
 input GoodsReceiptLineWhereUniqueInput {
   id: ID
   lot: InventoryLotWhereUniqueInput
-  idempotencyKey: String
 }
 
 input GoodsReceiptLineWhereInput {
@@ -4942,8 +4828,6 @@ input GoodsReceiptLineWhereInput {
   expirationSnapshot: DateTimeNullableFilter
   condition: StringFilter
   quarantineReason: StringFilter
-  evidenceHash: StringFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -4955,8 +4839,6 @@ input GoodsReceiptLineOrderByInput {
   expirationSnapshot: OrderDirection
   condition: OrderDirection
   quarantineReason: OrderDirection
-  evidenceHash: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -5072,7 +4954,6 @@ enum IncidentStatusType {
 
 input IncidentWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input IncidentWhereInput {
@@ -5099,8 +4980,6 @@ input IncidentWhereInput {
   qualityStatus: StringFilter
   revision: IntNullableFilter
   closedAt: DateTimeNullableFilter
-  evidenceHash: StringFilter
-  idempotencyKey: StringFilter
   assets: ClientAssetManyRelationFilter
   actions: IncidentActionManyRelationFilter
   createdAt: DateTimeFilter
@@ -5138,8 +5017,6 @@ input IncidentOrderByInput {
   qualityStatus: OrderDirection
   revision: OrderDirection
   closedAt: OrderDirection
-  evidenceHash: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -5258,7 +5135,6 @@ enum IncidentActionActionType {
 
 input IncidentActionWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input IncidentActionWhereInput {
@@ -5275,9 +5151,7 @@ input IncidentActionWhereInput {
   toStatus: StringFilter
   severity: StringFilter
   rationale: StringFilter
-  evidenceHash: StringFilter
   occurredAt: DateTimeFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -5296,9 +5170,7 @@ input IncidentActionOrderByInput {
   toStatus: OrderDirection
   severity: OrderDirection
   rationale: OrderDirection
-  evidenceHash: OrderDirection
   occurredAt: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -5373,7 +5245,6 @@ enum LegalHoldStatusType {
 
 input LegalHoldWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input LegalHoldWhereInput {
@@ -5394,9 +5265,6 @@ input LegalHoldWhereInput {
   releasedAt: DateTimeNullableFilter
   releaseReason: StringFilter
   releaseAuthorityReference: StringFilter
-  releaseEvidenceHash: StringFilter
-  evidenceHash: StringFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -5417,9 +5285,6 @@ input LegalHoldOrderByInput {
   releasedAt: OrderDirection
   releaseReason: OrderDirection
   releaseAuthorityReference: OrderDirection
-  releaseEvidenceHash: OrderDirection
-  evidenceHash: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -5562,7 +5427,6 @@ enum IntakeReviewActionDispositionType {
 
 input IntakeReviewActionWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input IntakeReviewActionWhereInput {
@@ -5575,9 +5439,7 @@ input IntakeReviewActionWhereInput {
   reviewer: UserWhereInput
   disposition: IntakeReviewActionDispositionTypeNullableFilter
   rationale: StringFilter
-  evidenceHash: StringFilter
   occurredAt: DateTimeFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -5593,9 +5455,7 @@ input IntakeReviewActionOrderByInput {
   id: OrderDirection
   disposition: OrderDirection
   rationale: OrderDirection
-  evidenceHash: OrderDirection
   occurredAt: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -5858,7 +5718,6 @@ enum InventoryMovementTypeType {
 
 input InventoryMovementWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input InventoryMovementWhereInput {
@@ -5872,7 +5731,6 @@ input InventoryMovementWhereInput {
   balanceBefore: IntFilter
   balanceAfter: IntFilter
   reason: StringFilter
-  idempotencyKey: StringFilter
   location: LocationWhereInput
   product: ProductWhereInput
   appointment: AppointmentWhereInput
@@ -5894,7 +5752,6 @@ input InventoryMovementOrderByInput {
   balanceBefore: OrderDirection
   balanceAfter: OrderDirection
   reason: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -6404,7 +6261,6 @@ enum MedSpaTransactionStatusType {
 
 input MedSpaTransactionWhereUniqueInput {
   id: ID
-  idempotencyKey: String
   appointment: AppointmentWhereUniqueInput
 }
 
@@ -6415,7 +6271,6 @@ input MedSpaTransactionWhereInput {
   id: IDFilter
   practice: PracticeWhereInput
   currencyCode: StringFilter
-  idempotencyKey: StringFilter
   type: MedSpaTransactionTypeTypeNullableFilter
   location: LocationWhereInput
   client: ClientWhereInput
@@ -6468,7 +6323,6 @@ input MedSpaTransactionStatusTypeNullableFilter {
 input MedSpaTransactionOrderByInput {
   id: OrderDirection
   currencyCode: OrderDirection
-  idempotencyKey: OrderDirection
   type: OrderDirection
   tip: OrderDirection
   paymentMethod: OrderDirection
@@ -6748,7 +6602,6 @@ type MembershipAgreement {
 
 input MembershipAgreementWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input MembershipAgreementWhereInput {
@@ -6761,14 +6614,10 @@ input MembershipAgreementWhereInput {
   client: UserWhereInput
   membership: MembershipWhereInput
   termsVersion: StringFilter
-  termsHash: StringFilter
   priceMinorSnapshot: IntFilter
   currencyCode: StringFilter
-  affirmativeConsentHash: StringFilter
   acceptedAt: DateTimeFilter
   effectiveUntil: DateTimeNullableFilter
-  evidenceHash: StringFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -6776,14 +6625,10 @@ input MembershipAgreementWhereInput {
 input MembershipAgreementOrderByInput {
   id: OrderDirection
   termsVersion: OrderDirection
-  termsHash: OrderDirection
   priceMinorSnapshot: OrderDirection
   currencyCode: OrderDirection
-  affirmativeConsentHash: OrderDirection
   acceptedAt: OrderDirection
   effectiveUntil: OrderDirection
-  evidenceHash: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -6882,7 +6727,6 @@ enum MembershipLedgerEntryTypeType {
 
 input MembershipLedgerEntryWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input MembershipLedgerEntryWhereInput {
@@ -6899,8 +6743,6 @@ input MembershipLedgerEntryWhereInput {
   benefitDelta: IntNullableFilter
   reason: StringFilter
   occurredAt: DateTimeFilter
-  evidenceHash: StringFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -6919,8 +6761,6 @@ input MembershipLedgerEntryOrderByInput {
   benefitDelta: OrderDirection
   reason: OrderDirection
   occurredAt: OrderDirection
-  evidenceHash: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -7161,7 +7001,6 @@ type Payment {
 
 input PaymentWhereUniqueInput {
   id: ID
-  idempotencyKey: String
   appointment: AppointmentWhereUniqueInput
   session: PaymentSessionWhereUniqueInput
 }
@@ -7173,7 +7012,6 @@ input PaymentWhereInput {
   id: IDFilter
   practice: PracticeWhereInput
   currencyCode: StringFilter
-  idempotencyKey: StringFilter
   refunds: RefundManyRelationFilter
   subtotal: IntFilter
   tax: IntNullableFilter
@@ -7211,7 +7049,6 @@ input RefundManyRelationFilter {
 input PaymentOrderByInput {
   id: OrderDirection
   currencyCode: OrderDirection
-  idempotencyKey: OrderDirection
   subtotal: OrderDirection
   tax: OrderDirection
   tip: OrderDirection
@@ -7477,7 +7314,6 @@ enum PaymentSessionStatusType {
 input PaymentSessionWhereUniqueInput {
   id: ID
   payment: PaymentWhereUniqueInput
-  idempotencyKey: String
 }
 
 input PaymentSessionWhereInput {
@@ -7490,7 +7326,6 @@ input PaymentSessionWhereInput {
   provider: PaymentProviderWhereInput
   payment: PaymentWhereInput
   refundAttempts: RefundAttemptManyRelationFilter
-  idempotencyKey: StringFilter
   amount: IntFilter
   currency: StringFilter
   status: PaymentSessionStatusTypeNullableFilter
@@ -7518,7 +7353,6 @@ input PaymentSessionStatusTypeNullableFilter {
 
 input PaymentSessionOrderByInput {
   id: OrderDirection
-  idempotencyKey: OrderDirection
   amount: OrderDirection
   currency: OrderDirection
   status: OrderDirection
@@ -7636,7 +7470,6 @@ input PaymentWebhookEventWhereInput {
   eventId: StringFilter
   type: StringFilter
   providerReference: StringFilter
-  payloadHash: StringFilter
   status: PaymentWebhookEventStatusTypeNullableFilter
   processedAt: DateTimeNullableFilter
   createdAt: DateTimeFilter
@@ -7656,7 +7489,6 @@ input PaymentWebhookEventOrderByInput {
   eventId: OrderDirection
   type: OrderDirection
   providerReference: OrderDirection
-  payloadHash: OrderDirection
   status: OrderDirection
   processedAt: OrderDirection
   createdAt: OrderDirection
@@ -7727,7 +7559,6 @@ enum PatientRightsActionActionType {
 
 input PatientRightsActionWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input PatientRightsActionWhereInput {
@@ -7740,9 +7571,7 @@ input PatientRightsActionWhereInput {
   actor: UserWhereInput
   action: PatientRightsActionActionTypeNullableFilter
   reason: StringFilter
-  evidenceHash: StringFilter
   occurredAt: DateTimeFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -7758,9 +7587,7 @@ input PatientRightsActionOrderByInput {
   id: OrderDirection
   action: OrderDirection
   reason: OrderDirection
-  evidenceHash: OrderDirection
   occurredAt: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -7852,7 +7679,6 @@ enum PatientRightsRequestStatusType {
 
 input PatientRightsRequestWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input PatientRightsRequestWhereInput {
@@ -7870,8 +7696,6 @@ input PatientRightsRequestWhereInput {
   dueAt: DateTimeFilter
   completedAt: DateTimeNullableFilter
   legalBasis: StringFilter
-  responseEvidenceHash: StringFilter
-  idempotencyKey: StringFilter
   actionEntries: PatientRightsActionManyRelationFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
@@ -7905,8 +7729,6 @@ input PatientRightsRequestOrderByInput {
   dueAt: OrderDirection
   completedAt: OrderDirection
   legalBasis: OrderDirection
-  responseEvidenceHash: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -8008,7 +7830,6 @@ enum PhotoConsentStatusType {
 
 input PhotoConsentWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input PhotoConsentWhereInput {
@@ -8024,11 +7845,8 @@ input PhotoConsentWhereInput {
   compensationDisclosure: StringFilter
   signerName: StringFilter
   signerRole: StringFilter
-  signatureEvidenceHash: StringFilter
   effectiveFrom: DateTimeFilter
   effectiveUntil: DateTimeNullableFilter
-  evidenceHash: StringFilter
-  idempotencyKey: StringFilter
   actions: PhotoConsentActionManyRelationFilter
   assets: ClientAssetManyRelationFilter
   createdAt: DateTimeFilter
@@ -8062,11 +7880,8 @@ input PhotoConsentOrderByInput {
   compensationDisclosure: OrderDirection
   signerName: OrderDirection
   signerRole: OrderDirection
-  signatureEvidenceHash: OrderDirection
   effectiveFrom: OrderDirection
   effectiveUntil: OrderDirection
-  evidenceHash: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -8159,7 +7974,6 @@ enum PhotoConsentActionActionType {
 
 input PhotoConsentActionWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input PhotoConsentActionWhereInput {
@@ -8173,8 +7987,6 @@ input PhotoConsentActionWhereInput {
   action: PhotoConsentActionActionTypeNullableFilter
   reason: StringFilter
   occurredAt: DateTimeFilter
-  evidenceHash: StringFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -8191,8 +8003,6 @@ input PhotoConsentActionOrderByInput {
   action: OrderDirection
   reason: OrderDirection
   occurredAt: OrderDirection
-  evidenceHash: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -8962,7 +8772,6 @@ enum ProviderAuthorizationStatusType {
 
 input ProviderAuthorizationWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input ProviderAuthorizationWhereInput {
@@ -8982,8 +8791,6 @@ input ProviderAuthorizationWhereInput {
   supervisionRequired: BooleanFilter
   supervisionMode: StringFilter
   policyVersion: StringFilter
-  authorityEvidenceHash: StringFilter
-  idempotencyKey: StringFilter
   evidenceLabel: StringFilter
   evidenceReference: StringFilter
   createdAt: DateTimeFilter
@@ -9005,8 +8812,6 @@ input ProviderAuthorizationOrderByInput {
   supervisionRequired: OrderDirection
   supervisionMode: OrderDirection
   policyVersion: OrderDirection
-  authorityEvidenceHash: OrderDirection
-  idempotencyKey: OrderDirection
   evidenceLabel: OrderDirection
   evidenceReference: OrderDirection
   createdAt: OrderDirection
@@ -9097,7 +8902,6 @@ enum ProviderCredentialStatusType {
 
 input ProviderCredentialWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input ProviderCredentialWhereInput {
@@ -9120,10 +8924,8 @@ input ProviderCredentialWhereInput {
   authorizations: ProviderAuthorizationManyRelationFilter
   supervisionRequired: BooleanFilter
   supervisor: ProviderWhereInput
-  scopeEvidenceHash: StringFilter
   evidenceReference: StringFilter
   protocolVersion: StringFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -9147,10 +8949,8 @@ input ProviderCredentialOrderByInput {
   verificationSource: OrderDirection
   primarySourceVerified: OrderDirection
   supervisionRequired: OrderDirection
-  scopeEvidenceHash: OrderDirection
   evidenceReference: OrderDirection
   protocolVersion: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -9253,7 +9053,6 @@ enum ProviderScheduleDayOfWeekLegacyType {
 
 input ProviderScheduleWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input ProviderScheduleWhereInput {
@@ -9263,7 +9062,6 @@ input ProviderScheduleWhereInput {
   id: IDFilter
   practice: PracticeWhereInput
   type: ProviderScheduleTypeTypeNullableFilter
-  idempotencyKey: StringFilter
   revision: IntFilter
   dayOfWeek: IntNullableFilter
   dayOfWeekLegacy: ProviderScheduleDayOfWeekLegacyTypeNullableFilter
@@ -9303,7 +9101,6 @@ input ProviderScheduleDayOfWeekLegacyTypeNullableFilter {
 input ProviderScheduleOrderByInput {
   id: OrderDirection
   type: OrderDirection
-  idempotencyKey: OrderDirection
   revision: OrderDirection
   dayOfWeek: OrderDirection
   dayOfWeekLegacy: OrderDirection
@@ -9626,7 +9423,6 @@ enum RecallActionActionType {
 
 input RecallActionWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input RecallActionWhereInput {
@@ -9640,9 +9436,7 @@ input RecallActionWhereInput {
   actor: UserWhereInput
   action: RecallActionActionTypeNullableFilter
   reason: StringFilter
-  evidenceHash: StringFilter
   occurredAt: DateTimeFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -9658,9 +9452,7 @@ input RecallActionOrderByInput {
   id: OrderDirection
   action: OrderDirection
   reason: OrderDirection
-  evidenceHash: OrderDirection
   occurredAt: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -9756,7 +9548,6 @@ enum RecallCaseStatusType {
 
 input RecallCaseWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input RecallCaseWhereInput {
@@ -9774,8 +9565,6 @@ input RecallCaseWhereInput {
   status: RecallCaseStatusTypeNullableFilter
   openedAt: DateTimeFilter
   closedAt: DateTimeNullableFilter
-  evidenceHash: StringFilter
-  idempotencyKey: StringFilter
   exposures: RecallExposureManyRelationFilter
   actions: RecallActionManyRelationFilter
   createdAt: DateTimeFilter
@@ -9808,8 +9597,6 @@ input RecallCaseOrderByInput {
   status: OrderDirection
   openedAt: OrderDirection
   closedAt: OrderDirection
-  evidenceHash: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -9921,7 +9708,6 @@ input RecallExposureWhereInput {
   status: RecallExposureStatusTypeNullableFilter
   identifiedAt: DateTimeFilter
   notificationDueAt: DateTimeNullableFilter
-  evidenceHash: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -9938,7 +9724,6 @@ input RecallExposureOrderByInput {
   status: OrderDirection
   identifiedAt: OrderDirection
   notificationDueAt: OrderDirection
-  evidenceHash: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -10084,7 +9869,6 @@ enum RefundStatusType {
 
 input RefundWhereUniqueInput {
   id: ID
-  idempotencyKey: String
   attempt: RefundAttemptWhereUniqueInput
 }
 
@@ -10098,7 +9882,6 @@ input RefundWhereInput {
   amountMinor: IntFilter
   currencyCode: StringFilter
   reason: StringFilter
-  idempotencyKey: StringFilter
   providerReference: StringFilter
   status: RefundStatusTypeNullableFilter
   processedAt: DateTimeNullableFilter
@@ -10119,7 +9902,6 @@ input RefundOrderByInput {
   amountMinor: OrderDirection
   currencyCode: OrderDirection
   reason: OrderDirection
-  idempotencyKey: OrderDirection
   providerReference: OrderDirection
   status: OrderDirection
   processedAt: OrderDirection
@@ -10207,7 +9989,6 @@ enum RefundAttemptStatusType {
 input RefundAttemptWhereUniqueInput {
   id: ID
   refund: RefundWhereUniqueInput
-  idempotencyKey: String
 }
 
 input RefundAttemptWhereInput {
@@ -10218,7 +9999,6 @@ input RefundAttemptWhereInput {
   practice: PracticeWhereInput
   refund: RefundWhereInput
   paymentSession: PaymentSessionWhereInput
-  idempotencyKey: StringFilter
   amountMinor: IntFilter
   currencyCode: StringFilter
   status: RefundAttemptStatusTypeNullableFilter
@@ -10242,7 +10022,6 @@ input RefundAttemptStatusTypeNullableFilter {
 
 input RefundAttemptOrderByInput {
   id: OrderDirection
-  idempotencyKey: OrderDirection
   amountMinor: OrderDirection
   currencyCode: OrderDirection
   status: OrderDirection
@@ -10334,7 +10113,6 @@ type RetentionPolicy {
 
 input RetentionPolicyWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input RetentionPolicyWhereInput {
@@ -10353,8 +10131,6 @@ input RetentionPolicyWhereInput {
   approvedBy: UserWhereInput
   effectiveFrom: DateTimeFilter
   effectiveUntil: DateTimeNullableFilter
-  evidenceHash: StringFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -10370,8 +10146,6 @@ input RetentionPolicyOrderByInput {
   sourceCitations: OrderDirection
   effectiveFrom: OrderDirection
   effectiveUntil: OrderDirection
-  evidenceHash: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -10784,7 +10558,6 @@ enum DeviceReadinessEventActionType {
 
 input DeviceReadinessEventWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input DeviceReadinessEventWhereInput {
@@ -10800,9 +10573,7 @@ input DeviceReadinessEventWhereInput {
   fromStatus: StringFilter
   toStatus: StringFilter
   reason: StringFilter
-  evidenceHash: StringFilter
   occurredAt: DateTimeFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -10820,9 +10591,7 @@ input DeviceReadinessEventOrderByInput {
   fromStatus: OrderDirection
   toStatus: OrderDirection
   reason: OrderDirection
-  evidenceHash: OrderDirection
   occurredAt: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -11553,8 +11322,6 @@ enum StaffInvitationStatusType {
 
 input StaffInvitationWhereUniqueInput {
   id: ID
-  tokenHash: String
-  idempotencyKey: String
 }
 
 input StaffInvitationWhereInput {
@@ -11568,11 +11335,9 @@ input StaffInvitationWhereInput {
   locations: LocationManyRelationFilter
   invitedBy: UserWhereInput
   acceptedUser: UserWhereInput
-  tokenHash: StringFilter
   status: StaffInvitationStatusTypeNullableFilter
   expiresAt: DateTimeFilter
   acceptedAt: DateTimeNullableFilter
-  idempotencyKey: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -11587,11 +11352,9 @@ input StaffInvitationStatusTypeNullableFilter {
 input StaffInvitationOrderByInput {
   id: OrderDirection
   email: OrderDirection
-  tokenHash: OrderDirection
   status: OrderDirection
   expiresAt: OrderDirection
   acceptedAt: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -11676,7 +11439,6 @@ enum StockMovementTypeType {
 
 input StockMovementWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input StockMovementWhereInput {
@@ -11692,7 +11454,6 @@ input StockMovementWhereInput {
   delta: IntFilter
   balanceBefore: IntFilter
   balanceAfter: IntFilter
-  idempotencyKey: StringFilter
   reason: StringFilter
   actor: UserWhereInput
   treatmentSession: TreatmentSessionWhereInput
@@ -11714,7 +11475,6 @@ input StockMovementOrderByInput {
   delta: OrderDirection
   balanceBefore: OrderDirection
   balanceAfter: OrderDirection
-  idempotencyKey: OrderDirection
   reason: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
@@ -11896,7 +11656,6 @@ enum TreatmentAdministrationStatusType {
 
 input TreatmentAdministrationWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input TreatmentAdministrationWhereInput {
@@ -11923,8 +11682,6 @@ input TreatmentAdministrationWhereInput {
   startedAt: DateTimeFilter
   completedAt: DateTimeFilter
   signedAt: DateTimeFilter
-  evidenceHash: StringFilter
-  idempotencyKey: StringFilter
   lots: AdministrationLotManyRelationFilter
   incidents: IncidentManyRelationFilter
   createdAt: DateTimeFilter
@@ -11953,8 +11710,6 @@ input TreatmentAdministrationOrderByInput {
   startedAt: OrderDirection
   completedAt: OrderDirection
   signedAt: OrderDirection
-  evidenceHash: OrderDirection
-  idempotencyKey: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
 }
@@ -12078,7 +11833,6 @@ enum TreatmentPlanStatusType {
 
 input TreatmentPlanWhereUniqueInput {
   id: ID
-  idempotencyKey: String
   supersedes: TreatmentPlanWhereUniqueInput
   supersededBy: TreatmentPlanWhereUniqueInput
 }
@@ -12098,8 +11852,6 @@ input TreatmentPlanWhereInput {
   startsAt: DateTimeNullableFilter
   endsAt: DateTimeNullableFilter
   signedAt: DateTimeNullableFilter
-  evidenceHash: StringFilter
-  idempotencyKey: StringFilter
   revision: IntFilter
   supersedes: TreatmentPlanWhereInput
   supersededBy: TreatmentPlanWhereInput
@@ -12132,8 +11884,6 @@ input TreatmentPlanOrderByInput {
   startsAt: OrderDirection
   endsAt: OrderDirection
   signedAt: OrderDirection
-  evidenceHash: OrderDirection
-  idempotencyKey: OrderDirection
   revision: OrderDirection
   portalVisible: OrderDirection
   createdAt: OrderDirection
@@ -12336,7 +12086,6 @@ enum TreatmentSessionStatusType {
 
 input TreatmentSessionWhereUniqueInput {
   id: ID
-  idempotencyKey: String
 }
 
 input TreatmentSessionWhereInput {
@@ -12363,8 +12112,6 @@ input TreatmentSessionWhereInput {
   protocolVersion: StringFilter
   notes: StringFilter
   signedAt: DateTimeNullableFilter
-  evidenceHash: StringFilter
-  idempotencyKey: StringFilter
   startedAt: DateTimeNullableFilter
   completedAt: DateTimeNullableFilter
   revision: IntNullableFilter
@@ -12389,8 +12136,6 @@ input TreatmentSessionOrderByInput {
   protocolVersion: OrderDirection
   notes: OrderDirection
   signedAt: OrderDirection
-  evidenceHash: OrderDirection
-  idempotencyKey: OrderDirection
   startedAt: OrderDirection
   completedAt: OrderDirection
   revision: OrderDirection

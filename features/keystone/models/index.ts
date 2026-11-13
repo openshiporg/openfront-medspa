@@ -1,6 +1,7 @@
 import { GRAPHQL_MAX_TAKE } from '../security/graphql-budget'
 import { resolveTenantPractice } from './tenantAccess'
 import { permissions } from '../access'
+import { applyFilterAccess } from './filterAccess'
 import { AdministrationLot } from './AdministrationLot'
 import { Appointment } from './Appointment'
 import { AppointmentLineItem } from './AppointmentLineItem'
@@ -198,6 +199,9 @@ export const models = {
   WebhookInbox,
   WidgetConfiguration,
 }
+
+// Filters and ordering follow the read permission of the field or the target list.
+applyFilterAccess(models as Record<string, any>)
 
 // Native AdminMeta must not advertise raw lifecycle writes that GraphQL denies.
 // Reuse each model's actual operation access, including current-session checks;
