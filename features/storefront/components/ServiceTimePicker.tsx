@@ -7,13 +7,13 @@ import { Calendar } from "@/components/ui/calendar"
 import { getAvailableTimeSlots, getNextAvailableDate, type BookingSlot } from "../lib/data/availability"
 
 interface ProviderOption { id: string; name: string; title: string | null; workingDays?: number[] }
-interface Props { serviceId: string; serviceName: string; duration: number; total: string; providers: ProviderOption[] }
+interface Props { serviceId: string; serviceName: string; duration: number; total: string; deposit?: string | null; providers: ProviderOption[] }
 
 const key = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 const parse = (s: string) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d) }
 
 /** Read-only availability preview. Booking itself stays on /book. */
-export function ServiceTimePicker({ serviceId, serviceName, duration, total, providers }: Props) {
+export function ServiceTimePicker({ serviceId, serviceName, duration, total, deposit = null, providers }: Props) {
   const [providerId, setProviderId] = useState(providers[0]?.id ?? "")
   const [date, setDate] = useState<Date | undefined>()
   const [month, setMonth] = useState<Date>(new Date())
@@ -79,6 +79,7 @@ export function ServiceTimePicker({ serviceId, serviceName, duration, total, pro
           </dd></div>
         ) : provider ? <div><dt>With</dt><dd>{provider.name}{provider.title ? `, ${provider.title}` : ""}</dd></div> : null}
         <div className="altair-book-total"><dt>Total</dt><dd>{total}</dd></div>
+        {deposit ? <div><dt>Deposit</dt><dd>{deposit} to hold the time, paid after you send the request and taken off your total</dd></div> : null}
       </dl>
       <Link href={href} className="altair-book-button">Request this time <ArrowRight aria-hidden="true" /></Link>
     </>

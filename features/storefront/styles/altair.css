@@ -141,6 +141,14 @@
 .altair-book-card .altair-calendar [role="grid"] { width:100%; }
 .altair-book-card .altair-calendar .rdp-weekday, .altair-book-card .altair-calendar th { font-size:12px; }
 .altair-book-card .altair-calendar td button { font-size:14px; }
+.altair-book-card .altair-calendar table { width:100%; table-layout:fixed; border-collapse:collapse; }
+.altair-book-card .altair-calendar th, .altair-book-card .altair-calendar td { width:auto; }
+.altair-book-card .altair-calendar td button { width:100%; }
+/* Narrow phones: seven 44px day buttons need 308px, so the card runs edge to edge and the calendar uses its padding. */
+@media(max-width:420px) {
+ .altair-book-card { margin-inline:-22px; border-radius:0; padding:22px 22px 24px; }
+ .altair-book-card .altair-calendar { margin-inline:-16px; width:calc(100% + 32px); }
+}
 .altair-times-heading { font:400 18px/1.2 var(--sf-font-display); margin:14px 0 10px; }
 .altair-times-note { font-size:14px; margin:0 0 12px; }
 .altair-times { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }

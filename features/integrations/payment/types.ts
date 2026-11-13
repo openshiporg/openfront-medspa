@@ -104,6 +104,15 @@ export interface CheckoutStatusResult {
   currency: string;
   paymentIntentId: string | null;
   metadata: Record<string, string>;
+  /** Card and charge details of a paid Checkout, for the payment record (best effort). */
+  card?: CheckoutCardFacts | null;
+}
+
+export interface CheckoutCardFacts {
+  brand: string | null;
+  last4: string | null;
+  chargeId: string | null;
+  email: string | null;
 }
 
 export interface PaymentWebhookInput {
@@ -129,6 +138,7 @@ export interface PaymentWebhookCheckout {
   amount: number;
   currency: string;
   paymentIntentId: string | null;
+  card?: CheckoutCardFacts | null;
 }
 
 export interface PaymentWebhookResult {

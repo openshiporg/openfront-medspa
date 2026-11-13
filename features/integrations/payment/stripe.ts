@@ -3,6 +3,7 @@ import {
   ProviderRejectedError,
   type PaymentAdapter,
   type PaymentAdapterStatus,
+  type CheckoutCardFacts,
   type PaymentWebhookRefund,
   type ProviderRefund,
   type ProviderRefundStatus,
@@ -67,6 +68,21 @@ function mapCheckoutState(session: Stripe.Checkout.Session): "paid" | "open" | "
 function sessionPaymentIntent(session: Stripe.Checkout.Session): string | null {
   const intent = session.payment_intent;
   return intent ? (typeof intent === "string" ? intent : intent.id) : null;
+}
+
+/** Card brand, last 4, charge id and payer email of a paid intent. Best effort: never blocks settlement. */
+async function chargeFacts(paymentIntentId: string | null): Promise<CheckoutCardFacts | null> {
+  if (!paymentIntentId) return null;
+  try {
+    const intent = await stripeClient().paymentIntents.retrieve(paymentIntentId, { expand: ["latest_charge"] });
+    const charge = intent.latest_charge && typeof intent.latest_charge === "object" ? intent.latest_charge : null;
+    if (!charge) return null;
+    const card = charge.payment_method_details?.card;
+    const brand = card?.brand ? card.brand.charAt(0).toUpperCase() + card.brand.slice(1) : null;
+    return { brand, last4: card?.last4 ?? null, chargeId: charge.id, email: charge.billing_details?.email ?? charge.receipt_email ?? null };
+  } catch {
+    return null;
+  }
 }
 
 function mapStatus(status: Stripe.PaymentIntent.Status): PaymentAdapterStatus {
@@ -156,13 +172,15 @@ export const stripePaymentAdapter: PaymentAdapter = {
   },
   async getCheckoutStatus({ providerReference }) {
     const session = await stripeClient().checkout.sessions.retrieve(providerReference);
+    const state = mapCheckoutState(session);
     return {
       providerReference: session.id,
-      state: mapCheckoutState(session),
+      state,
       amount: session.amount_total ?? 0,
       currency: session.currency ?? "",
       paymentIntentId: sessionPaymentIntent(session),
       metadata: (session.metadata || {}) as Record<string, string>,
+      card: state === "paid" ? await chargeFacts(sessionPaymentIntent(session)) : null,
     };
   },
   async parseWebhook({ payload, headers }) {
@@ -192,6 +210,7 @@ export const stripePaymentAdapter: PaymentAdapter = {
     }
     if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded" || event.type === "checkout.session.expired" || event.type === "checkout.session.async_payment_failed") {
       const session = event.data.object as Stripe.Checkout.Session;
+      const state = event.type === "checkout.session.expired" ? "expired" : event.type === "checkout.session.async_payment_failed" ? "unpaid" : mapCheckoutState(session);
       return {
         ...base,
         providerReference: session.id,
@@ -199,10 +218,11 @@ export const stripePaymentAdapter: PaymentAdapter = {
         amount: session.amount_total ?? 0,
         checkout: {
           providerReference: session.id,
-          state: event.type === "checkout.session.expired" ? "expired" : event.type === "checkout.session.async_payment_failed" ? "unpaid" : mapCheckoutState(session),
+          state,
           amount: session.amount_total ?? 0,
           currency: session.currency ?? "",
           paymentIntentId: sessionPaymentIntent(session),
+          card: state === "paid" ? await chargeFacts(sessionPaymentIntent(session)) : null,
         },
       };
     }

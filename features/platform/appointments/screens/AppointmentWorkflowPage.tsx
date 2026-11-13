@@ -16,6 +16,17 @@ function needsClinicalReview(appointment: AppointmentWorkflowDetail) {
   return appointment.services.some((service) => service.requiresConsultation || service.requiresIntakeReview || service.staffAuthorizationRequired || service.requiresLotTraceability);
 }
 
+const sentence = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
+
+/** US numbers read as (718) 555-0162; anything else is shown as entered. */
+function formatPhone(value: string) {
+  const trimmed = value.trim();
+  if (trimmed.startsWith('+') && !trimmed.startsWith('+1')) return value;
+  const digits = trimmed.replace(/\D/g, '');
+  const local = digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
+  return local.length === 10 ? `(${local.slice(0, 3)}) ${local.slice(3, 6)}-${local.slice(6)}` : value;
+}
+
 export async function AppointmentWorkflowPage({ appointmentId }: { appointmentId: string }) {
   const { appointment, capabilities, clinical, guest } = await getAppointmentWorkflowDetail(appointmentId);
   if (!appointment) notFound();
@@ -133,7 +144,7 @@ export async function AppointmentWorkflowPage({ appointmentId }: { appointmentId
                 <span className="inline-flex items-center gap-1.5"><StatusDot tone={checkoutEligible ? 'emerald' : 'zinc'} />{checkoutEligible ? 'Eligible' : 'Not eligible'}</span>
               </Fact>
               <Fact label="Deposit">{appointment.depositAmount ? depositState === 'refunded' ? `Refunded ${usd(depositSession?.amount ?? appointment.depositAmount)}` : depositState === 'partly refunded' ? `Paid ${usd(appointment.depositAmount)}, partly refunded` : appointment.depositPaid || depositState === 'paid' ? `Paid ${usd(appointment.depositAmount)}` : status === 'cancelled' ? 'Not collected' : `Due ${usd(appointment.depositAmount)}` : 'None'}</Fact>
-              <Fact label="Payment">{capabilities.canManageFinance ? settlement ? settlement.replaceAll('_', ' ') : 'Not settled' : 'Restricted'}</Fact>
+              <Fact label="Payment">{capabilities.canManageFinance ? settlement ? sentence(settlement.replaceAll('_', ' ')) : 'Not settled' : 'Restricted'}</Fact>
             </dl>
           </Panel>
         </div>
@@ -146,9 +157,9 @@ export async function AppointmentWorkflowPage({ appointmentId }: { appointmentId
                 <dl className="grid min-w-0 flex-1 gap-3">
                   <Fact label="Name">{clientName}</Fact>
                   {appointment.client?.user?.email && <Fact label="Email" wrap>{appointment.client.user.email}</Fact>}
-                  {appointment.client?.user?.phone && <Fact label="Phone">{appointment.client.user.phone}</Fact>}
+                  {appointment.client?.user?.phone && <Fact label="Phone"><a className="underline-offset-4 hover:underline" href={`tel:${appointment.client.user.phone.replace(/[^\d+]/g, '')}`}>{formatPhone(appointment.client.user.phone)}</a></Fact>}
                   {!appointment.client && guest?.email ? <Fact label="Email" wrap><a className="underline-offset-4 hover:underline" href={`mailto:${guest.email}`}>{guest.email}</a></Fact> : null}
-                  {!appointment.client && guest?.phone ? <Fact label="Phone"><a className="underline-offset-4 hover:underline" href={`tel:${guest.phone.replace(/[^\d+]/g, '')}`}>{guest.phone}</a></Fact> : null}
+                  {!appointment.client && guest?.phone ? <Fact label="Phone"><a className="underline-offset-4 hover:underline" href={`tel:${guest.phone.replace(/[^\d+]/g, '')}`}>{formatPhone(guest.phone)}</a></Fact> : null}
                   <div className="grid grid-cols-2 gap-3">
                     <Fact label="Visits">{appointment.client?.totalVisits || 0}</Fact>
                     <Fact label="Last visit">{appointment.client?.lastVisit ? new Date(appointment.client.lastVisit).toLocaleDateString('en-US', { timeZone, month: 'short', day: 'numeric', year: 'numeric' }) : 'None'}</Fact>

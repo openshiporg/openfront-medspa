@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { Banknote, ReceiptText } from 'lucide-react';
 import { EmptyState, ErrorState, Fact, PageHeader, Panel, PillLink, PlatformPage, StatusDot, TitleStatus, Track, usd } from '@/features/platform/components/medspa-ui';
 import { getPayment } from '../actions/payments';
-import { paymentMethodLabel, paymentStatusLabel } from '../types';
+import { paymentMethodLabel, paymentNoteLabel, paymentStatusLabel } from '../types';
 import { RefundSheet } from '../components/RefundSheet';
 import { paymentTone } from './PaymentsPage';
 
@@ -28,6 +28,7 @@ export async function PaymentDetailPage({ paymentId }: { paymentId: string }) {
   const refunded = Number(payment.refundedAmount || 0);
   const refundable = Math.max(0, total - refunded);
   const client = payment.appointment?.client;
+  const guestName = payment.appointment?.metadata?.guest?.name || null;
   const canRefund = refundRoute && payment.session && refundable > 0 && ['completed', 'partially_refunded'].includes(payment.status || '');
 
   return (
@@ -52,11 +53,12 @@ export async function PaymentDetailPage({ paymentId }: { paymentId: string }) {
           <Fact label="Tip">{usd(payment.tip)}</Fact>
           <Fact label="Refunded">{refunded ? `−${usd(refunded)}` : '—'}</Fact>
           <Fact label="Net">{usd(total - refunded)}</Fact>
-          <Fact label="Client">{client ? <Link className="underline underline-offset-4" href={`/dashboard/platform/clients`}>{client.user?.name || 'Client'}</Link> : '—'}</Fact>
+          <Fact label="Client">{client ? <Link className="underline underline-offset-4" href={`/dashboard/platform/clients/${client.id}`}>{client.user?.name || 'Client'}</Link> : guestName ? `${guestName} (guest)` : '—'}</Fact>
           <Fact label="Appointment">{payment.appointment ? <Link className="underline underline-offset-4" href={`/dashboard/platform/appointments/${payment.appointment.id}`}>{stamp(payment.appointment.startTime)}</Link> : '—'}</Fact>
           <Fact label="Receipt" wrap>{payment.receiptEmail || '—'}</Fact>
+          {payment.cardLast4 ? <Fact label="Card">{payment.cardBrand || 'Card'} ···· {payment.cardLast4}</Fact> : null}
         </dl>
-        {payment.notes ? <p className="mt-4 text-sm text-muted-foreground">{payment.notes}</p> : null}
+        {paymentNoteLabel(payment.notes) ? <p className="mt-4 text-sm text-muted-foreground">{paymentNoteLabel(payment.notes)}</p> : null}
       </Panel>
 
       <Panel title="Lines" padded={false}>

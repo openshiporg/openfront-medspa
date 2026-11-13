@@ -89,6 +89,7 @@ export async function ServiceDetailPage({ params }: ServiceDetailPageProps) {
               serviceName={service.name}
               duration={service.baseDuration}
               total={service.basePrice === 0 ? "complimentary" : formatPrice(service.basePrice)}
+              deposit={service.depositAmount ? formatPrice(service.depositAmount) : null}
               providers={providers.map(provider => ({ id: provider.id, name: provider.user?.name || "Provider", title: provider.title, workingDays: provider.workingDays }))}
             />
           ) : (

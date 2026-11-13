@@ -7,7 +7,7 @@ import { trustedOrigin } from "./lib/trustedOrigin";
 import { sendGiftCardEmail } from "./lib/mail";
 import { assertPaymentTransition, paymentRecordStatus, type PaymentLifecycleStatus } from "./payment-lifecycle";
 import { createProviderCheckout, getProviderCheckoutStatus, paymentProviderFromRecord } from "./utils/paymentProviderAdapter";
-import { decideDepositSettlement, type DepositCheckoutFacts } from "./depositCheckoutCore";
+import { cardPaymentFields, decideDepositSettlement, type DepositCheckoutFacts } from "./depositCheckoutCore";
 import { onlineDepositProvider } from "./depositCheckout";
 import { enqueueRefund, paymentLifecycleTransaction, processRefunds } from "./refunds";
 import { CardAmountMismatch, CheckoutQuote, runControlledCheckout, type CheckoutArgs } from "./mutations/completeAppointmentCheckout";
@@ -156,7 +156,7 @@ export async function settleDeskCardCheckout(context: Context, sessionId: string
     assertPaymentTransition(current.status as PaymentLifecycleStatus, "completed");
     await tx.query.PaymentSession.updateOne({ where: { id: session.id }, data: { status: "completed", completedAt: now, providerReference: decision.paymentIntentId, data: { ...dataOf(current), paymentIntentId: decision.paymentIntentId, checkoutUrl: null, failedCheckout: error } }, query: "id" });
     if (!session.payment?.id) return null;
-    await tx.query.Payment.updateOne({ where: { id: session.payment.id }, data: { status: "completed", processedAt: now, stripePaymentIntentId: decision.paymentIntentId }, query: "id" });
+    await tx.query.Payment.updateOne({ where: { id: session.payment.id }, data: { status: "completed", processedAt: now, stripePaymentIntentId: decision.paymentIntentId, ...cardPaymentFields(facts.card) }, query: "id" });
     const queued = await enqueueRefund(tx, {
       practiceId: session.practice.id, paymentId: session.payment.id, sessionId: session.id, amountMinor: session.amount, currencyCode: session.currency,
       reason: `Card paid but checkout was not completed: ${error}`.slice(0, 500), idempotencyKey: `${session.practice.id}:card-unapplied:${session.id}`,
@@ -275,7 +275,7 @@ export async function startGiftCardCheckout(context: Context, input: OnlineGiftC
       data: {
         idempotencyKey: `${key}:payment`, practice: { connect: { id: practice.id } }, session: { connect: { id: sessionId } },
         subtotal: input.amount, tax: 0, tip: 0, discount: 0, totalAmount: input.amount, paymentMethod: "credit_card", status: "pending",
-        receiptEmail: purchaserEmail, notes: `Online gift-card purchase ${giftCard.id}`,
+        receiptEmail: purchaserEmail, notes: `Online gift card for ${recipientName}`,
       },
       query: "id",
     });
@@ -305,7 +305,7 @@ export async function settleGiftCardCheckout(sudo: Sudo, sessionId: string, fact
   }
   assertPaymentTransition(session.status as PaymentLifecycleStatus, "completed");
   await sudo.query.PaymentSession.updateOne({ where: { id: session.id }, data: { status: "completed", completedAt: now, providerReference: decision.paymentIntentId, data: { ...data, paymentIntentId: decision.paymentIntentId, checkoutUrl: null } }, query: "id" });
-  if (session.payment?.id) await sudo.query.Payment.updateOne({ where: { id: session.payment.id }, data: { status: "completed", processedAt: now, stripePaymentIntentId: decision.paymentIntentId }, query: "id" });
+  if (session.payment?.id) await sudo.query.Payment.updateOne({ where: { id: session.payment.id }, data: { status: "completed", processedAt: now, stripePaymentIntentId: decision.paymentIntentId, ...cardPaymentFields(facts.card) }, query: "id" });
   const giftCard: any = await sudo.query.GiftCard.findOne({ where: { id: data.giftCardId }, query: "id code initialValue recipientEmail recipientName message" });
   if (!giftCard) return { outcome: "review", email: null };
   await sudo.query.GiftCard.updateOne({ where: { id: giftCard.id }, data: { isActive: true }, query: "id" });

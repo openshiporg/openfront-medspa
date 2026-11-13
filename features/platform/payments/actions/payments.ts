@@ -2,12 +2,19 @@
 
 import { revalidatePath } from 'next/cache';
 import { keystoneClient } from '@/features/dashboard/lib/keystoneClient';
-import { PAYMENT_STATUSES, type PaymentDetailRead, type PaymentFilters, type PaymentList, type RefundRoute } from '../types';
+import { PAYMENT_STATUSES, paymentNoteLabel, type PaymentDetailRead, type PaymentFilters, type PaymentList, type RefundRoute } from '../types';
 
 const ROW_FIELDS = `
   id totalAmount refundedAmount tip status paymentMethod processedAt createdAt notes
   appointment { id startTime metadata client { id user { name } } }
+  linked: session { appointment { id startTime metadata client { id user { name } } } }
 `;
+
+/** Online deposits stay off Appointment.payment (that slot means "checked out"), so they reach their visit through the session. */
+function withVisit(row: any) {
+  const { linked, ...rest } = row;
+  return { ...rest, appointment: row.appointment || linked?.appointment || null };
+}
 
 function dateWhere(from: string, to: string) {
   const createdAt: Record<string, string> = {};
@@ -33,7 +40,7 @@ export async function getPayments(filters: PaymentFilters): Promise<PaymentList>
   const settledRows = (data.totals || []).filter((row: any) => ['completed', 'partially_refunded', 'refunded'].includes(row.status));
   return {
     status: 'loaded',
-    payments: data.payments || [],
+    payments: (data.payments || []).map(withVisit),
     counts,
     total: Object.values(counts).reduce((sum, value) => sum + value, 0),
     settled: settledRows.reduce((sum: number, row: any) => sum + Number(row.totalAmount || 0), 0),
@@ -59,6 +66,7 @@ export async function getPayment(id: string): Promise<PaymentDetailRead> {
         ${ROW_FIELDS}
         subtotal tax discount receiptEmail refundReason refundedAt currencyCode
         refunds(orderBy: { createdAt: desc }) { id amountMinor reason status processedAt attempt { status needsReview lastError providerRefundId } }
+        cardBrand cardLast4
         session { id status amount data provider { name adapter } }
         appointment {
           lineItems { id serviceTitle price quantity }
@@ -68,12 +76,16 @@ export async function getPayment(id: string): Promise<PaymentDetailRead> {
     }
   `, { id }, { cache: 'no-store' }).catch(() => null);
   if (!response?.success) return { status: 'unavailable' };
-  const payment = response.data.payment;
-  if (!payment) return { status: 'missing' };
-  const saleLines = payment.appointment?.transaction?.lineItems || [];
+  const raw = response.data.payment;
+  if (!raw) return { status: 'missing' };
+  const payment = withVisit(raw);
+  const saleLines = (payment.appointment as any)?.transaction?.lineItems || [];
   const lines = saleLines.length
     ? saleLines.map((line: any) => ({ id: line.id, kind: line.itemType || 'service', title: line.service?.name || line.product?.name || 'Item', quantity: Number(line.quantity || 1), amount: Number(line.quantity || 1) * Number(line.unitPrice || 0) - Number(line.discount || 0) }))
-    : (payment.appointment?.lineItems || []).map((line: any) => ({ id: line.id, kind: 'service', title: line.serviceTitle || 'Treatment', quantity: Number(line.quantity || 1), amount: Number(line.quantity || 1) * Number(line.price || 0) }));
+    : !raw.appointment && payment.appointment
+      // A deposit is part of the visit's price, not the visit's lines.
+      ? [{ id: payment.id, kind: 'deposit', title: (paymentNoteLabel(payment.notes) || 'Online deposit').replace(/^Online deposit/, 'Deposit'), quantity: 1, amount: Number(payment.totalAmount || 0) }]
+      : ((payment.appointment as any)?.lineItems || []).map((line: any) => ({ id: line.id, kind: 'service', title: line.serviceTitle || 'Treatment', quantity: Number(line.quantity || 1), amount: Number(line.quantity || 1) * Number(line.price || 0) }));
   return { status: 'loaded', payment: { ...payment, lines }, refundRoute: refundRouteFor(payment.session) };
 }
 

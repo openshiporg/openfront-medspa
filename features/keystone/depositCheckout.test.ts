@@ -3,6 +3,7 @@ import { createHmac } from "node:crypto";
 import { test } from "node:test";
 import {
   amountDueAfterDeposit,
+  cardPaymentFields,
   decideDepositSettlement,
   depositAppointmentAcceptsPayment,
   netDepositMinor,
@@ -135,4 +136,10 @@ test("webhook: charge.refunded only signals a re-check of open attempts", async 
   assert.equal(result.providerReference, "pi_test_1");
   assert.equal(result.refund, undefined);
   assert.equal(result.status, null);
+});
+
+test("a paid Checkout's card details land on the payment record, and nothing is invented when Stripe reports none", () => {
+  assert.deepEqual(cardPaymentFields({ brand: "Visa", last4: "4242", chargeId: "ch_test_1", email: "a@b.co" }), { cardBrand: "Visa", cardLast4: "4242", stripeChargeId: "ch_test_1" });
+  assert.deepEqual(cardPaymentFields(null), {});
+  assert.deepEqual(cardPaymentFields({ brand: null, last4: null, chargeId: "ch_test_2", email: null }), { stripeChargeId: "ch_test_2" });
 });

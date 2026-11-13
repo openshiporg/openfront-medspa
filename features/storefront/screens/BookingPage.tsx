@@ -12,6 +12,8 @@ import { ProviderProfilesUnavailable } from "../components/ProviderProfilesUnava
 import { TimeSlotPicker } from "../components/TimeSlotPicker"
 import { BookingStepIndicator } from "../components/BookingStepIndicator"
 import { WaitlistOffer } from "../components/WaitlistOffer"
+import { DepositPay } from "../components/DepositPay"
+import { getStorefrontVisit } from "../lib/data/visit"
 import { Dot, Lens, Status, StateCard } from "../components/ui/primitives"
 import { getStorefrontImageSrc } from "../lib/images"
 import { formatDuration, formatPrice } from "../lib/format"
@@ -75,6 +77,8 @@ export function BookingPage({ initialServices = EMPTY_SERVICES, initialContact =
   const [error, setError] = useState<string | null>(null)
   const [bookingSuccess, setBookingSuccess] = useState(false)
   const [visitHref, setVisitHref] = useState<string | null>(null)
+  /** Set when the new request takes its deposit online: the Pay button sits on the done screen. */
+  const [depositDue, setDepositDue] = useState<{ appointmentId: string; token: string | null } | null>(null)
   const bookingRequest = useRef<{ fingerprint: string; key: string } | null>(null)
 
   // Skip to provider choice when a known treatment is preselected.
@@ -230,6 +234,10 @@ export function BookingPage({ initialServices = EMPTY_SERVICES, initialContact =
       if (result.appointment) {
         // Guests get a private link to view or cancel; signed-in clients use their account.
         setVisitHref(result.accessToken ? `/booking/${result.appointment.id}?token=${encodeURIComponent(result.accessToken)}` : initialContact ? `/booking/${result.appointment.id}` : null)
+        if (service?.depositAmount && (result.accessToken || initialContact)) {
+          const visit = await getStorefrontVisit(result.appointment.id, result.accessToken || null).catch(() => null)
+          if (visit?.depositOnline) setDepositDue({ appointmentId: result.appointment.id, token: result.accessToken || null })
+        }
         setBookingSuccess(true)
       } else {
         setError(result.error || "The request wasn't accepted. Review your selections and try again.")
@@ -255,7 +263,9 @@ export function BookingPage({ initialServices = EMPTY_SERVICES, initialContact =
           <div className="sf-ticket-row"><dt>Price</dt><dd className="sf-num">{service ? formatPrice(service.basePrice) : "—"}</dd></div>
         </dl>
         {service?.depositAmount ? (
-          <p className="flex items-center gap-2 text-[length:var(--sf-text-xs)] text-[var(--sf-ink-3)]"><Dot tone="off" />{formatPrice(service.depositAmount)} deposit is paid after you send the request</p>
+          <p className="flex items-center gap-2 text-[length:var(--sf-text-xs)] text-[var(--sf-ink-3)]"><Dot tone="off" />{bookingSuccess
+            ? `${formatPrice(service.depositAmount)} deposit ${depositDue ? "is due now to hold this time" : "is collected by the practice"}`
+            : `${formatPrice(service.depositAmount)} deposit is paid after you send the request`}</p>
         ) : (
           <p className="flex items-center gap-2 text-[length:var(--sf-text-xs)] text-[var(--sf-ink-3)]"><Dot tone="off" />No payment taken now</p>
         )}
@@ -274,8 +284,9 @@ export function BookingPage({ initialServices = EMPTY_SERVICES, initialContact =
           </div>
           {visitHref && !initialContact ? <p className="text-[length:var(--sf-text-md)] text-[var(--sf-ink-2)]">Save this link to view or cancel your request.</p> : null}
           <div className="w-full">{ticket}</div>
+          {depositDue && service?.depositAmount ? <DepositPay appointmentId={depositDue.appointmentId} token={depositDue.token} label={`Pay ${formatPrice(service.depositAmount)} deposit`} /> : null}
           <div className="sf-track">
-            {visitHref ? <Link href={visitHref} className="sf-pill sf-pill-primary">View request</Link> : null}
+            {visitHref ? <Link href={visitHref} className={depositDue ? "sf-pill" : "sf-pill sf-pill-primary"}>View request</Link> : null}
             {initialContact ? <Link href="/account" className="sf-pill">My appointments</Link> : null}
             <button type="button" onClick={() => window.location.reload()} className="sf-pill">Book another</button>
           </div>

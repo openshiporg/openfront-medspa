@@ -7,7 +7,7 @@ import { validGuestAccessToken } from "./lib/guestAccess";
 import { trustedOrigin } from "./lib/trustedOrigin";
 import { assertPaymentTransition, paymentRecordStatus, type PaymentLifecycleStatus } from "./payment-lifecycle";
 import { createProviderCheckout, getProviderCheckoutStatus, paymentProviderFromRecord } from "./utils/paymentProviderAdapter";
-import { decideDepositSettlement, depositAppointmentAcceptsPayment, type DepositCheckoutFacts } from "./depositCheckoutCore";
+import { cardPaymentFields, decideDepositSettlement, depositAppointmentAcceptsPayment, type DepositCheckoutFacts } from "./depositCheckoutCore";
 import { enqueueRefund, paymentLifecycleTransaction, processRefunds } from "./refunds";
 
 type Sudo = ReturnType<Context["sudo"]>;
@@ -24,7 +24,7 @@ export async function onlineDepositProvider(sudo: Sudo, practiceId: string) {
   return rows[0] ?? null;
 }
 
-const APPOINTMENT_QUERY = "id status depositAmount depositPaid practice { id } client { id user { id email } } provider { user { name } } lineItems { serviceTitle }";
+const APPOINTMENT_QUERY = "id status metadata depositAmount depositPaid practice { id } client { id user { id email } } provider { user { name } } lineItems { serviceTitle }";
 
 /** A guest proves access with the confirmation-link token; a signed-in client must own the visit. */
 async function loadAccessibleAppointment(context: Context, appointmentId: string, token?: string | null) {
@@ -40,7 +40,12 @@ async function loadAccessibleAppointment(context: Context, appointmentId: string
   return { sudo, appointment };
 }
 
-const SESSION_QUERY = "id status amount currency providerReference data practice { id } payment { id status } appointment { id status depositPaid } provider { id code adapter config }";
+function guestEmail(metadata: unknown): string {
+  const guest = metadata && typeof metadata === "object" ? (metadata as Record<string, any>).guest : null;
+  return guest && typeof guest.email === "string" ? guest.email.trim() : "";
+}
+
+const SESSION_QUERY = "id status amount currency providerReference data practice { id } payment { id status receiptEmail } appointment { id status depositPaid } provider { id code adapter config }";
 
 function sessionData(session: { data?: unknown }): Record<string, any> {
   return session.data && typeof session.data === "object" ? session.data as Record<string, any> : {};
@@ -85,7 +90,7 @@ export async function settleDepositCheckout(sudo: Sudo, sessionId: string, facts
     },
     query: "id",
   });
-  if (session.payment?.id) await sudo.query.Payment.updateOne({ where: { id: session.payment.id }, data: { status: "completed", processedAt: now, stripePaymentIntentId: decision.paymentIntentId }, query: "id" });
+  if (session.payment?.id) await sudo.query.Payment.updateOne({ where: { id: session.payment.id }, data: { status: "completed", processedAt: now, stripePaymentIntentId: decision.paymentIntentId, ...cardPaymentFields(facts.card), ...(!session.payment.receiptEmail && facts.card?.email ? { receiptEmail: facts.card.email } : {}) }, query: "id" });
 
   const appointment = session.appointment;
   if (appointment?.id && depositAppointmentAcceptsPayment(appointment.status)) {
@@ -138,7 +143,7 @@ export async function startDepositCheckoutFlow(context: Context, args: { appoint
     provider: paymentProviderFromRecord(provider as { code: string; adapter: string; config?: unknown }),
     amount, currency: "usd", idempotencyKey: key, description: `Deposit · ${serviceName}`,
     successUrl: `${base}?deposit=return${tokenQuery}`, cancelUrl: `${base}?deposit=cancelled${tokenQuery}`,
-    customerEmail: appointment.client?.user?.email || null,
+    customerEmail: appointment.client?.user?.email || guestEmail(appointment.metadata) || null,
     // Correlation only; the amount is never read back from metadata.
     metadata: { purpose: "appointment_deposit", appointmentId: appointment.id, practiceId },
   });
@@ -157,7 +162,7 @@ export async function startDepositCheckoutFlow(context: Context, args: { appoint
       data: {
         idempotencyKey: `${key}:payment`, practice: { connect: { id: practiceId } }, session: { connect: { id: session.id } },
         subtotal: amount, tax: 0, tip: 0, discount: 0, totalAmount: amount, paymentMethod: "credit_card", status: "pending",
-        receiptEmail: appointment.client?.user?.email || "", notes: `Online deposit for appointment ${appointment.id}`,
+        receiptEmail: appointment.client?.user?.email || guestEmail(appointment.metadata), notes: `Online deposit · ${serviceName}`,
       },
       query: "id",
     });

@@ -22,6 +22,7 @@ export type PaymentList =
   | { status: 'unavailable' };
 
 export interface PaymentDetail extends PaymentRow {
+  cardBrand?: string | null; cardLast4?: string | null;
   subtotal: number | null; tax: number | null; discount: number | null; receiptEmail: string | null; refundReason: string | null; refundedAt: string | null; currencyCode: string | null;
   refunds: Array<{ id: string; amountMinor: number | null; reason: string | null; status: string | null; processedAt: string | null; attempt?: { status: string | null; needsReview: boolean | null; lastError: string | null; providerRefundId: string | null } | null }>;
   session: { id: string; status: string | null; amount: number | null; data: Record<string, unknown> | null; provider: { name: string | null; adapter: string | null } | null } | null;
@@ -31,3 +32,11 @@ export interface PaymentDetail extends PaymentRow {
 export type RefundRoute = 'deposit' | 'settlement' | null;
 
 export type PaymentDetailRead = { status: 'loaded'; payment: PaymentDetail; refundRoute: RefundRoute } | { status: 'missing' } | { status: 'unavailable' };
+
+/** Staff-facing payment note: older rows carried a raw record id ("… for appointment <id>", "Online gift-card purchase <id>"). */
+export function paymentNoteLabel(notes?: string | null): string {
+  return (notes || '')
+    .replace(/\s+for appointment\s+\S+$/i, '')
+    .replace(/^Online gift-card purchase\s+\S+$/i, 'Online gift card')
+    .trim();
+}

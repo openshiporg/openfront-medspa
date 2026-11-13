@@ -104,7 +104,7 @@
 .sf-pill[aria-current="step"],
 .sf-pill[aria-pressed="true"] { border-color: var(--sf-brass); background: var(--sf-paper-3); color: var(--sf-ink); }
 
-.sf-pill-sm { min-height: 2.25rem; padding: 0 0.875rem; font-size: var(--sf-text-xs); }
+.sf-pill-sm { min-height: 2.75rem; padding: 0 0.875rem; font-size: var(--sf-text-xs); }
 .sf-pill-icon { width: 2.75rem; padding: 0; }
 .sf-pill:disabled, .sf-pill[aria-disabled="true"] { cursor: not-allowed; opacity: 0.45; }
 

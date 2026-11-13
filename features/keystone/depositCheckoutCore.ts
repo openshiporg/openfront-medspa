@@ -18,6 +18,17 @@ export interface DepositCheckoutFacts {
   amount: number;
   currency: string;
   paymentIntentId: string | null;
+  card?: { brand: string | null; last4: string | null; chargeId: string | null; email: string | null } | null;
+}
+
+/** Payment-record fields for a paid Checkout's card (only what the processor reported). */
+export function cardPaymentFields(card: DepositCheckoutFacts["card"]) {
+  if (!card) return {};
+  return {
+    ...(card.brand ? { cardBrand: card.brand } : {}),
+    ...(card.last4 ? { cardLast4: card.last4 } : {}),
+    ...(card.chargeId ? { stripeChargeId: card.chargeId } : {}),
+  };
 }
 
 export type DepositSettlement =
