@@ -84,7 +84,7 @@ export async function getPayment(id: string): Promise<PaymentDetailRead> {
     ? saleLines.map((line: any) => ({ id: line.id, kind: line.itemType || 'service', title: line.service?.name || line.product?.name || 'Item', quantity: Number(line.quantity || 1), amount: Number(line.quantity || 1) * Number(line.unitPrice || 0) - Number(line.discount || 0) }))
     : !raw.appointment && payment.appointment
       // A deposit is part of the visit's price, not the visit's lines.
-      ? [{ id: payment.id, kind: 'deposit', title: (paymentNoteLabel(payment.notes) || 'Online deposit').replace(/^Online deposit/, 'Deposit'), quantity: 1, amount: Number(payment.totalAmount || 0) }]
+      ? [{ id: payment.id, kind: 'deposit', title: paymentNoteLabel(payment.notes).replace(/^Online deposit( · )?/, '').split(' · ')[0] || 'Visit', quantity: 1, amount: Number(payment.totalAmount || 0) }]
       : ((payment.appointment as any)?.lineItems || []).map((line: any) => ({ id: line.id, kind: 'service', title: line.serviceTitle || 'Treatment', quantity: Number(line.quantity || 1), amount: Number(line.quantity || 1) * Number(line.price || 0) }));
   return { status: 'loaded', payment: { ...payment, lines }, refundRoute: refundRouteFor(payment.session) };
 }

@@ -45,6 +45,11 @@ function guestEmail(metadata: unknown): string {
   return guest && typeof guest.email === "string" ? guest.email.trim() : "";
 }
 
+function guestName(metadata: unknown): string {
+  const guest = metadata && typeof metadata === "object" ? (metadata as Record<string, any>).guest : null;
+  return guest && typeof guest.name === "string" ? guest.name.trim().slice(0, 120) : "";
+}
+
 const SESSION_QUERY = "id status amount currency providerReference data practice { id } payment { id status receiptEmail } appointment { id status depositPaid } provider { id code adapter config }";
 
 function sessionData(session: { data?: unknown }): Record<string, any> {
@@ -162,7 +167,7 @@ export async function startDepositCheckoutFlow(context: Context, args: { appoint
       data: {
         idempotencyKey: `${key}:payment`, practice: { connect: { id: practiceId } }, session: { connect: { id: session.id } },
         subtotal: amount, tax: 0, tip: 0, discount: 0, totalAmount: amount, paymentMethod: "credit_card", status: "pending",
-        receiptEmail: appointment.client?.user?.email || guestEmail(appointment.metadata), notes: `Online deposit · ${serviceName}`,
+        receiptEmail: appointment.client?.user?.email || guestEmail(appointment.metadata), notes: ["Online deposit", serviceName, appointment.client?.id ? "" : guestName(appointment.metadata)].filter(Boolean).join(" · "),
       },
       query: "id",
     });
