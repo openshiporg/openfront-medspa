@@ -81,7 +81,7 @@ export async function runControlledCheckout(context: Context, actor: CheckoutAct
         where: { id: args.appointmentId },
         query: `
           id status depositAmount depositPaid payment { id } transaction { id } practice { id taxRate } location { id name isActive }
-          paymentSessions(where: { status: { in: [completed, partially_refunded] } }, take: 50) { id status amount data payment { id refundedAmount } }
+          paymentSessions(where: { status: { in: [completed, partially_refunded] } }, take: 50) { id status amount data payment { id refundedAmount refunds(where: { status: { equals: pending } }, take: 1) { id } } }
           client { id lifetimeValue totalVisits user { id email } }
           provider { id baseCommissionRate user { id } }
           consultation { id status staffDecisionRecorded service { id } }
@@ -211,6 +211,7 @@ export async function runControlledCheckout(context: Context, actor: CheckoutAct
         const data = session.data && typeof session.data === "object" ? session.data : {};
         return data.purpose === "appointment_deposit" && !data.appliedToCheckout;
       });
+      if (heldDeposits.some(session => session.payment?.refunds?.length)) throw new Error("A deposit refund for this visit is still processing. Check out once it finishes");
       const depositCredit = netDepositMinor(heldDeposits.map(session => ({ amount: session.amount, status: session.status, purpose: "appointment_deposit", refundedAmount: session.payment?.refundedAmount })));
       if (appointment.depositPaid && depositCredit === 0 && !heldDeposits.length && Number(appointment.depositAmount || 0) > 0) {
         throw new Error("The recorded deposit has no settled payment to credit. Reconcile it from Payments first");
