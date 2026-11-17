@@ -196,6 +196,11 @@ export async function upsertLocationTransaction(context: Context, args: Location
         ? await sudo.query.Location.updateOne({ where: { id: args.locationId }, data, query: "id" })
         : await sudo.query.Location.createOne({ data: { ...data, practice: { connect: { id: actor.practiceId } } }, query: "id" });
       if (!record) throw new Error("Location not found");
+      // Whoever opens a location can work at it: it joins their own practice membership.
+      if (!args.locationId) {
+        const membership = (await sudo.query.PracticeMembership.findMany({ where: { practice: { id: { equals: actor.practiceId } }, user: { id: { equals: actor.actorId } }, status: { equals: "active" } }, take: 1, query: "id" }))[0];
+        if (membership) await sudo.query.PracticeMembership.updateOne({ where: { id: membership.id }, data: { locations: { connect: [{ id: record.id }] } }, query: "id" });
+      }
       await audit(sudo, actor.practiceId, actor.actorId, action, "Location", record.id, args.idempotencyKey, { name, timezone: args.timezone, isActive: args.isActive });
       return { success: true, recordId: record.id, error: null };
     });
