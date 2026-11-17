@@ -36,9 +36,11 @@ export async function payoutCommissionsTransaction(
         const commissions = await sudo.query.Commission.findMany({
           where: { id: { in: ids } },
           take: 200,
-          query: "id isPaid paidAt commissionAmount provider { id }",
+          query: "id isPaid paidAt commissionAmount provider { id } payment { status }",
         });
         if (commissions.length !== ids.length) throw new Error("One or more commissions were not found");
+        // No commission is paid out on a sale whose money went back to the client.
+        if (commissions.some((commission: any) => !commission.isPaid && commission.payment?.status === "refunded")) throw new Error("A commission in this batch is on a refunded sale");
 
         const providerIds = new Set(commissions.map((commission: any) => commission.provider?.id).filter(Boolean));
         if (providerIds.size !== 1) throw new Error("A payout batch must belong to one provider");

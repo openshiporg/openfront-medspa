@@ -21,6 +21,8 @@ export interface PlatformCommission {
     id: string;
     totalAmount?: number | null;
     paymentMethod?: string | null;
+    status?: string | null;
+    refundedAmount?: number | null;
     processedAt?: string | null;
     appointment?: {
       id: string;
@@ -63,6 +65,8 @@ const COMMISSION_QUERY = `
     totalAmount
     paymentMethod
     processedAt
+    status
+    refundedAmount
     appointment { id startTime client { user { name } } }
   }
 `;
@@ -91,7 +95,7 @@ function summarize(commissions: PlatformCommission[]): ProviderCommissionSummary
     current.grossSales += commission.saleAmount || 0;
     if (commission.isPaid) {
       current.paidAmount += commission.commissionAmount || 0;
-    } else {
+    } else if (commission.payment?.status !== 'refunded') {
       current.unpaidCount += 1;
       current.unpaidAmount += commission.commissionAmount || 0;
     }
@@ -138,7 +142,7 @@ export async function getCommissionOperations(status?: string | null): Promise<C
     (acc, commission) => {
       acc.grossSales += commission.saleAmount || 0;
       if (commission.isPaid) acc.paidAmount += commission.commissionAmount || 0;
-      else acc.unpaidAmount += commission.commissionAmount || 0;
+      else if (commission.payment?.status !== 'refunded') acc.unpaidAmount += commission.commissionAmount || 0;
       return acc;
     },
     { unpaidAmount: 0, paidAmount: 0, grossSales: 0 }
@@ -206,7 +210,7 @@ export async function markProviderCommissionsPaid(formData: FormData): Promise<v
   const response = await keystoneClient<{ commissions: { id: string }[] }>(
     `
       query UnpaidProviderCommissions($providerId: ID!) {
-        commissions(where: { isPaid: { equals: false }, provider: { id: { equals: $providerId } } }, take: 200) { id }
+        commissions(where: { isPaid: { equals: false }, provider: { id: { equals: $providerId } }, NOT: { payment: { status: { equals: "refunded" } } } }, take: 200) { id }
       }
     `,
     { providerId },

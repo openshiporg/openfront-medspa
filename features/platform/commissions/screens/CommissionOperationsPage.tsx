@@ -112,10 +112,11 @@ function CommissionRow({ commission }: { commission: PlatformCommission }) {
           <Chip>{Math.round((commission.commissionRate || 0) * 1000) / 10}% of {usd(commission.saleAmount)}</Chip>
           <Chip>{formatDate(commission.payment?.appointment?.startTime)}</Chip>
           {commission.payment?.paymentMethod ? <Chip>{commission.payment.paymentMethod}</Chip> : null}
+          {commission.payment?.refundedAmount ? <Chip>{commission.payment.status === 'refunded' ? 'Sale refunded' : `${usd(commission.payment.refundedAmount)} refunded`}</Chip> : null}
         </div>
       </div>
       {(!commission.isPaid || commission.payment?.appointment?.id) && <div className={`${trackClass} w-fit`}>
-        {!commission.isPaid && (
+        {!commission.isPaid && commission.payment?.status !== 'refunded' && (
           <form action={markCommissionPaid}>
             <input type="hidden" name="id" value={commission.id} />
             <button type="submit" className={pillClass('raised', 'sm')}>Mark paid</button>
