@@ -150,6 +150,13 @@ function createStore(context: Context): RefundAttemptStore {
         const now = new Date().toISOString();
         await sudo.query.RefundAttempt.updateOne({ where: { id: attempt.id }, data: { status: "failed", completedAt: now, lastError: reason.slice(0, 500) }, query: "id" });
         await sudo.query.Refund.updateOne({ where: { id: attempt.refundId }, data: { status: "failed", processedAt: now }, query: "id" });
+        // A gift card is switched off when its refund is queued; when the refund fails, the card works again.
+        const row = await sudo.query.RefundAttempt.findOne({ where: { id: attempt.id }, query: "paymentSession { data payment { refundedAmount } }" });
+        const data = row?.paymentSession?.data && typeof row.paymentSession.data === "object" ? row.paymentSession.data as Record<string, any> : {};
+        if (data.purpose === "gift_card" && typeof data.giftCardId === "string" && Number(row?.paymentSession?.payment?.refundedAmount || 0) === 0) {
+          const giftCard = await sudo.query.GiftCard.findOne({ where: { id: data.giftCardId }, query: "id initialValue currentBalance" });
+          if (giftCard && giftCard.currentBalance === 0) await sudo.query.GiftCard.updateOne({ where: { id: giftCard.id }, data: { currentBalance: giftCard.initialValue, isActive: true }, query: "id" });
+        }
       });
     },
   };

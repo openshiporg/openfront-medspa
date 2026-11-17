@@ -244,6 +244,11 @@ export async function applyGiftCardBalanceTransaction(
       if (giftCard.expiresAt && new Date(giftCard.expiresAt).getTime() <= Date.now()) throw new Error("Gift card has expired");
       if (args.action === "redemption" && (!giftCard.isActive || giftCard.currentBalance < args.amount)) throw new Error("Gift card has insufficient available balance");
       if (args.action === "refund" && giftCard.currentBalance + args.amount > giftCard.initialValue) throw new Error("Gift card refund exceeds its original value");
+      if (args.action === "refund") {
+        // A card whose purchase was refunded (or is being refunded) to the buyer cannot be given value again.
+        const sale = await transactionContext.sudo().prisma.payment.findFirst({ where: { session: { data: { path: ["giftCardId"], equals: giftCard.id } } }, select: { id: true } });
+        if (sale && await sudo.query.Refund.count({ where: { payment: { id: { equals: sale.id } }, status: { in: ["pending", "completed"] as any } } })) throw new Error("This gift card's purchase was refunded");
+      }
       if (args.appointmentId) {
         const appointment = await sudo.query.Appointment.findOne({ where: { id: args.appointmentId }, query: "id status" });
         if (!appointment) throw new Error("Gift card appointment not found");
