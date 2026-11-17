@@ -49,13 +49,12 @@ export async function getPayments(filters: PaymentFilters): Promise<PaymentList>
   };
 }
 
-/** Which workflow can refund this payment: deposits refund (processor deposits through the durable outbox); manual checkouts reverse the settlement. */
+/** Which workflow can refund this payment: card deposits, card checkouts and online gift cards refund at the processor. A cash sale has no refund in the dashboard yet. */
 function refundRouteFor(session: any): RefundRoute {
   const purpose = session?.data && typeof session.data === 'object' ? session.data.purpose : null;
   if (!session) return null;
   if (purpose === 'appointment_deposit' || purpose === 'checkout_card') return 'deposit';
   if (purpose === 'gift_card' && session.data?.channel === 'online') return 'deposit';
-  if (session.provider?.adapter === 'manual' && purpose === 'controlled_checkout') return 'settlement';
   return null;
 }
 
