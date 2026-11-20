@@ -4,8 +4,8 @@ import { Toaster } from "@/components/ui/sonner";
 import "./dashboard.css";
 
 export const metadata: Metadata = {
-  title: "Openfront Dashboard",
-  description: "Admin interface for Openfront",
+  title: "Openfront Medspa Dashboard",
+  description: "Staff dashboard for Openfront Medspa",
 };
 
 export default function DashboardLayout({
