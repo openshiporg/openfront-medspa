@@ -5,6 +5,8 @@ import {
   PlatformPage, SegmentTabs, TitleStatus, Track, usd,
 } from '@/features/platform/components/medspa-ui';
 import { getAppointmentOperations, PlatformAppointment } from '../actions/appointments';
+import { getAuthenticatedUser } from '@/features/dashboard/actions/auth';
+import { canOpenPlatformRoute } from '@/features/dashboard/lib/sidebarAccess';
 
 const statusTabs = [
   { value: 'today', label: 'Today' },
@@ -65,7 +67,8 @@ function groupByDay(appointments: PlatformAppointment[]) {
 export async function AppointmentOperationsPage({ searchParams }: PageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const activeStatus = statusFilter(resolvedSearchParams.status, ["today","pending","confirmed","in_progress","completed","cancelled","no_show","all"] as const, 'today');
-  const { appointments, counts, availability } = await getAppointmentOperations(activeStatus);
+  const [{ appointments, counts, availability }, auth] = await Promise.all([getAppointmentOperations(activeStatus), getAuthenticatedUser()]);
+  const canOpenPlans = canOpenPlatformRoute('appointments/plans', auth.success ? auth.data?.authenticatedItem : null);
   const breadcrumbs = [{ label: 'Appointments' }];
 
   if (availability === 'unavailable') {
@@ -92,7 +95,7 @@ export async function AppointmentOperationsPage({ searchParams }: PageProps) {
         icon={CalendarHeart}
         actions={
           <Track label="Appointment actions">
-            <PillLink href="/dashboard/platform/appointments/plans" variant="quiet">Consultations & plans</PillLink>
+            {canOpenPlans ? <PillLink href="/dashboard/platform/appointments/plans" variant="quiet">Consultations & plans</PillLink> : null}
             <PillLink href="/dashboard/platform/appointments/new" variant="primary">Book appointment</PillLink>
           </Track>
         }

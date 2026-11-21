@@ -11,6 +11,10 @@ const owner = { role: { canAccessDashboard: true, canManageFinance: true, canVie
       assert.equal(canOpenPlatformRoute(slug, owner), true)
     }
     assert.equal(canOpenPlatformRoute('appointments', front), true)
+    assert.equal(canOpenPlatformRoute('checkout', front), false)
+    assert.equal(canOpenPlatformRoute('checkout', owner), true)
+    assert.equal(canOpenPlatformRoute('appointments/plans', front), false)
+    assert.equal(canOpenPlatformRoute('appointments/plans', { role: { canAccessDashboard: true, canManageClinical: true } }), true)
   })
   test('hides blocked links from the sidebar', () => {
     const items = [{ href: '/dashboard/platform/payments' }, { href: '/dashboard/platform/appointments' }]

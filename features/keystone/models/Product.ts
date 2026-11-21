@@ -65,7 +65,8 @@ export const Product = list({
     }),
 
     quantity: integer({
-      access: { read: activeListPermissions.canManageInventory, create: () => false, update: () => false },
+      // Checkout (finance) offers in-stock retail add-ons, so finance reads stock too.
+      access: { read: async (args) => (await activeListPermissions.canManageInventory(args)) || (await activeListPermissions.canManageFinance(args)), create: () => false, update: () => false },
       defaultValue: 0,
       ui: {
         description: "Current stock quantity",

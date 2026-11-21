@@ -10,6 +10,8 @@ type SidebarUser = { role?: ({ canAccessDashboard?: boolean | null } & Record<st
 /** Platform pages that need a role flag beyond dashboard access. Other pages stay open to every dashboard role. */
 export const platformRouteFlags: Record<string, string> = {
   payments: 'canManageFinance',
+  checkout: 'canManageFinance',
+  'appointments/plans': 'canManageClinical',
   commissions: 'canManageFinance',
   reports: 'canViewReports',
   integrations: 'canManageIntegrations',
