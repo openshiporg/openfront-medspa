@@ -27,6 +27,12 @@
 .altair-header-overlay .sf-pill-primary { background:transparent; border-color:#fff9ef; }
 .sf-header .sf-pill-quiet { padding-inline:14px; font-weight:400; }
 .sf-header .sf-sheet { color:var(--sf-ink); }
+/* Open mobile menu: the header becomes the whole screen, so no page shows below the sheet. */
+.sf-header[data-menu-open] { position:fixed; inset:0; z-index:60; display:flex; flex-direction:column; overflow-y:auto; overscroll-behavior:contain; background:var(--sf-paper); }
+.sf-header[data-menu-open] .sf-sheet { flex:1; padding-bottom:env(safe-area-inset-bottom); }
+.sf-sheet-link { min-height:3.5rem; text-decoration:none; }
+.sf-sheet-link:focus-visible { outline:2px solid var(--sf-focus); outline-offset:-2px; border-radius:6px; }
+@media(min-width:1024px) { .sf-header[data-menu-open] { position:relative; inset:auto; display:block; overflow:visible; background:#f6f0e7; } }
 .altair-hero { position:relative; height:337px; background:#5e4833; color:#fff9ef; isolation:isolate; }
 .altair-hero-photo { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center 53%; z-index:-2; }
 .altair-hero::after { content:""; position:absolute; inset:0; z-index:-1; background:linear-gradient(0deg,rgba(26,15,7,.5),transparent 65%); }

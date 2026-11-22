@@ -106,13 +106,14 @@ export function AppointmentSchedulingPanel({ appointmentId, customerOnly = false
     </div>
     {data && <p className="text-sm text-muted-foreground">{new Date(data.startTime).toLocaleString('en-US', { timeZone: data.timezone, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} ({data.timezone}) · revision {data.revision}</p>}
     <p role="status" className="text-sm empty:hidden">{message}</p>
-    <form onSubmit={submit} className="grid gap-3">
+    {/* A finished visit has nothing to change: show the sentence below instead of an empty, disabled form. */}
+    {data && !data.allowedTransitions.length && !intent ? null : <form onSubmit={submit} className="grid gap-3">
       <fieldset disabled={busy || blocked || Boolean(intent) || !data?.allowedTransitions.length} className="grid min-w-0 gap-3 disabled:opacity-70 sm:grid-cols-2">
         <label className={fieldLabelClass}>Action<select name="status" className={inputClass}>{data?.allowedTransitions.map(status => <option key={status} value={status}>{{ confirmed: 'Confirm appointment', in_progress: 'Check in client', cancelled: 'Cancel and release reservations', no_show: 'Record no-show and release reservations' }[status]}</option>)}</select></label>
         <label className={fieldLabelClass}>Administrative reason<input name="reason" className={inputClass} maxLength={1000} required /></label>
       </fieldset>
       <div className={`${trackClass} w-fit flex-wrap`}><button className={pillClass('primary')} disabled={busy || blocked || !data || (!intent && !data.allowedTransitions.length)}>{busy ? 'Working…' : intent ? 'Retry pending update' : 'Save status'}</button>{intent && <button type="button" className={pillClass('quiet')} disabled={busy} onClick={retrieve}>Refresh update status</button>}</div>
-    </form>
+    </form>}
     {data && !data.allowedTransitions.length && !intent && <p className="text-sm text-muted-foreground">No status change available for this appointment.</p>}
   </section>;
 }

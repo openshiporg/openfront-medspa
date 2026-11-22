@@ -251,7 +251,7 @@ export function BookingPage({ initialServices = EMPTY_SERVICES, initialContact =
   }
 
   const ticket = (
-    <aside className="sf-ticket" aria-label="Your visit">
+    <aside className={`sf-ticket ${service ? "" : "max-lg:hidden"}`} aria-label="Your visit">
       <div className="sf-card grid gap-4 p-[var(--sf-space-md)]">
         <p className="sf-eyebrow">Your visit</p>
         <dl>

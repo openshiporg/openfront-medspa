@@ -109,7 +109,7 @@ export async function AccountPage() {
           <section aria-labelledby="upcoming-heading" className="grid gap-4">
             <h2 id="upcoming-heading" className="sf-eyebrow">Upcoming</h2>
             {upcoming.length ? <ul className="grid gap-3">{upcoming.map((appointment) => <AppointmentItem key={appointment.id} appointment={appointment} intakeDue={intakeDue.has(appointment.id)} />)}</ul>
-              : <StateCard title="Nothing booked" action={<Track><PillLink href="/book" size="sm">Book an appointment</PillLink></Track>} />}
+              : <StateCard title="Nothing booked" />}
           </section>
 
           {past.length ? (

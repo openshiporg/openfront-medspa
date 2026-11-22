@@ -136,6 +136,9 @@ function AppointmentRow({ appointment }: { appointment: PlatformAppointment }) {
   const providerName = appointment.provider?.user?.name || 'Unassigned';
   const tone = appointmentTone[appointment.status] || 'zinc';
   const total = serviceTotal(appointment);
+  // A deposit can only still be owed on a visit that is going ahead; checkout only opens once it is confirmed.
+  const depositOpen = ['pending', 'confirmed', 'in_progress'].includes(appointment.status);
+  const checkoutLabel = ['confirmed', 'in_progress'].includes(appointment.status) ? 'Checkout' : appointment.payment?.status ? 'Payment' : null;
 
   return (
     <li className="grid gap-2 px-3 py-3 sm:grid-cols-[5rem_8rem_minmax(0,1fr)] sm:gap-4 lg:grid-cols-[5rem_8rem_minmax(0,1fr)_auto] lg:items-baseline">
@@ -150,7 +153,7 @@ function AppointmentRow({ appointment }: { appointment: PlatformAppointment }) {
         <p className="mt-0.5 truncate text-xs text-muted-foreground">{treatmentTitle(appointment)} · {providerName}</p>
         <div className="mt-2 flex flex-wrap gap-1.5">
           {needsClinicalReview(appointment) ? <Chip tone="violet"><ShieldAlert className="inline size-3" /> Clinical review</Chip> : null}
-          {appointment.depositAmount ? <Chip tone={appointment.depositPaid ? 'emerald' : 'amber'}>{appointment.depositPaid ? 'Deposit paid' : `Deposit due ${usd(appointment.depositAmount)}`}</Chip> : null}
+          {appointment.depositAmount && appointment.depositPaid ? <Chip tone="emerald">Deposit paid</Chip> : appointment.depositAmount && depositOpen ? <Chip tone="amber">Deposit due {usd(appointment.depositAmount)}</Chip> : null}
           {total ? <Chip>{usd(total)}</Chip> : null}
           {appointment.payment?.status ? <Chip tone="emerald">Payment {appointment.payment.status.replaceAll('_', ' ')}</Chip> : null}
         </div>
@@ -164,7 +167,7 @@ function AppointmentRow({ appointment }: { appointment: PlatformAppointment }) {
 
       <Track className="justify-self-start sm:col-start-3 lg:col-start-auto lg:justify-self-end">
         <PillLink href={`/dashboard/platform/appointments/${appointment.id}`} size="sm">Open</PillLink>
-        <PillLink href={`/dashboard/platform/checkout/${appointment.id}`} size="sm" variant="quiet">Checkout</PillLink>
+        {checkoutLabel ? <PillLink href={`/dashboard/platform/checkout/${appointment.id}`} size="sm" variant="quiet">{checkoutLabel}</PillLink> : null}
       </Track>
     </li>
   );

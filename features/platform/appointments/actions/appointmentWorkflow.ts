@@ -41,7 +41,7 @@ export type AppointmentWorkflowDetail = {
   lineItems: { id: string; serviceTitle?: string | null; price?: number | null; quantity?: number | null; duration?: number | null }[];
   payment?: { id: string; status?: string | null; totalAmount?: number | null; paymentMethod?: string | null; processedAt?: string | null } | null;
   transaction?: { id: string; status?: string | null; paymentStatus?: string | null; paymentMethod?: string | null; completedAt?: string | null } | null;
-  paymentSessions?: { id: string; status?: string | null; amount?: number | null; createdAt?: string | null }[];
+  paymentSessions?: { id: string; status?: string | null; amount?: number | null; createdAt?: string | null; data?: { purpose?: string } | null }[];
 };
 
 export type ClinicalWorkflowSummary = {
@@ -109,7 +109,7 @@ export async function getAppointmentWorkflowDetail(id: string): Promise<Appointm
   const financialFields = capabilities.canManageFinance
     ? `payment { id status totalAmount paymentMethod processedAt }
        transaction { id status paymentStatus paymentMethod completedAt }
-       paymentSessions(orderBy: { createdAt: desc }, take: 1) { id status amount createdAt }`
+       paymentSessions(orderBy: { createdAt: desc }, take: 50) { id status amount createdAt data }`
     : '';
 
   const response = await keystoneClient<{ appointment: AppointmentWorkflowDetail | null }>(`

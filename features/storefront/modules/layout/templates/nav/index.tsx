@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { ArrowRight, Menu, X } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { StoreBrand } from "@/features/storefront/components/StoreBrand"
 
 interface NavProps {
@@ -28,10 +28,22 @@ export default function Nav({ brandName, logoSvg, logoHue }: NavProps) {
 
   const isActive = (href: string) => pathname === href || (href !== "/" && pathname?.startsWith(href + "/"))
   const onBooking = pathname === "/book" || pathname?.startsWith("/booking/")
+  // The account pages already carry their own Book action; a fixed bar there would be a third.
+  const onAccount = pathname === "/appointments" || pathname === "/account" || pathname?.startsWith("/account/")
+
+  // The open menu is the whole screen: the page behind must not scroll, and Escape closes it.
+  useEffect(() => {
+    if (!open) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setOpenPath(null) }
+    window.addEventListener("keydown", onKey)
+    return () => { document.body.style.overflow = previous; window.removeEventListener("keydown", onKey) }
+  }, [open])
 
   return (
     <>
-      <header className={`sf-header ${pathname === "/" || pathname?.startsWith("/services/") ? "altair-header-overlay" : ""}`}>
+      <header data-menu-open={open ? "" : undefined} className={`sf-header ${!open && (pathname === "/" || pathname?.startsWith("/services/")) ? "altair-header-overlay" : ""}`}>
         <div className="sf-container sf-header-row">
           <StoreBrand name={brandName} logoSvg={logoSvg} logoHue={logoHue} />
 
@@ -67,8 +79,8 @@ export default function Nav({ brandName, logoSvg, logoHue }: NavProps) {
         {open ? (
           <div id="sf-mobile-menu" className="sf-sheet lg:hidden">
             <nav className="sf-container pb-6 pt-2" aria-label="Mobile">
-              {navigation.map((item) => (
-                <Link key={item.href} href={item.href} onClick={() => setOpen(false)} aria-current={isActive(item.href) ? "page" : undefined} className="sf-sheet-link">
+              {[{ name: "Home", href: "/" }, ...navigation].map((item) => (
+                <Link key={item.href} href={item.href} onClick={() => setOpen(false)} aria-current={pathname === item.href || isActive(item.href) ? "page" : undefined} className="sf-sheet-link">
                   {item.name}
                   <ArrowRight className="size-4 text-[var(--sf-ink-3)]" aria-hidden="true" />
                 </Link>
@@ -81,7 +93,7 @@ export default function Nav({ brandName, logoSvg, logoHue }: NavProps) {
         ) : null}
       </header>
 
-      {!onBooking && !pathname?.startsWith("/services/") && pathname !== "/" ? (
+      {!onBooking && !onAccount && !pathname?.startsWith("/services/") && pathname !== "/" ? (
         <div className="sf-mobile-bar" aria-label="Quick booking">
           <Link href="/book" className="altair-mobile-book">Book an appointment <ArrowRight aria-hidden="true" /></Link>
         </div>

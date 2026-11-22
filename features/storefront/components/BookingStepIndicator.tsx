@@ -15,14 +15,18 @@ interface BookingStepIndicatorProps {
 export function BookingStepIndicator({ currentStep, steps, onStepSelect }: BookingStepIndicatorProps) {
   return (
     <nav aria-label="Booking steps" className="mb-[var(--sf-space-md)]">
-      <ol className="sf-track sf-track-scroll w-full sm:w-auto">
+      {/* On a phone four pills do not fit with their names, so the step is one line of text. */}
+      <p className="sf-num text-[length:var(--sf-text-sm)] text-[var(--sf-ink-3)] sm:hidden" aria-current="step">
+        Step {currentStep} of {steps.length} · <span className="font-medium text-[var(--sf-ink)]">{steps.find((step) => step.number === currentStep)?.title}</span>
+      </p>
+      <ol className="sf-track sf-track-scroll w-full max-sm:hidden sm:w-auto">
         {steps.map((step) => {
           const done = currentStep > step.number
           const current = currentStep === step.number
           const content = (
             <>
               <span className="sf-num text-[length:var(--sf-text-2xs)] opacity-70">{done ? <Check className="!size-3.5" aria-hidden="true" /> : step.number}</span>
-              <span className={current ? undefined : "max-sm:sr-only"}>{step.title}</span>
+              <span>{step.title}</span>
             </>
           )
           return (

@@ -17,7 +17,7 @@ export default function Footer({ brand }: { brand: StorefrontBrand }) {
   const hours = publishedHours(brand.hours, "short")
   return (
     <footer className="border-t border-[var(--sf-rule)] bg-[var(--sf-paper-2)]">
-      <div className="sf-container py-[var(--sf-space-xl)]">
+      <div className="sf-container py-[var(--sf-space-lg)] md:py-[var(--sf-space-xl)]">
         <div className="grid gap-[var(--sf-space-lg)] md:grid-cols-[1.3fr_1fr_1fr]">
           <div className="grid content-start gap-4">
             <StoreBrand name={brand.name} logoSvg={brand.logoSvg} logoHue={brand.logoHue} size="lg" />
@@ -28,7 +28,8 @@ export default function Footer({ brand }: { brand: StorefrontBrand }) {
             </div>
           </div>
 
-          <div>
+          {/* On a phone the full week lives on the Visit page, so the footer stays short. */}
+          <div className="max-md:hidden">
             <p className="sf-eyebrow mb-3">Hours</p>
             {hours.length ? (
               <dl className="grid gap-1.5 text-[length:var(--sf-text-sm)]">
@@ -43,14 +44,14 @@ export default function Footer({ brand }: { brand: StorefrontBrand }) {
           </div>
 
           <nav aria-label="Footer">
-            <p className="sf-eyebrow mb-3">Practice</p>
-            <ul className="grid gap-2 text-[length:var(--sf-text-sm)]">
-              {links.map((link) => <li key={link.href}><Link href={link.href} className="sf-link">{link.name}</Link></li>)}
+            <p className="sf-eyebrow mb-3 max-md:sr-only">Practice</p>
+            <ul className="grid grid-cols-2 gap-x-6 text-[length:var(--sf-text-sm)] md:grid-cols-1 md:gap-2">
+              {links.map((link) => <li key={link.href}><Link href={link.href} className="sf-link max-md:inline-flex max-md:min-h-11 max-md:items-center">{link.name === "Visit" ? <><span className="md:hidden">Hours and directions</span><span className="max-md:hidden">Visit</span></> : link.name}</Link></li>)}
             </ul>
           </nav>
         </div>
 
-        <hr className="sf-rule my-[var(--sf-space-lg)]" />
+        <hr className="sf-rule my-[var(--sf-space-md)] md:my-[var(--sf-space-lg)]" />
         <p className="sf-num text-[length:var(--sf-text-xs)] text-[var(--sf-ink-3)]">&copy; {new Date().getFullYear()} {brand.name}</p>
       </div>
       <div className="sf-mobile-bar-space" aria-hidden="true" />

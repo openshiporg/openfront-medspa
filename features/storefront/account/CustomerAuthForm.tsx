@@ -27,6 +27,7 @@ export function CustomerAuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
           <button disabled={pending} className="sf-pill sf-pill-primary" type="submit">{pending ? <><span className="sf-spinner" aria-hidden="true" />{creating ? 'Creating account' : 'Signing in'}</> : creating ? 'Create account' : 'Sign in'}</button>
         </div>
       </form>
+      {creating ? null : <p className="text-center text-[length:var(--sf-text-sm)]"><Link href="/account/reset" className="sf-link">Forgot password?</Link></p>}
       <p className="text-center text-[length:var(--sf-text-sm)] text-[var(--sf-ink-3)]">
         {creating ? 'Have an account? ' : 'New here? '}
         <Link href={creating ? '/account/sign-in' : '/account/sign-up'} className="sf-link">{creating ? 'Sign in' : 'Create account'}</Link>

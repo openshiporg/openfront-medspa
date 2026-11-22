@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { keystoneClient } from '@/features/dashboard/lib/keystoneClient'
+import { passwordResetEmailAvailable } from '@/features/dashboard/lib/authFlow'
 
 export type CustomerAuthState = { message: string | null }
 
@@ -37,4 +38,27 @@ export async function signOutCustomer(): Promise<void> {
     revalidatePath('/', 'layout')
   }
   redirect('/account')
+}
+
+export type CustomerResetState = { message: string | null; done: boolean }
+
+export async function requestCustomerPasswordReset(_state: CustomerResetState, form: FormData): Promise<CustomerResetState> {
+  const email = String(form.get('email') || '').trim().toLowerCase()
+  if (!email) return { message: 'Enter your email.', done: false }
+  if (!passwordResetEmailAvailable()) return { message: 'Reset emails cannot be sent right now. Call the practice and we will help you sign in.', done: false }
+  const response = await keystoneClient<{ sendUserPasswordResetLink: boolean }>('mutation CustomerResetLink($email: String!) { sendUserPasswordResetLink(email: $email) }', { email })
+  if (!response.success) return { message: 'The reset email could not be sent. Try again.', done: false }
+  // The same answer whether or not the address has an account.
+  return { message: null, done: true }
+}
+
+export async function resetCustomerPassword(_state: CustomerResetState, form: FormData): Promise<CustomerResetState> {
+  const email = String(form.get('email') || '').trim().toLowerCase(), password = String(form.get('password') || ''), token = String(form.get('token') || '')
+  if (password.length < 12) return { message: 'Use at least 12 characters.', done: false }
+  const response = await keystoneClient<{ redeemUserPasswordResetToken: { code: string } | null }>(`mutation CustomerResetPassword($email: String!, $token: String!, $password: String!) {
+    redeemUserPasswordResetToken(email: $email, token: $token, password: $password) { code }
+  }`, { email, token, password })
+  if (!response.success) return { message: 'Your password could not be changed. Try again.', done: false }
+  if (response.data.redeemUserPasswordResetToken?.code) return { message: 'This link has expired or the email does not match. Request a new link.', done: false }
+  return { message: null, done: true }
 }

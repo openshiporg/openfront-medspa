@@ -52,7 +52,9 @@ const { withAuth } = createAuth({
   },
   passwordResetLink: {
     async sendToken(args) {
-      await sendPasswordResetEmail(args.token, args.identity)
+      // Clients have no staff role: their link opens the storefront reset page, not the staff one.
+      const user = await args.context.sudo().query.User.findOne({ where: { id: String(args.itemId) }, query: 'role { id }' })
+      await sendPasswordResetEmail(args.token, args.identity, undefined, user?.role?.id ? '/dashboard/reset' : '/account/reset')
     },
   },
   sessionData: `
