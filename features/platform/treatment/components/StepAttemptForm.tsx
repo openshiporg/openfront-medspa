@@ -1,11 +1,14 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { createContext, useContext, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { pillClass, trackClass } from '@/features/platform/components/pill';
 import { StatusDot } from '@/features/platform/components/medspa-ui';
 import type { TreatmentStepResult } from '../types';
+
+/** False when the viewer has no provider profile: charting forms are hidden and the steps stay readable. */
+export const CanChartContext = createContext(true);
 
 /**
  * Freezes the payload and idempotency key on first send. A retry re-sends the
@@ -22,6 +25,9 @@ export function StepAttemptForm({ label, build, send, children, disabled = false
   const frozen = useRef<Record<string, unknown> | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: 'error' | 'ok' | 'pending'; text: string } | null>(null);
+  const canChart = useContext(CanChartContext);
+
+  if (!canChart) return null;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { fieldLabelClass, inputClass, pillClass, textareaClass, trackClass } from '@/features/platform/components/pill';
 import { Chip, Fact, humanize, Notice, Panel, StatusDot, type Tone } from '@/features/platform/components/medspa-ui';
 import { submitTreatmentStep } from '../actions/treatment';
-import { StepAttemptForm } from '../components/StepAttemptForm';
+import { CanChartContext, StepAttemptForm } from '../components/StepAttemptForm';
 import type { TreatmentStepName, TreatmentWorkspace } from '../types';
 
 const CANDIDACY = ['candidate', 'deferred', 'declined', 'referred'];
@@ -98,6 +98,7 @@ export function TreatmentWorkspaceClient({ data }: { data: TreatmentWorkspace })
   if (!service) return <Notice tone="zinc" title="No treatment on this appointment" />;
 
   return (
+    <CanChartContext.Provider value={Boolean(actor)}>
     <div className="grid gap-4">
       {data.services.length > 1 ? (
         <nav aria-label="Treatment" className="relative -mx-4 overflow-x-auto px-4 [scrollbar-width:none] md:mx-0 md:px-0">
@@ -108,7 +109,11 @@ export function TreatmentWorkspaceClient({ data }: { data: TreatmentWorkspace })
           </div>
         </nav>
       ) : null}
-      {!actor ? <Notice tone="amber" title="Your account has no provider profile" /> : null}
+      {!actor ? (
+        <Notice tone="zinc" title="Read-only: charting is done by the treating provider">
+          <p className="text-sm text-muted-foreground">{data.appointment.providerName ? `${data.appointment.providerName} records the consultation, consent and treatment here when signed in.` : 'The treating provider records the consultation, consent and treatment here when signed in.'} Your account has no provider profile, so the forms are hidden.</p>
+        </Notice>
+      ) : null}
 
       <Step index={1} title="Consultation" tone={candidate ? 'emerald' : consultation ? 'amber' : 'zinc'} status={consultation ? `${humanize(consultation.status)} · ${humanize(consultation.candidacyDecision)}` : 'Not recorded'}>
         {consultation ? (
@@ -418,6 +423,7 @@ export function TreatmentWorkspaceClient({ data }: { data: TreatmentWorkspace })
         ) : <p className="text-sm text-muted-foreground">Needs a treatment session</p>}
       </Step>
     </div>
+    </CanChartContext.Provider>
   );
 }
 
