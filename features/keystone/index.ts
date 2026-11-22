@@ -51,6 +51,8 @@ const { withAuth } = createAuth({
     },
   },
   passwordResetLink: {
+    // A client may open the email later from their phone; an hour matches what the copy promises.
+    tokensValidForMins: 60,
     async sendToken(args) {
       // Clients have no staff role: their link opens the storefront reset page, not the staff one.
       const user = await args.context.sudo().query.User.findOne({ where: { id: String(args.itemId) }, query: 'role { id }' })

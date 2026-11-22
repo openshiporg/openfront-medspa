@@ -12,7 +12,7 @@ export function CustomerResetForm({ token }: { token: string | null }) {
         <h1 className="sf-display text-[length:var(--sf-text-display-s)]">{token ? 'Choose a new password' : 'Reset password'}</h1>
       </header>
       {state.done ? <div className="sf-card grid gap-5 p-[var(--sf-space-md)]">
-        <p role="status" className="text-[var(--sf-ink-2)]">{token ? 'Your password has been changed.' : 'If that email has an account, a reset link is on its way. The link works for 24 hours.'}</p>
+        <p role="status" className="text-[var(--sf-ink-2)]">{token ? 'Your password has been changed.' : 'If that email has an account, a reset link is on its way. The link works for one hour.'}</p>
         <div className="sf-track sf-track-block"><Link href="/account/sign-in" className="sf-pill sf-pill-primary">Sign in</Link></div>
       </div> : <form action={action} className="sf-card grid gap-5 p-[var(--sf-space-md)]">
         {token ? <input type="hidden" name="token" value={token} /> : null}
