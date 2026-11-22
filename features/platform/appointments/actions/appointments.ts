@@ -45,6 +45,7 @@ export interface PlatformAppointment {
     requiresIntakeReview?: boolean | null;
     staffAuthorizationRequired?: boolean | null;
   }[];
+  room?: { name?: string | null } | null;
   payment?: {
     id: string;
     status?: string | null;
@@ -112,6 +113,8 @@ const APPOINTMENT_QUERY = `
     staff { user { name } }
     service { name }
   }
+  room { name }
+  payment { id status totalAmount paymentMethod }
 `;
 
 function buildWhere(status: string | null | undefined, today: { start: string; end: string }) {
