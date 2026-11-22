@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Banknote, ReceiptText } from 'lucide-react';
 import { EmptyState, ErrorState, Fact, PageHeader, Panel, PillLink, PlatformPage, StatusDot, TitleStatus, Track, usd } from '@/features/platform/components/medspa-ui';
 import { getPayment } from '../actions/payments';
+import { getPracticeTimeZone } from '@/features/platform/lib/practiceDay';
 import { paymentMethodLabel, paymentNoteLabel, paymentStatusLabel } from '../types';
 import { RefundSheet } from '../components/RefundSheet';
 import { paymentTone } from './PaymentsPage';
@@ -12,8 +13,14 @@ function stamp(value?: string | null) {
   return <ViewerTime value={value} style="datetime" />;
 }
 
+/** A visit happens at the practice, so its time reads in the practice's zone, not the viewer's. */
+function visitTime(value: string | null | undefined, timeZone: string) {
+  if (!value) return '—';
+  return new Date(value).toLocaleString('en-US', { timeZone, month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+}
+
 export async function PaymentDetailPage({ paymentId }: { paymentId: string }) {
-  const result = await getPayment(paymentId);
+  const [result, practiceZone] = await Promise.all([getPayment(paymentId), getPracticeTimeZone()]);
   if (result.status === 'missing') notFound();
   const breadcrumbs = [{ label: 'Payments', href: '/dashboard/platform/payments' }, { label: 'Payment' }];
   if (result.status !== 'loaded') {
@@ -54,7 +61,7 @@ export async function PaymentDetailPage({ paymentId }: { paymentId: string }) {
           <Fact label="Refunded">{refunded ? `−${usd(refunded)}` : '—'}</Fact>
           <Fact label="Net">{usd(total - refunded)}</Fact>
           <Fact label="Client">{client ? <Link className="underline underline-offset-4" href={`/dashboard/platform/clients/${client.id}`}>{client.user?.name || 'Client'}</Link> : guestName ? `${guestName} (guest)` : '—'}</Fact>
-          <Fact label="Appointment">{payment.appointment ? <Link className="underline underline-offset-4" href={`/dashboard/platform/appointments/${payment.appointment.id}`}>{stamp(payment.appointment.startTime)}</Link> : '—'}</Fact>
+          <Fact label="Appointment">{payment.appointment ? <Link className="underline underline-offset-4" href={`/dashboard/platform/appointments/${payment.appointment.id}`}>{visitTime(payment.appointment.startTime, practiceZone)}</Link> : '—'}</Fact>
           <Fact label="Receipt" wrap>{payment.receiptEmail || '—'}</Fact>
           {payment.cardLast4 ? <Fact label="Card">{payment.cardBrand || 'Card'} ···· {payment.cardLast4}</Fact> : null}
         </dl>
