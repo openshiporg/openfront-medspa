@@ -130,7 +130,15 @@ export const rules = {
   canReadTodos: () => false,
   canManageTodos: () => false,
   canReadRoles: async (args: AccessArgs) => { const actor = await freshActor(args); if (!actor) return false; return actor.practice?.id ? scopedPractice(actor.practice.id) : { assignedTo: { some: { id: { equals: actor.id as string } } } } },
-  canReadPeople: async (args: AccessArgs) => { const actor = await freshActor(args); if (!actor) return false; const self = { id: { equals: actor.id as string } }; if (!actor.practice?.id) return self; return actor.role?.canManagePeople ? { OR: [scopedPractice(actor.practice.id), self] } : self },
+  canReadPeople: async (args: AccessArgs) => { const actor = await freshActor(args); if (!actor) return false; const self = { id: { equals: actor.id as string } }; if (!actor.practice?.id) return self; if (actor.role?.canManagePeople) return { OR: [scopedPractice(actor.practice.id), self] }
+    // Staff who already read a practice's clients, visits or payments must see who those people are:
+    // the client and provider people of THIS practice, never staff accounts or other practices.
+    const role = actor.role || {}
+    const practiceId = actor.practice.id as string
+    const people: Record<string, unknown>[] = [self]
+    if (role.canReadClients || role.canSchedule || role.canManageClinical || role.canManageFinance) people.push({ clientProfile: { practice: { id: { equals: practiceId } } } })
+    if (role.canAccessDashboard || role.canSchedule || role.canManageClinical || role.canManageFinance) people.push({ providerProfile: { practice: { id: { equals: practiceId } } } })
+    return people.length > 1 ? { OR: people } : self },
   canUpdatePeople: async (args: AccessArgs) => { const actor = await freshActor(args); if (!actor) return false; const self = { id: { equals: actor.id as string } }; if (!actor.practice?.id) return self; return actor.role?.canManagePeople ? scopedPractice(actor.practice.id) : self },
   canReadClients: async (args: AccessArgs) => { const scope = await actorScope(args); if (!scope) return false; return scope.role.canReadClients || scope.role.canSchedule || scope.role.canManageClinical ? scopedPractice(scope.practiceId) : ownedInPractice(scope.practiceId, { user: { id: { equals: scope.actorId } } }) },
   canReadAppointments: async (args: AccessArgs) => {
