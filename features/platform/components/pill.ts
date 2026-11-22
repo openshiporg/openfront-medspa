@@ -9,7 +9,7 @@ export type PillVariant = 'raised' | 'primary' | 'danger' | 'quiet';
 export function pillClass(variant: PillVariant = 'raised', size: 'sm' | 'md' = 'md') {
   return cn(
     'inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[5px] border font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-3.5 [&_svg]:shrink-0',
-    size === 'sm' ? 'h-7 px-2.5 text-xs' : 'h-8 px-3 text-[13px] max-sm:h-10',
+    size === 'sm' ? 'h-7 px-2.5 text-xs max-sm:h-10 max-sm:px-3 max-sm:text-[13px]' : 'h-8 px-3 text-[13px] max-sm:h-10',
     variant === 'quiet' && 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground',
     variant === 'raised' && 'border-border bg-background text-foreground shadow-xs hover:bg-muted',
     variant === 'primary' && 'border-foreground bg-foreground text-background hover:bg-foreground/85',

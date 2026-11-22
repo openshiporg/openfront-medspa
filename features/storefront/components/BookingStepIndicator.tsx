@@ -19,7 +19,7 @@ export function BookingStepIndicator({ currentStep, steps, onStepSelect }: Booki
       <p className="sf-num text-[length:var(--sf-text-sm)] text-[var(--sf-ink-3)] sm:hidden" aria-current="step">
         Step {currentStep} of {steps.length} · <span className="font-medium text-[var(--sf-ink)]">{steps.find((step) => step.number === currentStep)?.title}</span>
       </p>
-      <ol className="sf-track sf-track-scroll w-full max-sm:hidden sm:w-auto">
+      <div className="max-sm:hidden"><ol className="sf-track sf-track-scroll w-full sm:w-auto">
         {steps.map((step) => {
           const done = currentStep > step.number
           const current = currentStep === step.number
@@ -39,7 +39,7 @@ export function BookingStepIndicator({ currentStep, steps, onStepSelect }: Booki
             </li>
           )
         })}
-      </ol>
+      </ol></div>
     </nav>
   )
 }

@@ -57,7 +57,7 @@ export async function IntegrationsPage() {
         </Panel>
 
         <Panel title="Email">
-          <div className="flex items-center gap-2 text-sm"><StatusDot tone={result.email.configured ? 'emerald' : 'amber'} />{result.email.configured ? 'Booking receipts and reminders are sent' : 'Email is off: booking receipts and reminders are not sent'}</div>
+          <div className="flex items-center gap-2 text-sm"><StatusDot tone={result.email.configured ? 'emerald' : 'amber'} />{result.email.configured ? 'Booking receipts and gift card emails are sent' : 'Email is off: booking receipts and reminders are not sent'}</div>
           {!result.email.configured ? <p className="mt-2 text-xs text-muted-foreground">Needs SMTP_HOST and SMTP_FROM on the server.</p> : null}
         </Panel>
       </div>

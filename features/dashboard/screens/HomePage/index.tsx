@@ -1,152 +1,125 @@
 /**
- * HomePage for Dashboard 2 - Server Component
- * Follows Dashboard1's server-side rendering approach
+ * Dashboard home: what the practice has to do today.
+ * Staff open this first, so it shows today's visits, the requests waiting for an answer
+ * and the pages they are allowed to open. The raw table list is not shown here.
  */
 
 import React from 'react'
 import Link from 'next/link'
-import { PlusIcon, Database } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { PageContainer } from '../../components/PageContainer'
-import { getAdminMetaAction, getListCounts } from '../../actions'
-import { cn } from '@/lib/utils'
+import { CalendarHeart, ChevronRight } from 'lucide-react'
+import {
+  appointmentLabel, appointmentTone, EmptyState, MetricStrip, Notice, PageHeader, Panel, PillLink,
+  PlatformPage, TitleStatus, Track,
+} from '@/features/platform/components/medspa-ui'
+import { getAppointmentOperations, type PlatformAppointment } from '@/features/platform/appointments/actions/appointments'
+import { getAuthenticatedUser } from '../../actions/auth'
+import { canOpenPlatformRoute } from '../../lib/sidebarAccess'
 
-interface ListCardProps {
-  list: any
-  count?: number | null
-  hideCreate?: boolean
+const shortcuts = [
+  { slug: 'appointments', label: 'Appointments', detail: 'Requests, check-in and visit status' },
+  { slug: 'checkout', label: 'Checkout', detail: 'Take payment for a finished visit' },
+  { slug: 'clients', label: 'Clients', detail: 'Profiles, notes and history' },
+  { slug: 'catalog', label: 'Treatments', detail: 'Prices, durations and categories' },
+  { slug: 'schedules', label: 'Schedules', detail: 'Provider hours and time off' },
+  { slug: 'payments', label: 'Payments', detail: 'Payments and refunds' },
+  { slug: 'reports', label: 'Reports', detail: 'Sales and visits' },
+  { slug: 'storefront', label: 'Website', detail: 'What customers see online' },
+]
+
+function timeOf(appointment: PlatformAppointment) {
+  if (!appointment.startTime) return 'Unscheduled'
+  return new Date(appointment.startTime).toLocaleTimeString('en-US', {
+    hour: 'numeric', minute: '2-digit', hour12: true, timeZone: appointment.location?.timezone || 'UTC',
+  })
 }
 
-function ListCard({ list, count, hideCreate = false }: ListCardProps) {
-  const isSingleton = list.isSingleton || false
-  const href = `/dashboard/${list.path}${isSingleton ? '/1' : ''}`
-
-  return (
-    <Card className={cn(
-      'relative bg-gradient-to-bl from-background to-muted/80 shadow-xs hover:bg-muted transition-colors'
-    )}>
-      <Link href={href}>
-        <CardContent className="p-4">
-          <h3 className="text-sm font-semibold text-foreground">
-            {list.label}
-          </h3>
-          <p className="mt-1 min-h-4 text-xs text-muted-foreground">
-            {isSingleton 
-              ? 'Singleton' 
-              : typeof count === 'number'
-                ? `${count} item${count !== 1 ? 's' : ''}`
-                : null
-            }
-          </p>
-        </CardContent>
-      </Link>
-      
-      {!hideCreate && !isSingleton && (
-        <Link 
-          href={`/dashboard/${list.path}/create`}
-          className="absolute top-3 right-3"
-        >
-          <Button
-            variant="outline" 
-            size="icon"
-            className="h-7 w-7"
-            title={`Add ${list.singular?.toLowerCase() || 'item'}`}
-          >
-            <PlusIcon className="h-4 w-4" />
-            <span className="sr-only">Create new {list.label}</span>
-          </Button>
-        </Link>
-      )}
-    </Card>
-  )
-}
-
-function EmptyState() {
-  return (
-    <div className="flex flex-col items-center justify-center p-8 text-center">
-      <Database className="h-12 w-12 text-muted-foreground mb-4" />
-      <h3 className="text-lg font-semibold mb-2">No lists configured</h3>
-      <p className="text-muted-foreground">
-        There are no data models configured in your admin interface.
-      </p>
-    </div>
-  )
+function treatmentOf(appointment: PlatformAppointment) {
+  return appointment.lineItems?.map((item) => item.serviceTitle).filter(Boolean).join(', ')
+    || appointment.services.map((service) => service.name).filter(Boolean).join(', ')
+    || 'Treatment'
 }
 
 export async function HomePage() {
-  // Fetch admin meta server-side
-  const adminMetaResponse = await getAdminMetaAction()
-  
-  if (!adminMetaResponse.success) {
-    console.error('Failed to fetch admin meta:', adminMetaResponse.error)
-    return (
-      <PageContainer 
-        title="Dashboard" 
-        header={<h1 className="text-lg font-semibold md:text-2xl">Dashboard</h1>}
-        breadcrumbs={[{ type: 'page' as const, label: 'Dashboard' }]}
-      >
-        <EmptyState />
-      </PageContainer>
-    )
-  }
-
-  const adminMeta = adminMetaResponse.data
-  const lists = adminMeta?.lists || []
-  // Lists are already enhanced with gqlNames from getAdminMetaAction
-  const enhancedLists = lists.filter((list: any) => !list.isHidden)
-
-  // Fetch list counts server-side
-  let countData: Record<string, number> = {}
-  if (enhancedLists.length > 0) {
-    const countResponse = await getListCounts(enhancedLists)
-    if (countResponse.success && countResponse.data) {
-      countData = countResponse.data
-    }
-  }
-
-  const header = (
-    <div className="flex flex-col">
-      <h1 className="text-lg font-semibold md:text-2xl">Dashboard</h1>
-      {enhancedLists.length > 0 && (
-        <p className="text-muted-foreground">{enhancedLists.length} Models</p>
-      )}
-    </div>
-  )
-
-  const breadcrumbs = [
-    { type: 'page' as const, label: 'Dashboard' }
-  ]
-
-  if (enhancedLists.length === 0) {
-    return (
-      <PageContainer title="Dashboard" header={header} breadcrumbs={breadcrumbs}>
-        <EmptyState />
-      </PageContainer>
-    )
-  }
+  const [operations, auth] = await Promise.all([getAppointmentOperations('today'), getAuthenticatedUser()])
+  const user = auth.success ? auth.data?.authenticatedItem : null
+  const firstName = typeof user?.name === 'string' ? user.name.trim().split(/\s+/)[0] : ''
+  const loaded = operations.availability === 'loaded'
+  const { appointments, counts } = operations
+  const today = new Date().toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric', timeZone: appointments[0]?.location?.timezone || 'America/New_York',
+  })
+  const links = shortcuts.filter((item) => canOpenPlatformRoute(item.slug, user))
 
   return (
-    <PageContainer title="Dashboard" header={header} breadcrumbs={breadcrumbs}>
-      <div className="w-full max-w-4xl p-4 md:p-6 flex flex-col gap-4">
-        <div className="mb-4">
-          <h2 className="tracking-wide uppercase font-medium mb-2 text-muted-foreground text-sm">
-            Data Models
-          </h2>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2 md:gap-4">
-            {enhancedLists.map((list: any) => (
-              <ListCard
-                key={list.key}
-                list={list}
-                count={countData[list.key] ?? null}
-                hideCreate={list.hideCreate ?? false}
-              />
+    <PlatformPage breadcrumbs={[{ label: 'Home' }]} width="narrow">
+      <PageHeader
+        title={firstName ? `Hello, ${firstName}` : 'Home'}
+        meta={<span>{today}</span>}
+        actions={
+          <Track label="Home actions">
+            <PillLink href="/dashboard/platform/appointments/new" variant="primary">Book appointment</PillLink>
+          </Track>
+        }
+      />
+
+      {loaded && (counts.pending ?? 0) > 0 ? (
+        <Notice tone="amber" title={`${counts.pending} ${counts.pending === 1 ? 'request needs' : 'requests need'} confirmation`}>
+          <Track><PillLink href="/dashboard/platform/appointments?status=pending" size="sm">Review requests</PillLink></Track>
+        </Notice>
+      ) : null}
+
+      {loaded ? (
+        <MetricStrip items={[
+          { label: 'Today', value: counts.today ?? 0, href: '/dashboard/platform/appointments' },
+          { label: 'Waiting for confirmation', value: counts.pending ?? 0, tone: 'amber', href: '/dashboard/platform/appointments?status=pending' },
+          { label: 'Confirmed', value: counts.confirmed ?? 0, tone: 'emerald', href: '/dashboard/platform/appointments?status=confirmed' },
+          { label: 'Checked in', value: counts.in_progress ?? 0, tone: 'blue', href: '/dashboard/platform/appointments?status=in_progress' },
+        ]} />
+      ) : null}
+
+      <section aria-label="Today's appointments" className="min-w-0">
+        <h2 className="mb-2 px-1 text-[13px] font-semibold">Today</h2>
+        {!loaded ? (
+          <EmptyState icon={CalendarHeart} title="Appointments could not be loaded" action={<Track><PillLink href="/dashboard">Retry</PillLink></Track>} />
+        ) : appointments.length === 0 ? (
+          <EmptyState icon={CalendarHeart} title="No appointments today" action={<Track><PillLink href="/dashboard/platform/appointments?status=confirmed">See upcoming</PillLink></Track>} />
+        ) : (
+          <ol className="divide-y overflow-hidden rounded-[6px] border bg-card">
+            {appointments.map((appointment) => (
+              <li key={appointment.id}>
+                <Link href={`/dashboard/platform/appointments/${appointment.id}`} className="flex min-h-14 items-center gap-3 px-3 py-2 transition-colors hover:bg-muted/40">
+                  <span className="w-[4.5rem] shrink-0 text-[13px] font-medium tabular-nums">{timeOf(appointment)}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] font-medium">{appointment.client?.user?.name || 'Client'}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{treatmentOf(appointment)}{appointment.provider?.user?.name ? ` · ${appointment.provider.user.name}` : ''}</span>
+                  </span>
+                  <TitleStatus tone={appointmentTone[appointment.status] || 'zinc'}>{appointmentLabel[appointment.status] || appointment.status}</TitleStatus>
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                </Link>
+              </li>
             ))}
-          </div>
-        </div>
-      </div>
-    </PageContainer>
+          </ol>
+        )}
+      </section>
+
+      {links.length ? (
+        <Panel title="Go to" padded={false}>
+          <ul className="grid divide-y sm:grid-cols-2 sm:divide-y-0">
+            {links.map((item) => (
+              <li key={item.slug} className="sm:border-b sm:odd:border-r sm:[&:nth-last-child(-n+2)]:border-b-0">
+                <Link href={`/dashboard/platform/${item.slug}`} className="flex min-h-14 items-center gap-3 px-3 py-2 transition-colors hover:bg-muted/40">
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] font-medium">{item.label}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{item.detail}</span>
+                  </span>
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      ) : null}
+    </PlatformPage>
   )
 }
 
