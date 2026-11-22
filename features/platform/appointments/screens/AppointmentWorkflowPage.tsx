@@ -147,7 +147,10 @@ export async function AppointmentWorkflowPage({ appointmentId }: { appointmentId
                 <span className="inline-flex items-center gap-1.5"><StatusDot tone={checkoutEligible ? 'emerald' : 'zinc'} />{checkoutEligible ? 'Eligible' : 'Not eligible'}</span>
               </Fact>
               <Fact label="Deposit">{appointment.depositAmount ? depositState === 'refunded' ? `Refunded ${usd(depositSession?.amount ?? appointment.depositAmount)}` : depositState === 'partly refunded' ? `Paid ${usd(appointment.depositAmount)}, partly refunded` : appointment.depositPaid || depositState === 'paid' ? `Paid ${usd(appointment.depositAmount)}` : ['cancelled', 'completed', 'no_show'].includes(status) ? 'Not collected' : `Due ${usd(appointment.depositAmount)}` : 'None'}</Fact>
-              <Fact label="Payment">{capabilities.canManageFinance ? settlement ? sentence(settlement.replaceAll('_', ' ')) : 'Not settled' : 'Restricted'}</Fact>
+              <Fact label="Payment">{!capabilities.canManageFinance ? 'Restricted'
+                : appointment.payment ? `${sentence((appointment.payment.status || 'recorded').replaceAll('_', ' '))} ${usd(appointment.payment.totalAmount)}${appointment.payment.paymentMethod ? ` · ${appointment.payment.paymentMethod.replaceAll('_', ' ')}` : ''}`
+                : appointment.transaction ? `${sentence((appointment.transaction.paymentStatus || appointment.transaction.status || 'recorded').replaceAll('_', ' '))}${appointment.transaction.paymentMethod ? ` · ${appointment.transaction.paymentMethod.replaceAll('_', ' ')}` : ''}`
+                : depositState ? `Deposit only, balance at checkout` : 'Not paid yet'}</Fact>
             </dl>
           </Panel>
         </div>

@@ -54,7 +54,15 @@ const { withAuth } = createAuth({
     async sendToken(args) {
       // Clients have no staff role: their link opens the storefront reset page, not the staff one.
       const user = await args.context.sudo().query.User.findOne({ where: { id: String(args.itemId) }, query: 'role { id }' })
-      await sendPasswordResetEmail(args.token, args.identity, undefined, user?.role?.id ? '/dashboard/reset' : '/account/reset')
+      try {
+        await sendPasswordResetEmail(args.token, args.identity, undefined, user?.role?.id ? '/dashboard/reset' : '/account/reset')
+      } catch (error) {
+        // A permanent recipient refusal (5xx, e.g. a domain that cannot receive mail) is about the address, not the
+        // service. Answer like any other address so the page neither blames the practice nor reveals the account.
+        const message = error instanceof Error ? error.message : String(error)
+        if (!/\b5\d\d\b/.test(message)) throw error
+        console.warn('Password reset email refused by the mail service', { message })
+      }
     },
   },
   sessionData: `
