@@ -32,8 +32,16 @@ export function canUseDashboardNav(user: SidebarUser) {
   return user?.role?.canAccessDashboard !== false
 }
 
+/**
+ * The raw record lists are a developer/admin tool, not a staff workflow: only a role
+ * that can manage roles (the practice owner/admin) sees them. Staff use the platform pages.
+ */
+export function canSeeRecordLists(user: SidebarUser) {
+  return user?.role?.canManageRoles === true
+}
+
 export function visibleSidebarLists<T extends SidebarList>(lists: T[], user: SidebarUser): T[] {
-  if (!canUseDashboardNav(user)) return []
+  if (!canUseDashboardNav(user) || !canSeeRecordLists(user)) return []
   return lists.filter((list) => !list.isHidden)
 }
 
