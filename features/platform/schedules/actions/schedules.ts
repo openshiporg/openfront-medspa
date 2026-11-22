@@ -21,7 +21,7 @@ export async function getScheduleOperations(providerId?: string | null): Promise
         user { id name email }
         locations(orderBy: { name: asc }) { id name }
         schedules(orderBy: [{ dayOfWeek: asc }, { startTime: asc }], take: 200) { ${SCHEDULE_FIELDS} }
-        appointments(where: { status: { in: [pending, confirmed, in_progress] } }, orderBy: { startTime: asc }, take: 5) {
+        appointments(where: { status: { in: [pending, confirmed, in_progress] }, endTime: { gte: "${new Date().toISOString()}" } }, orderBy: { startTime: asc }, take: 5) {
           id startTime location { timezone } client { user { name } } lineItems { serviceTitle }
         }
       }

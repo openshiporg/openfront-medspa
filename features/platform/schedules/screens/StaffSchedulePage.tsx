@@ -182,7 +182,12 @@ function ScheduleBlock({ schedule, providerId, options, locations }: { schedule:
       {schedule.breakStart && schedule.breakEnd && <div className="mt-1 text-muted-foreground">Break {schedule.breakStart}–{schedule.breakEnd}</div>}
       {!schedule.isPublic && !blocked ? <div className="mt-1 text-muted-foreground">Staff only</div> : null}
       {schedule.reason && <div className="mt-1 break-words text-muted-foreground">{schedule.reason}</div>}
-      <form action={setScheduleAvailability} className="mt-2 grid gap-1.5">
+      {/* Block, reason and edit fold away: the week reads as hours first, actions on demand. */}
+      <details className="group mt-1.5">
+      <summary className="inline-flex min-h-7 cursor-pointer list-none items-center gap-1 rounded-[5px] text-xs font-medium text-muted-foreground hover:text-foreground max-sm:min-h-10 [&::-webkit-details-marker]:hidden">
+        <span className="group-open:hidden">Change</span><span className="hidden group-open:inline">Close</span>
+      </summary>
+      <form action={setScheduleAvailability} className="mt-1 grid gap-1.5">
         <input type="hidden" name="id" value={schedule.id} />
         <input type="hidden" name="revision" value={schedule.revision} />
         <input type="hidden" name="isAvailable" value={blocked ? 'true' : 'false'} />
@@ -204,6 +209,7 @@ function ScheduleBlock({ schedule, providerId, options, locations }: { schedule:
       <div className={`${trackClass} mt-1.5 w-fit`}>
         <ScheduleSheet providers={options} locations={locations} schedule={{ ...schedule, providerId }} size="sm" />
       </div>
+      </details>
     </div>
   );
 }
