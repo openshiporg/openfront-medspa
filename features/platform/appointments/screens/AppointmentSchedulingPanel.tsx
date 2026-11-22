@@ -15,6 +15,7 @@ export function AppointmentSchedulingPanel({ appointmentId, customerOnly = false
   const [busy, setBusy] = useState(true);
   const [blocked, setBlocked] = useState(false);
   const [message, setMessage] = useState('Loading scheduling…');
+  const [choice, setChoice] = useState<string | null>(null);
   const purpose = customerOnly ? 'customer_cancel' : 'scheduler';
   useEffect(() => {
     let alive = true;
@@ -43,7 +44,7 @@ export function AppointmentSchedulingPanel({ appointmentId, customerOnly = false
     await resolveTransitionIntent(window.sessionStorage, original, receipt);
     // Only a complete actor/scope/body/key/version-correlated immutable receipt resolves intent.
     const current = await getAppointmentSchedule(original.original.appointmentId, undefined, original.original.expectedScope!.purpose);
-    setIntent(null); setData(current); setBlocked(!current);
+    setIntent(null); setChoice(null); setData(current); setBlocked(!current);
     setMessage('Status saved. Current scheduling reloaded.');
     router.refresh();
   }
@@ -98,6 +99,9 @@ export function AppointmentSchedulingPanel({ appointmentId, customerOnly = false
       </div>
     </form>;
   }
+  // Only a cancellation or no-show must say why; confirming or checking in is one click.
+  const selected = choice ?? data?.allowedTransitions[0] ?? ''
+  const reasonNeeded = selected === 'cancelled' || selected === 'no_show'
   const tone = data ? ({ pending: 'bg-amber-500', confirmed: 'bg-emerald-500', in_progress: 'bg-blue-500', completed: 'bg-zinc-400', cancelled: 'bg-rose-500', no_show: 'bg-orange-500' } as Record<string, string>)[data.status] || 'bg-zinc-400' : 'bg-zinc-300';
   return <section className="grid min-w-0 gap-4 rounded-[6px] border bg-background p-4 text-foreground md:p-5" aria-label="Controlled appointment scheduling">
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -109,8 +113,8 @@ export function AppointmentSchedulingPanel({ appointmentId, customerOnly = false
     {/* A finished visit has nothing to change: show the sentence below instead of an empty, disabled form. */}
     {data && !data.allowedTransitions.length && !intent ? null : <form onSubmit={submit} className="grid gap-3">
       <fieldset disabled={busy || blocked || Boolean(intent) || !data?.allowedTransitions.length} className="grid min-w-0 gap-3 disabled:opacity-70 sm:grid-cols-2">
-        <label className={fieldLabelClass}>Action<select name="status" className={inputClass}>{data?.allowedTransitions.map(status => <option key={status} value={status}>{{ confirmed: 'Confirm appointment', in_progress: 'Check in client', cancelled: 'Cancel and release reservations', no_show: 'Record no-show and release reservations' }[status]}</option>)}</select></label>
-        <label className={fieldLabelClass}>Administrative reason<input name="reason" className={inputClass} maxLength={1000} required /></label>
+        <label className={fieldLabelClass}>Action<select name="status" className={inputClass} value={choice ?? data?.allowedTransitions[0] ?? ''} onChange={(event) => setChoice(event.target.value)}>{data?.allowedTransitions.map(status => <option key={status} value={status}>{{ confirmed: 'Confirm appointment', in_progress: 'Check in client', cancelled: 'Cancel and release reservations', no_show: 'Record no-show and release reservations' }[status]}</option>)}</select></label>
+        <label className={fieldLabelClass}>{reasonNeeded ? 'Reason' : <span>Note <span className="font-normal">· optional</span></span>}<input name="reason" className={inputClass} maxLength={1000} required={reasonNeeded} /></label>
       </fieldset>
       <div className={`${trackClass} w-fit flex-wrap`}><button className={pillClass('primary')} disabled={busy || blocked || !data || (!intent && !data.allowedTransitions.length)}>{busy ? 'Working…' : intent ? 'Retry pending update' : 'Save status'}</button>{intent && <button type="button" className={pillClass('quiet')} disabled={busy} onClick={retrieve}>Refresh update status</button>}</div>
     </form>}
