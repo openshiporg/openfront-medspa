@@ -32,6 +32,7 @@ export async function HomePage() {
       <div className="altair-hero-copy">
         <h1 id="home-heading">{brand.city ? `${brand.city}’s calmest clinic.` : brand.name}</h1>
         <p>Facials, peels, light therapy and injectables, delivered by nurses and licensed estheticians.</p>
+        <Link href="/book" className="altair-hero-book">Book an appointment <ArrowRight aria-hidden="true" /></Link>
       </div>
     </section>
     <div className="altair-home-grid">

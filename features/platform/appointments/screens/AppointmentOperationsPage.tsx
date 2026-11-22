@@ -1,8 +1,9 @@
-import { CalendarHeart, ShieldAlert } from 'lucide-react';
+import { CalendarHeart, ChevronLeft, ChevronRight, ShieldAlert } from 'lucide-react';
+import Link from 'next/link';
 import { statusFilter } from '@/features/platform/lib/queryParams';
 import {
   appointmentLabel, appointmentTone, Chip, EmptyState, ErrorState, Notice, PageHeader, PillLink,
-  PlatformPage, SegmentTabs, TitleStatus, Track, usd,
+  PlatformPage, SegmentTabs, TitleStatus, Track, usd, pillClass, inputClass,
 } from '@/features/platform/components/medspa-ui';
 import { getAppointmentOperations, PlatformAppointment } from '../actions/appointments';
 import { getAuthenticatedUser } from '@/features/dashboard/actions/auth';
@@ -20,7 +21,7 @@ const statusTabs = [
 ] as const;
 
 interface PageProps {
-  searchParams?: Promise<{ status?: string }>;
+  searchParams?: Promise<{ status?: string; date?: string }>;
 }
 
 function zoneOf(appointment: PlatformAppointment) {
@@ -67,7 +68,13 @@ function groupByDay(appointments: PlatformAppointment[]) {
 export async function AppointmentOperationsPage({ searchParams }: PageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const activeStatus = statusFilter(resolvedSearchParams.status, ["today","pending","confirmed","in_progress","completed","cancelled","no_show","all"] as const, 'today');
-  const [{ appointments, counts, availability }, auth] = await Promise.all([getAppointmentOperations(activeStatus), getAuthenticatedUser()]);
+  const requestedDate = typeof resolvedSearchParams.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(resolvedSearchParams.date) && !Number.isNaN(Date.parse(`${resolvedSearchParams.date}T12:00:00Z`)) ? resolvedSearchParams.date : null;
+  const [{ appointments, counts, availability, todayDate }, auth] = await Promise.all([getAppointmentOperations(activeStatus, requestedDate), getAuthenticatedUser()]);
+  // The day shown in the picker: the chosen day, or today on the Today tab.
+  const shownDate = requestedDate || todayDate || '';
+  const shiftDay = (delta: number) => new Date(Date.parse(`${shownDate}T12:00:00Z`) + delta * 86_400_000).toISOString().slice(0, 10);
+  const dayHref = (value: string) => value === todayDate ? '/dashboard/platform/appointments' : `/dashboard/platform/appointments?date=${value}`;
+  const shownLabel = shownDate ? new Date(`${shownDate}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'long', month: 'long', day: 'numeric' }) : '';
   const canOpenPlans = canOpenPlatformRoute('appointments/plans', auth.success ? auth.data?.authenticatedItem : null);
   const breadcrumbs = [{ label: 'Appointments' }];
 
@@ -107,10 +114,24 @@ export async function AppointmentOperationsPage({ searchParams }: PageProps) {
         </Notice>
       ) : null}
 
-      <SegmentTabs label="Appointment status filters" tabs={tabs} active={activeStatus} />
+      <SegmentTabs label="Appointment status filters" tabs={tabs} active={requestedDate && requestedDate !== todayDate ? '' : activeStatus} />
+
+      {shownDate && (requestedDate || activeStatus === 'today') ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <Link href={dayHref(shiftDay(-1))} aria-label="Previous day" className={`${pillClass('raised')} w-8 !px-0 max-sm:w-10`}><ChevronLeft aria-hidden="true" /></Link>
+            <Link href={dayHref(shiftDay(1))} aria-label="Next day" className={`${pillClass('raised')} w-8 !px-0 max-sm:w-10`}><ChevronRight aria-hidden="true" /></Link>
+            <p className="min-w-0 truncate text-[13px] font-semibold">{shownLabel}{shownDate === todayDate ? <span className="font-normal text-muted-foreground"> · today</span> : null}</p>
+          </div>
+          <form method="get" action="/dashboard/platform/appointments" className="flex items-center gap-2">
+            <input type="date" name="date" aria-label="Go to date" defaultValue={shownDate} required className={`${inputClass} w-auto`} />
+            <button type="submit" className={pillClass('raised')}>Go</button>
+          </form>
+        </div>
+      ) : null}
 
       {appointments.length === 0 ? (
-        <EmptyState icon={CalendarHeart} title="No appointments in this view" />
+        <EmptyState icon={CalendarHeart} title={requestedDate ? `No appointments on ${shownLabel}` : 'No appointments in this view'} />
       ) : (
         <div className="grid gap-6">
           {groups.map((group) => (

@@ -29,7 +29,7 @@ export function PageBreadcrumbs({ items, actions }: PageBreadcrumbsProps) {
     <header className="sticky top-0 z-30 bg-background flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 border-b">
       <div className="flex min-w-0 items-center gap-2 px-4 w-full justify-between">
         <div className="flex shrink-0 items-center gap-3">
-          <SidebarTrigger className="-ml-1" />
+          <SidebarTrigger className="-ml-1 max-sm:size-10" />
           <Separator orientation="vertical" className="mr-2 h-4" />
           <Breadcrumb className="hidden md:flex">
             <BreadcrumbList>

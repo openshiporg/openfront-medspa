@@ -256,9 +256,9 @@ export function BookingPage({ initialServices = EMPTY_SERVICES, initialContact =
         <p className="sf-eyebrow">Your visit</p>
         <dl>
           <div className="sf-ticket-row"><dt>Treatment</dt><dd>{service?.name || "—"}</dd></div>
-          <div className="sf-ticket-row"><dt>Provider</dt><dd>{provider?.user?.name || "—"}</dd></div>
-          <div className="sf-ticket-row"><dt>Date</dt><dd>{dateLabel || "—"}</dd></div>
-          <div className="sf-ticket-row"><dt>Time</dt><dd className="sf-num">{selectedTimeLabel || "—"}</dd></div>
+          {provider?.user?.name ? <div className="sf-ticket-row"><dt>Provider</dt><dd>{provider.user.name}</dd></div> : null}
+          {dateLabel ? <div className="sf-ticket-row"><dt>Date</dt><dd>{dateLabel}</dd></div> : null}
+          {selectedTimeLabel ? <div className="sf-ticket-row"><dt>Time</dt><dd className="sf-num">{selectedTimeLabel}</dd></div> : null}
           <div className="sf-ticket-row"><dt>Duration</dt><dd className="sf-num">{service ? formatDuration(service.baseDuration) : "—"}</dd></div>
           <div className="sf-ticket-row"><dt>Price</dt><dd className="sf-num">{service ? formatPrice(service.basePrice) : "—"}</dd></div>
         </dl>

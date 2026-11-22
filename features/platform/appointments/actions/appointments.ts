@@ -66,6 +66,8 @@ export interface AppointmentOperationsData {
   appointments: PlatformAppointment[];
   availability: 'loaded' | 'unavailable';
   counts: Record<AppointmentStatus | 'all' | 'today', number>;
+  /** Today's calendar date (YYYY-MM-DD) in the practice timezone. */
+  todayDate?: string;
 }
 
 const APPOINTMENT_QUERY = `
@@ -190,8 +192,13 @@ export async function cancelAppointmentFromQueue(formData: FormData): Promise<vo
   revalidateAppointmentOperations();
 }
 
-export async function getAppointmentOperations(status?: string | null): Promise<AppointmentOperationsData> {
-  const today = getTodayRange(await getPracticeTimeZone());
+/** `day` is a calendar date (YYYY-MM-DD) in the practice timezone; when given, that day is listed whatever the status. */
+export async function getAppointmentOperations(status?: string | null, day?: string | null): Promise<AppointmentOperationsData> {
+  const timeZone = await getPracticeTimeZone();
+  const today = getTodayRange(timeZone);
+  // Noon UTC falls on the same calendar date in the practice timezone, so the range is that local day.
+  const dayRange = day && /^\d{4}-\d{2}-\d{2}$/.test(day) && !Number.isNaN(Date.parse(`${day}T12:00:00Z`))
+    ? getTodayRange(timeZone, new Date(`${day}T12:00:00Z`)) : null;
   const query = `
     query AppointmentOperations($where: AppointmentWhereInput!) {
       appointments(where: $where, orderBy: { startTime: asc }, take: 100) {
@@ -218,7 +225,7 @@ export async function getAppointmentOperations(status?: string | null): Promise<
     cancelledCount: number;
     noShowCount: number;
     todayCount: number;
-  }>(query, { where: buildWhere(status, today) });
+  }>(query, { where: dayRange ? { startTime: { gte: dayRange.start, lte: dayRange.end } } : buildWhere(status, today) });
 
   if (!response.success) {
     console.error('Failed to load appointment operations:', response.error);
@@ -241,6 +248,7 @@ export async function getAppointmentOperations(status?: string | null): Promise<
   return {
     appointments: response.data.appointments || [],
     availability: 'loaded',
+    todayDate: new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()),
     counts: {
       all: response.data.allCount || 0,
       today: response.data.todayCount || 0,

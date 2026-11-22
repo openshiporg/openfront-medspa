@@ -191,7 +191,7 @@ function ScheduleBlock({ schedule, providerId, options, locations }: { schedule:
             aria-label={`Reason for blocking ${days[schedule.dayOfWeek ?? 0]} ${hoursLabel(schedule)}`}
             name="reason"
             placeholder="Reason"
-            className="h-7 w-full min-w-0 rounded-[5px] border bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="h-7 w-full min-w-0 rounded-[5px] border bg-background px-2 text-xs outline-none max-sm:h-10 max-sm:text-base focus-visible:ring-2 focus-visible:ring-ring"
           />
         )}
         <span className={`${trackClass} w-fit`}>

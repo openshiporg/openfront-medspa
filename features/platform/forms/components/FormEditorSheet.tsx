@@ -142,7 +142,7 @@ export function FormEditorSheet({ kind, row, links, triggerLabel, triggerVariant
                   <div className="flex flex-wrap items-center justify-between gap-2 sm:col-span-2">
                     <div className="flex items-center gap-3">
                       <label className="flex items-center gap-2 text-xs font-medium"><input type="checkbox" className="size-4" checked={field.required} onChange={(event) => update(field.key, { required: event.target.checked })} />Required</label>
-                      <label className="flex items-center gap-1.5 text-xs text-muted-foreground">ID<input className="h-7 w-32 rounded-[5px] border bg-background px-2 font-mono text-xs" maxLength={64} value={field.id} placeholder={slug(field.label || 'field')} onChange={(event) => update(field.key, { id: event.target.value })} /></label>
+                      <label className="flex items-center gap-1.5 text-xs text-muted-foreground">ID<input className="h-7 w-32 rounded-[5px] border bg-background px-2 font-mono text-xs max-sm:h-10 max-sm:text-base" maxLength={64} value={field.id} placeholder={slug(field.label || 'field')} onChange={(event) => update(field.key, { id: event.target.value })} /></label>
                     </div>
                     <div className={trackClass}>
                       <button type="button" aria-label="Move up" className={pillClass('quiet', 'sm')} disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp /></button>

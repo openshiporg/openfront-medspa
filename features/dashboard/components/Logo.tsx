@@ -54,8 +54,8 @@ export const Logo = ({
             syne.className,
             "font-bold uppercase text-muted-foreground",
             isSidebar
-              ? "mt-0.5 text-[8px] leading-none tracking-[0.14em]"
-              : "text-[10px] tracking-wider",
+              ? "mt-0.5 text-[10px] leading-none tracking-[0.12em]"
+              : "text-[11px] tracking-wider",
           )}
         >
           Med Spa

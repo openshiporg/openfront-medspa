@@ -39,7 +39,7 @@ function AppointmentItem({ appointment, intakeDue = false }: { appointment: Port
       {intakeDue ? <div className="sf-track self-start"><Link href={`/account/intake/${appointment.id}`} className="sf-pill sf-pill-primary sf-pill-sm">Complete intake</Link></div> : null}
       {payment && payment.status && ["completed", "partially_refunded", "refunded"].includes(payment.status) ? (
         <details className="sf-well p-[var(--sf-space-sm)]">
-          <summary className="cursor-pointer text-[length:var(--sf-text-sm)] font-medium">Receipt · <span className="sf-num">{money(payment.totalAmount)}</span></summary>
+          <summary className="cursor-pointer text-[length:var(--sf-text-sm)] font-medium">Receipt{" · "}<span className="sf-num">{money(payment.totalAmount)}</span></summary>
           <dl className="mt-2">
             {(appointment.transaction?.lineItems || []).map((line) => <div key={line.id} className="sf-ticket-row"><dt>{line.title || (line.itemType === "product" ? "Product" : "Treatment")}{line.quantity > 1 ? ` × ${line.quantity}` : ""}</dt><dd className="sf-num">{money(line.unitPrice * line.quantity - (line.discount || 0))}</dd></div>)}
             {payment.tax ? <div className="sf-ticket-row"><dt>Tax</dt><dd className="sf-num">{money(payment.tax)}</dd></div> : null}

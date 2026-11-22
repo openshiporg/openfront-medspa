@@ -59,8 +59,8 @@ export function GiftCardPurchaseForm() {
         </label>
       </div>
 
-      <label className="flex items-center gap-2 text-[length:var(--sf-text-sm)] text-[var(--sf-ink-2)]">
-        <input type="checkbox" checked={forSomeoneElse} onChange={(event) => setForSomeoneElse(event.target.checked)} />
+      <label className="flex min-h-11 cursor-pointer items-center gap-3 text-[length:var(--sf-text-sm)] text-[var(--sf-ink-2)]">
+        <input type="checkbox" className="sf-check" checked={forSomeoneElse} onChange={(event) => setForSomeoneElse(event.target.checked)} />
         Send it to someone else
       </label>
 
